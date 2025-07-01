@@ -43,9 +43,18 @@ function createWindow() {
 
 // Python バックエンドを起動
 function startPythonBackend() {
-  pythonProcess = spawn('python', ['backend/api.py'], {
-    cwd: __dirname
-  });
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  
+  if (isDev) {
+    // 開発時: Pythonスクリプトを直接実行
+    pythonProcess = spawn('python', ['backend/api.py'], {
+      cwd: __dirname
+    });
+  } else {
+    // パッケージ時: 実行ファイルを使用
+    const pythonExePath = path.join(process.resourcesPath, 'python', 'api.exe');
+    pythonProcess = spawn(pythonExePath);
+  }
 
   pythonProcess.stdout.on('data', (data) => {
     console.log(`Python stdout: ${data}`);

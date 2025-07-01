@@ -6,9 +6,10 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "package:win": "electron-builder --win",
-    "package:mac": "electron-builder --mac",
-    "package:linux": "electron-builder --linux",
+    "package:win": "npm run build:python && electron-builder --win",
+    "package:mac": "npm run build:python && electron-builder --mac",
+    "package:linux": "npm run build:python && electron-builder --linux",
+    "build:python": "cd backend && python -m PyInstaller --onefile --distpath ../dist/python api.py",
     "dev": "nodemon --exec electron ."
   },
   "keywords": ["electron", "nippo", "daily-report"],
@@ -35,6 +36,12 @@
       "backend/**/*",
       "assets/**/*",
       "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/python/",
+        "to": "python/"
+      }
     ],
     "win": {
       "target": [
