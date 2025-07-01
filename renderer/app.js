@@ -651,7 +651,13 @@ class NippoApp {
             if (result.success) {
                 await this.loadTasks();
                 this.hideEditDialog();
-                this.showToast('タスクを更新しました');
+                
+                // 調整があった場合は通知
+                if (result.adjustments && result.adjustments.length > 0) {
+                    this.showAdjustmentNotification(result.adjustments);
+                } else {
+                    this.showToast('タスクを更新しました');
+                }
             } else {
                 this.showToast('タスクの更新に失敗しました', 'error');
             }
@@ -659,6 +665,43 @@ class NippoApp {
             console.error('タスク更新エラー:', error);
             this.showToast('タスクの更新に失敗しました', 'error');
         }
+    }
+
+    showAdjustmentNotification(adjustments) {
+        let message = 'タスクを更新しました。';
+        if (adjustments.length > 0) {
+            message += '\n\n時間の重複を解消するため、以下のタスクも調整されました:';
+            adjustments.forEach(adj => {
+                const taskName = this.tasks[adj.taskId]?.name || `タスク${adj.taskId + 1}`;
+                const fieldName = adj.field === 'startTime' ? '開始時間' : '終了時間';
+                message += `\n• ${taskName}の${fieldName}: ${adj.oldValue} → ${adj.newValue}`;
+            });
+        }
+        
+        // より詳細な通知用のダイアログを表示
+        this.showDetailedToast(message, 'success', 6000);
+    }
+
+    showDetailedToast(message, type = 'success', duration = 4000) {
+        const toast = document.getElementById('toast');
+        const messageElement = document.getElementById('toast-message');
+        
+        // 改行を<br>に変換
+        messageElement.innerHTML = message.replace(/\n/g, '<br>');
+        
+        // タイプに応じて色を変更
+        const colors = {
+            success: 'var(--success)',
+            warning: 'var(--warning)',
+            error: 'var(--error)'
+        };
+        
+        toast.style.background = colors[type] || colors.success;
+        toast.classList.add('show');
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, duration);
     }
 
     deleteCurrentTask() {

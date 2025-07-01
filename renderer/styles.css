@@ -538,13 +538,15 @@ body {
   padding: 16px 20px;
   border-radius: var(--radius-medium);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   box-shadow: var(--shadow-large);
   transform: translateX(400px);
   transition: transform 0.3s ease;
   font-weight: 500;
   z-index: 1000;
+  max-width: 400px;
+  word-wrap: break-word;
 }
 
 .toast.show {
@@ -553,6 +555,12 @@ body {
 
 .toast .material-icons {
   font-size: 20px;
+  flex-shrink: 0;
+}
+
+.toast #toast-message {
+  line-height: 1.4;
+  font-size: 14px;
 }
 
 /* 確認ダイアログ */

@@ -231,6 +231,100 @@ class TaskManager:
             print(f"タスククリアエラー: {e}")
             return False
     
+    def parse_time_to_minutes(self, time_str):
+        """時間文字列を分に変換（比較用）"""
+        try:
+            if not time_str:
+                return None
+            
+            # "午前 10:30" -> 分に変換
+            is_am = time_str.includes('午前') if hasattr(time_str, 'includes') else '午前' in time_str
+            time_only = time_str.replace('午前 ', '').replace('午後 ', '').strip()
+            
+            if ':' not in time_only:
+                return None
+                
+            hours, minutes = time_only.split(':')
+            hour = int(hours)
+            minute = int(minutes)
+            
+            # 12時間形式を24時間形式に変換
+            if not is_am and hour != 12:
+                hour += 12
+            elif is_am and hour == 12:
+                hour = 0
+                
+            return hour * 60 + minute
+        except:
+            return None
+    
+    def minutes_to_time_str(self, minutes):
+        """分を時間文字列に変換"""
+        try:
+            if minutes is None:
+                return ""
+            
+            hour = minutes // 60
+            minute = minutes % 60
+            
+            # 24時間形式を12時間形式に変換
+            if hour == 0:
+                return f"午前 12:{minute:02d}"
+            elif hour < 12:
+                return f"午前 {hour}:{minute:02d}"
+            elif hour == 12:
+                return f"午後 12:{minute:02d}"
+            else:
+                return f"午後 {hour - 12}:{minute:02d}"
+        except:
+            return ""
+    
+    def adjust_conflicting_tasks(self, tasks, edited_task_id, new_start_time, new_end_time):
+        """時間矛盾を解決するためにタスクを調整"""
+        adjustments = []
+        
+        if edited_task_id < 0 or edited_task_id >= len(tasks):
+            return tasks, adjustments
+        
+        new_start_minutes = self.parse_time_to_minutes(new_start_time)
+        new_end_minutes = self.parse_time_to_minutes(new_end_time) if new_end_time else None
+        
+        if new_start_minutes is None:
+            return tasks, adjustments
+        
+        # 前のタスクとの矛盾をチェック
+        if edited_task_id > 0:
+            prev_task = tasks[edited_task_id - 1]
+            if prev_task.get('endTime'):
+                prev_end_minutes = self.parse_time_to_minutes(prev_task['endTime'])
+                if prev_end_minutes and prev_end_minutes > new_start_minutes:
+                    # 前のタスクの終了時間を調整
+                    prev_task['endTime'] = self.minutes_to_time_str(new_start_minutes)
+                    adjustments.append({
+                        'taskId': edited_task_id - 1,
+                        'field': 'endTime',
+                        'oldValue': self.minutes_to_time_str(prev_end_minutes),
+                        'newValue': prev_task['endTime'],
+                        'reason': '次のタスクとの重複を解消'
+                    })
+        
+        # 次のタスクとの矛盾をチェック
+        if new_end_minutes and edited_task_id < len(tasks) - 1:
+            next_task = tasks[edited_task_id + 1]
+            next_start_minutes = self.parse_time_to_minutes(next_task['startTime'])
+            if next_start_minutes and next_start_minutes < new_end_minutes:
+                # 次のタスクの開始時間を調整
+                next_task['startTime'] = self.minutes_to_time_str(new_end_minutes)
+                adjustments.append({
+                    'taskId': edited_task_id + 1,
+                    'field': 'startTime',
+                    'oldValue': self.minutes_to_time_str(next_start_minutes),
+                    'newValue': next_task['startTime'],
+                    'reason': '前のタスクとの重複を解消'
+                })
+        
+        return tasks, adjustments
+    
     def update_task(self, task_id, task_name, start_time, end_time):
         """タスクを更新"""
         try:
@@ -238,15 +332,29 @@ class TaskManager:
             if 0 <= task_id < len(tasks):
                 # 既存の休憩フラグを保持
                 is_break = tasks[task_id].get('isBreak', False)
-                tasks[task_id]['name'] = task_name
-                tasks[task_id]['startTime'] = start_time
-                tasks[task_id]['endTime'] = end_time if end_time.strip() else None
-                tasks[task_id]['isBreak'] = is_break
-                self.save_schedule(tasks)
-                return tasks[task_id]
+                
+                # 時間矛盾を調整
+                adjusted_tasks, adjustments = self.adjust_conflicting_tasks(
+                    tasks, task_id, start_time, end_time
+                )
+                
+                # 編集対象のタスクを更新
+                adjusted_tasks[task_id]['name'] = task_name
+                adjusted_tasks[task_id]['startTime'] = start_time
+                adjusted_tasks[task_id]['endTime'] = end_time if end_time and end_time.strip() else None
+                adjusted_tasks[task_id]['isBreak'] = is_break
+                
+                self.save_schedule(adjusted_tasks)
+                
+                return {
+                    'task': adjusted_tasks[task_id],
+                    'adjustments': adjustments
+                }
             return None
         except Exception as e:
             print(f"タスク更新エラー: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def delete_task(self, task_id):
@@ -435,9 +543,12 @@ def update_task(task_id):
         if not task_name or not start_time:
             return jsonify({'success': False, 'error': 'タスク名と開始時刻は必須です'}), 400
         
-        updated_task = task_manager.update_task(task_id, task_name, start_time, end_time)
-        if updated_task:
-            return jsonify({'success': True, 'task': updated_task})
+        result = task_manager.update_task(task_id, task_name, start_time, end_time)
+        if result:
+            response_data = {'success': True, 'task': result['task']}
+            if result.get('adjustments'):
+                response_data['adjustments'] = result['adjustments']
+            return jsonify(response_data)
         else:
             return jsonify({'success': False, 'error': 'タスクが見つかりません'}), 404
     except Exception as e:
