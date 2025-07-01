@@ -18,6 +18,7 @@ class TaskManager:
         self.data_file = DATA_DIR / "data.txt"
         self.task_list_file = DATA_DIR / "task_list.txt"
         self.report_file = DATA_DIR / "report.txt"
+        self.urls_file = DATA_DIR / "report_urls.json"
     
     def get_time(self):
         """現在の時間を取得して12時間表示に変換"""
@@ -43,78 +44,153 @@ class TaskManager:
         print(f"データファイルのパス: {self.data_file}")
         print(f"データファイルの存在: {self.data_file.exists()}")
         
-        if self.data_file.exists():
-            with open(self.data_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
+        try:
+            if self.data_file.exists():
+                with open(self.data_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                print(f"読み込んだ行数: {len(lines)}")
+                if lines:
+                    print("ファイル内容:")
+                    for i, line in enumerate(lines):
+                        try:
+                            print(f"  {i+1}: {repr(line)}")
+                        except UnicodeEncodeError:
+                            print(f"  {i+1}: [絵文字を含む行]")
+                
+                task_data = []
+                for line in lines:
+                    line = line.strip()
+                    if "~" in line:
+                        # 時間範囲の行
+                        try:
+                            start_time, end_time = line.split("~", 1)
+                            task_data.extend([start_time.strip(), end_time.strip()])
+                        except Exception as e:
+                            print(f"時間行の解析エラー: {line}, エラー: {e}")
+                            continue
+                    else:
+                        # タスク名の行
+                        if line:
+                            task_data.append(line)
+                            if len(task_data) >= 3:
+                                try:
+                                    # 終了時刻の処理：空文字列、"None"、"none"をNoneとして扱う
+                                    end_time = task_data[1].strip() if len(task_data) > 1 and task_data[1] else ""
+                                    if end_time.lower() in ["", "none"] or end_time == "None":
+                                        end_time = None
+                                    
+                                    # タスク名を処理
+                                    task_name = task_data[2] if len(task_data) > 2 else ""
+                                    is_break = False
+                                    
+                                    # 休憩タスクの判定と名前の正規化
+                                    if task_name.startswith('[BREAK]'):
+                                        is_break = True
+                                        task_name = task_name.replace('[BREAK]', '').strip()
+                                    elif task_name.startswith('🔴 休憩:'):
+                                        is_break = True
+                                        task_name = task_name.replace('🔴 休憩:', '').strip()
+                                    elif task_name.startswith('🔴 休憩'):
+                                        is_break = True
+                                        task_name = task_name.replace('🔴 休憩', '').strip()
+                                    elif task_name == '休憩':
+                                        is_break = True
+                                    
+                                    # 空の場合は休憩として設定
+                                    if not task_name and is_break:
+                                        task_name = '休憩'
+                                    
+                                    task = {
+                                        'id': len(tasks),
+                                        'startTime': task_data[0] if len(task_data) > 0 else "",
+                                        'endTime': end_time,
+                                        'name': task_name,
+                                        'isBreak': is_break
+                                    }
+                                    tasks.append(task)
+                                    try:
+                                        print(f"パースしたタスク: {task}")
+                                    except UnicodeEncodeError:
+                                        print(f"パースしたタスク: [絵文字を含むタスク] ID={task['id']}")
+                                    task_data = []
+                                except Exception as e:
+                                    print(f"タスクデータの解析エラー: {task_data}, エラー: {e}")
+                                    task_data = []
+                                    continue
+            else:
+                print("データファイルが存在しません")
             
-            print(f"読み込んだ行数: {len(lines)}")
-            if lines:
-                print("ファイル内容:")
-                for i, line in enumerate(lines):
-                    print(f"  {i+1}: {repr(line)}")
-            
-            task_data = []
-            for line in lines:
-                line = line.strip()
-                if "~" in line:
-                    # 時間範囲の行
-                    start_time, end_time = line.split("~", 1)
-                    task_data.extend([start_time.strip(), end_time.strip()])
-                else:
-                    # タスク名の行
-                    if line:
-                        task_data.append(line)
-                        if len(task_data) >= 3:
-                            # 終了時刻の処理：空文字列、"None"、"none"をNoneとして扱う
-                            end_time = task_data[1].strip() if task_data[1] else ""
-                            if end_time.lower() in ["", "none"]:
-                                end_time = None
-                            
-                            task = {
-                                'id': len(tasks),
-                                'startTime': task_data[0],
-                                'endTime': end_time,
-                                'name': task_data[2]
-                            }
-                            tasks.append(task)
-                            print(f"パースしたタスク: {task}")
-                            task_data = []
-        else:
-            print("データファイルが存在しません")
-        
-        print(f"読み込み完了 - タスク数: {len(tasks)}")
-        return tasks
+            print(f"読み込み完了 - タスク数: {len(tasks)}")
+            return tasks
+        except Exception as e:
+            print(f"load_schedule全体のエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
     
     def save_schedule(self, tasks):
         """スケジュールデータを保存"""
-        with open(self.data_file, 'w', encoding='utf-8') as f:
-            for task in tasks:
-                start_time = task['startTime']
-                end_time = task.get('endTime', '')
-                name = task['name']
-                f.write(f"{start_time} ~ {end_time}\n{name}\n")
+        try:
+            with open(self.data_file, 'w', encoding='utf-8') as f:
+                for task in tasks:
+                    start_time = task.get('startTime', '')
+                    end_time = task.get('endTime')
+                    if end_time is None:
+                        end_time = ''
+                    name = task.get('name', '')
+                    # 休憩タスクの場合は識別子を追加
+                    if task.get('isBreak', False):
+                        if name == '休憩' or name == '':
+                            name = "[BREAK] 休憩"
+                        else:
+                            name = f"[BREAK] {name}"
+                    f.write(f"{start_time} ~ {end_time}\n{name}\n")
+            print(f"スケジュール保存完了: {len(tasks)}件")
+        except Exception as e:
+            print(f"save_scheduleエラー: {e}")
+            import traceback
+            traceback.print_exc()
     
-    def add_task(self, task_name):
+    def add_task(self, task_name, is_break=False):
         """タスクを追加"""
-        tasks = self.load_schedule()
-        add_time = self.get_time()
-        
-        # 未終了のタスクがあれば終了時刻を設定
-        for task in tasks:
-            if not task.get('endTime'):
-                task['endTime'] = add_time
-        
-        # 新しいタスクを追加
-        new_task = {
-            'id': len(tasks),
-            'startTime': add_time,
-            'endTime': None,
-            'name': task_name
-        }
-        tasks.append(new_task)
-        
-        self.save_schedule(tasks)
-        return new_task
+        try:
+            print(f"add_task開始: name='{task_name}', isBreak={is_break}")
+            tasks = self.load_schedule()
+            add_time = self.get_time()
+            print(f"現在時刻: {add_time}")
+            
+            # 未終了のタスクがあれば終了時刻を設定
+            for task in tasks:
+                if not task.get('endTime'):
+                    try:
+                        print(f"未終了タスクを終了: {task}")
+                    except UnicodeEncodeError:
+                        print(f"未終了タスクを終了: [絵文字を含むタスク] ID={task.get('id')}")
+                    task['endTime'] = add_time
+            
+            # 新しいタスクを追加
+            new_task = {
+                'id': len(tasks),
+                'startTime': add_time,
+                'endTime': None,
+                'name': task_name,
+                'isBreak': is_break
+            }
+            tasks.append(new_task)
+            try:
+                print(f"新しいタスクを追加: {new_task}")
+            except UnicodeEncodeError:
+                print(f"新しいタスクを追加: [絵文字を含むタスク] ID={new_task['id']}")
+            
+            self.save_schedule(tasks)
+            print("add_task完了")
+            return new_task
+        except Exception as e:
+            print(f"add_taskエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def end_current_task(self):
         """現在のタスクを終了"""
@@ -160,9 +236,12 @@ class TaskManager:
         try:
             tasks = self.load_schedule()
             if 0 <= task_id < len(tasks):
+                # 既存の休憩フラグを保持
+                is_break = tasks[task_id].get('isBreak', False)
                 tasks[task_id]['name'] = task_name
                 tasks[task_id]['startTime'] = start_time
                 tasks[task_id]['endTime'] = end_time if end_time.strip() else None
+                tasks[task_id]['isBreak'] = is_break
                 self.save_schedule(tasks)
                 return tasks[task_id]
             return None
@@ -206,6 +285,60 @@ class TaskManager:
         except Exception as e:
             print(f"報告書読み込みエラー: {e}")
             return ""
+    
+    def save_report_urls(self, urls):
+        """報告先URLリストを保存"""
+        try:
+            with open(self.urls_file, 'w', encoding='utf-8') as f:
+                json.dump(urls, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            print(f"URL保存エラー: {e}")
+            return False
+    
+    def load_report_urls(self):
+        """報告先URLリストを読み込み"""
+        try:
+            if self.urls_file.exists():
+                with open(self.urls_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return []
+        except Exception as e:
+            print(f"URL読み込みエラー: {e}")
+            return []
+    
+    def add_report_url(self, name, url):
+        """報告先URLを追加"""
+        try:
+            urls = self.load_report_urls()
+            new_url = {
+                'id': len(urls),
+                'name': name,
+                'url': url
+            }
+            urls.append(new_url)
+            if self.save_report_urls(urls):
+                return new_url
+            return None
+        except Exception as e:
+            print(f"URL追加エラー: {e}")
+            return None
+    
+    def delete_report_url(self, url_id):
+        """報告先URLを削除"""
+        try:
+            urls = self.load_report_urls()
+            if 0 <= url_id < len(urls):
+                deleted_url = urls.pop(url_id)
+                # IDを再振り
+                for i, url in enumerate(urls):
+                    url['id'] = i
+                if self.save_report_urls(urls):
+                    return deleted_url
+            return None
+        except Exception as e:
+            print(f"URL削除エラー: {e}")
+            return None
 
 # グローバルなTaskManagerインスタンス
 task_manager = TaskManager()
@@ -215,8 +348,15 @@ def get_tasks():
     """タスク一覧を取得"""
     try:
         tasks = task_manager.load_schedule()
+        print(f"API - 取得したタスク数: {len(tasks)}")
+        for task in tasks:
+            try:
+                print(f"API - タスク: {task}")
+            except UnicodeEncodeError:
+                print(f"API - タスク: [絵文字を含むタスク] ID={task.get('id')}")
         return jsonify({'success': True, 'tasks': tasks})
     except Exception as e:
+        print(f"API - タスク取得エラー: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/tasks', methods=['POST'])
@@ -225,17 +365,25 @@ def add_task():
     try:
         data = request.get_json()
         task_name = data.get('name', '').strip()
+        is_break = data.get('isBreak', False)
+        
+        print(f"API - タスク追加リクエスト: name='{task_name}', isBreak={is_break}")
         
         if not task_name:
             return jsonify({'success': False, 'error': 'タスク名が必要です'}), 400
         
-        new_task = task_manager.add_task(task_name)
+        new_task = task_manager.add_task(task_name, is_break)
+        try:
+            print(f"API - 追加されたタスク: {new_task}")
+        except UnicodeEncodeError:
+            print(f"API - 追加されたタスク: [絵文字を含むタスク] ID={new_task.get('id') if new_task else 'None'}")
         return jsonify({
             'success': True, 
             'task': new_task,
             'taskId': new_task['id']
         })
     except Exception as e:
+        print(f"API - タスク追加エラー: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/tasks/end', methods=['POST'])
@@ -332,6 +480,46 @@ def save_report():
             return jsonify({'success': True, 'message': '報告書を保存しました'})
         else:
             return jsonify({'success': False, 'error': '報告書の保存に失敗しました'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report-urls', methods=['GET'])
+def get_report_urls():
+    """報告先URLリストを取得"""
+    try:
+        urls = task_manager.load_report_urls()
+        return jsonify({'success': True, 'urls': urls})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report-urls', methods=['POST'])
+def add_report_url():
+    """報告先URLを追加"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        url = data.get('url', '').strip()
+        
+        if not name or not url:
+            return jsonify({'success': False, 'error': '名前とURLは必須です'}), 400
+        
+        new_url = task_manager.add_report_url(name, url)
+        if new_url:
+            return jsonify({'success': True, 'url': new_url})
+        else:
+            return jsonify({'success': False, 'error': 'URLの追加に失敗しました'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report-urls/<int:url_id>', methods=['DELETE'])
+def delete_report_url(url_id):
+    """報告先URLを削除"""
+    try:
+        deleted_url = task_manager.delete_report_url(url_id)
+        if deleted_url:
+            return jsonify({'success': True, 'url': deleted_url})
+        else:
+            return jsonify({'success': False, 'error': 'URLが見つかりません'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

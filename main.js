@@ -114,14 +114,14 @@ ipcMain.handle('get-tasks', async () => {
   }
 });
 
-ipcMain.handle('add-task', async (event, taskName) => {
+ipcMain.handle('add-task', async (event, taskName, isBreak = false) => {
   try {
     const response = await fetch('http://127.0.0.1:5000/api/tasks', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name: taskName })
+      body: JSON.stringify({ name: taskName, isBreak })
     });
     const data = await response.json();
     return data;
@@ -251,6 +251,58 @@ ipcMain.handle('save-report', async (event, content) => {
     return data;
   } catch (error) {
     console.error('報告書保存エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-report-urls', async () => {
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/report-urls');
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告先URL取得エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('add-report-url', async (event, name, url) => {
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/report-urls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name, url })
+    });
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告先URL追加エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-report-url', async (event, urlId) => {
+  try {
+    const response = await fetch(`http://127.0.0.1:5000/api/report-urls/${urlId}`, {
+      method: 'DELETE'
+    });
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告先URL削除エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('open-external-url', async (event, url) => {
+  try {
+    const { shell } = require('electron');
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('外部URL開きエラー:', error);
     return { success: false, error: error.message };
   }
 });

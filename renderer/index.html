@@ -49,6 +49,10 @@
                         <span class="material-icons">check_circle</span>
                         タスク終了
                     </button>
+                    <button id="break-btn" class="btn-break">
+                        <span class="material-icons">coffee</span>
+                        休憩開始
+                    </button>
                     <button id="copy-timeline-btn" class="btn-secondary">
                         <span class="material-icons">content_copy</span>
                         タイムラインコピー
@@ -56,6 +60,10 @@
                     <button id="create-report-btn" class="btn-secondary">
                         <span class="material-icons">description</span>
                         報告書作成
+                    </button>
+                    <button id="settings-btn" class="btn-secondary">
+                        <span class="material-icons" style="font-size: 18px;">settings</span>
+                        設定
                     </button>
                     <button id="clear-all-btn" class="btn-danger">
                         <span class="material-icons">clear_all</span>
@@ -197,6 +205,12 @@
                     </div>
                 </div>
                 <div class="report-section">
+                    <h4>🔗 報告先</h4>
+                    <div class="report-links" id="report-links">
+                        <!-- 報告先リンクが動的に挿入される -->
+                    </div>
+                </div>
+                <div class="report-section">
                     <h4>📝 報告内容</h4>
                     <textarea id="report-content" class="report-textarea" placeholder="今日の作業について詳しく記述してください...&#10;&#10;■ 完了した作業&#10;- &#10;&#10;■ 進行中の作業&#10;- &#10;&#10;■ 明日の予定&#10;- &#10;&#10;■ 課題・連絡事項&#10;- "></textarea>
                 </div>
@@ -205,6 +219,38 @@
                 <button class="btn-cancel" id="report-cancel">キャンセル</button>
                 <button class="btn-secondary" id="report-copy">クリップボードにコピー</button>
                 <button class="btn-primary" id="report-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 設定ダイアログ -->
+    <div class="settings-dialog" id="settings-dialog">
+        <div class="settings-content">
+            <div class="settings-header">
+                <h3>⚙️ 設定</h3>
+                <button class="settings-close" id="settings-close">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-section">
+                    <h4>🔗 報告先URL</h4>
+                    <div class="url-list" id="url-list">
+                        <!-- URL一覧が動的に挿入される -->
+                    </div>
+                    <div class="add-url-form">
+                        <div class="input-row">
+                            <input type="text" id="url-name-input" class="edit-input" placeholder="表示名（例：Slack、Teams）" />
+                            <input type="url" id="url-input" class="edit-input" placeholder="URL（例：https://hooks.slack.com/...）" />
+                            <button id="add-url-btn" class="btn-primary">
+                                <span class="material-icons">add</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-footer">
+                <button class="btn-cancel" id="settings-cancel">閉じる</button>
             </div>
         </div>
     </div>

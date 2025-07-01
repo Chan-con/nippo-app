@@ -9,6 +9,7 @@ class NippoApp {
         this.setupEventListeners();
         this.updateDateTime();
         this.updateTaskCounter();
+        this.updateBreakButton(false); // 初期状態は休憩開始ボタン
         
         // APIサーバーの準備を待つ
         console.log('APIサーバーの準備を待機中...');
@@ -59,6 +60,9 @@ class NippoApp {
         // タスク終了
         document.getElementById('end-task-btn').addEventListener('click', () => this.endTask());
 
+        // 休憩開始/終了
+        document.getElementById('break-btn').addEventListener('click', () => this.toggleBreak());
+
         // タイムラインコピー
         document.getElementById('copy-timeline-btn').addEventListener('click', () => this.copyTimeline());
 
@@ -67,6 +71,9 @@ class NippoApp {
 
         // 報告書作成
         document.getElementById('create-report-btn').addEventListener('click', () => this.showReportDialog());
+
+        // 設定
+        document.getElementById('settings-btn').addEventListener('click', () => this.showSettingsDialog());
 
         // タイトルバーボタン
         document.querySelector('.titlebar-button.minimize').addEventListener('click', () => {
@@ -92,6 +99,11 @@ class NippoApp {
         document.getElementById('report-cancel').addEventListener('click', () => this.hideReportDialog());
         document.getElementById('report-copy').addEventListener('click', () => this.copyReport());
         document.getElementById('report-save').addEventListener('click', () => this.saveReport());
+
+        // 設定ダイアログのイベントリスナー
+        document.getElementById('settings-close').addEventListener('click', () => this.hideSettingsDialog());
+        document.getElementById('settings-cancel').addEventListener('click', () => this.hideSettingsDialog());
+        document.getElementById('add-url-btn').addEventListener('click', () => this.addReportUrl());
     }
 
     updateDateTime() {
@@ -128,7 +140,7 @@ class NippoApp {
         const currentRunningTask = this.tasks.find(task => !task.endTime);
         
         try {
-            const result = await window.electronAPI.addTask(taskName);
+            const result = await window.electronAPI.addTask(taskName, false);
             if (result.success) {
                 taskInput.value = '';
                 await this.loadTasks();
@@ -147,6 +159,54 @@ class NippoApp {
         } catch (error) {
             console.error('タスク追加エラー:', error);
             this.showToast('タスクの追加に失敗しました', 'error');
+        }
+    }
+
+    async toggleBreak() {
+        // 現在実行中のタスクがあるかチェック
+        const currentRunningTask = this.tasks.find(task => !task.endTime);
+        
+        if (currentRunningTask && currentRunningTask.isBreak) {
+            // 休憩中の場合は休憩を終了
+            await this.endBreak();
+        } else {
+            // 休憩中でない場合は休憩を開始
+            await this.startBreak();
+        }
+    }
+
+    async startBreak() {
+        // 現在実行中のタスクがあるかチェック
+        const currentRunningTask = this.tasks.find(task => !task.endTime);
+        
+        try {
+            const result = await window.electronAPI.addTask('休憩', true);
+            if (result.success) {
+                await this.loadTasks();
+                
+                // 前のタスクが自動終了された場合の通知
+                if (currentRunningTask) {
+                    this.showToast(`「${currentRunningTask.name}」を終了し、休憩を開始しました`);
+                } else {
+                    this.showToast('休憩を開始しました');
+                }
+            }
+        } catch (error) {
+            console.error('休憩開始エラー:', error);
+            this.showToast('休憩の開始に失敗しました', 'error');
+        }
+    }
+
+    async endBreak() {
+        try {
+            const result = await window.electronAPI.endTask();
+            if (result.success) {
+                await this.loadTasks();
+                this.showToast('休憩を終了しました');
+            }
+        } catch (error) {
+            console.error('休憩終了エラー:', error);
+            this.showToast('休憩の終了に失敗しました', 'error');
         }
     }
 
@@ -200,13 +260,20 @@ class NippoApp {
             // 現在実行中のタスクを更新
             const runningTask = this.tasks.find(task => !task.endTime);
             if (runningTask) {
-                console.log('実行中のタスク:', runningTask.name);
+                console.log('実行中のタスク:', runningTask);
                 this.currentTaskId = runningTask.id;
-                this.updateCurrentTask(runningTask.name);
+                if (runningTask.isBreak) {
+                    this.updateCurrentTask('🔴 休憩中');
+                    this.updateBreakButton(true); // 休憩中の場合は終了ボタンに変更
+                } else {
+                    this.updateCurrentTask(runningTask.name);
+                    this.updateBreakButton(false); // 通常タスクの場合は開始ボタンに変更
+                }
             } else {
                 console.log('実行中のタスクはありません');
                 this.currentTaskId = null;
                 this.updateCurrentTask('タスクなし');
+                this.updateBreakButton(false); // タスクなしの場合は開始ボタン
             }
             
             console.log('タスクデータの読み込み完了');
@@ -218,7 +285,10 @@ class NippoApp {
     updateTimeline() {
         const container = document.getElementById('timeline-container');
         
+        console.log('タイムライン更新中...', this.tasks);
+        
         if (this.tasks.length === 0) {
+            console.log('タスクが0件のため空表示');
             container.innerHTML = `
                 <div class="timeline-empty">
                     <span class="material-icons">schedule</span>
@@ -234,6 +304,7 @@ class NippoApp {
             const endTime = task.endTime ? this.formatTime(task.endTime) : '実行中';
             const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '';
             const isRunning = !task.endTime;
+            const isBreak = task.isBreak || false;
             
             // デバッグ情報
             if (task.endTime) {
@@ -241,17 +312,44 @@ class NippoApp {
                     name: task.name,
                     startTime: task.startTime,
                     endTime: task.endTime,
-                    duration: duration
+                    duration: duration,
+                    isBreak: isBreak
                 });
             }
             
+            // クラスを動的に設定
+            let itemClass = 'timeline-item';
+            if (isRunning && isBreak) {
+                // 実行中の休憩のみ特別なスタイル
+                itemClass += ' running break';
+            } else if (isRunning) {
+                // 実行中の通常タスク
+                itemClass += ' running';
+            }
+            // 終了した休憩タスクは通常のタスクと同じ表示にする
+            
+            // タスク名を表示用に整形（休憩の場合は適切に表示）
+            let displayName = task.name;
+            if (isBreak) {
+                if (displayName === '[BREAK] 休憩' || displayName === '🔴 休憩' || displayName === '') {
+                    displayName = '休憩';
+                } else if (displayName.startsWith('[BREAK] ')) {
+                    displayName = displayName.replace('[BREAK] ', '');
+                } else if (displayName.startsWith('🔴 休憩: ')) {
+                    displayName = displayName.replace('🔴 休憩: ', '');
+                } else if (displayName.startsWith('🔴 休憩')) {
+                    displayName = displayName.replace('🔴 休憩', '').trim();
+                    if (!displayName) displayName = '休憩';
+                }
+            }
+            
             return `
-                <div class="timeline-item ${isRunning ? 'running' : ''}">
+                <div class="${itemClass}">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
-                        <div class="timeline-task">${task.name}</div>
+                        <div class="timeline-task">${displayName}</div>
                         ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
-                        ${isRunning ? '<span class="timeline-duration" style="background: var(--accent); color: white;">実行中</span>' : ''}
+                        ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
                     </div>
                     <button class="timeline-edit" onclick="app.editTask(${task.id})" title="編集">
                         <span class="material-icons">edit</span>
@@ -264,11 +362,12 @@ class NippoApp {
     }
 
     updateStats() {
-        const completedTasks = this.tasks.filter(task => task.endTime).length;
+        // 休憩以外の完了したタスクのみをカウント
+        const completedWorkTasks = this.tasks.filter(task => task.endTime && !task.isBreak).length;
         const totalWorkTime = this.calculateTotalWorkTime();
         const productivity = this.calculateProductivity();
 
-        document.getElementById('completed-tasks').textContent = completedTasks;
+        document.getElementById('completed-tasks').textContent = completedWorkTasks;
         document.getElementById('work-time').textContent = totalWorkTime;
         document.getElementById('productivity').textContent = productivity;
     }
@@ -280,6 +379,41 @@ class NippoApp {
 
     updateCurrentTask(taskName) {
         document.getElementById('current-task').textContent = taskName;
+    }
+
+    updateBreakButton(isOnBreak) {
+        const breakBtn = document.getElementById('break-btn');
+        const endTaskBtn = document.getElementById('end-task-btn');
+        const icon = breakBtn.querySelector('.material-icons');
+        const text = breakBtn.querySelector('span:not(.material-icons)') || breakBtn.childNodes[breakBtn.childNodes.length - 1];
+        
+        if (isOnBreak) {
+            // 休憩終了ボタンに変更
+            icon.textContent = 'stop_circle';
+            if (text.nodeType === Node.TEXT_NODE) {
+                text.textContent = '休憩終了';
+            } else {
+                breakBtn.innerHTML = '<span class="material-icons">stop_circle</span>休憩終了';
+            }
+            breakBtn.classList.remove('btn-break');
+            breakBtn.classList.add('btn-secondary');
+            
+            // 休憩中はタスク終了ボタンを非表示
+            endTaskBtn.style.display = 'none';
+        } else {
+            // 休憩開始ボタンに変更
+            icon.textContent = 'coffee';
+            if (text.nodeType === Node.TEXT_NODE) {
+                text.textContent = '休憩開始';
+            } else {
+                breakBtn.innerHTML = '<span class="material-icons">coffee</span>休憩開始';
+            }
+            breakBtn.classList.remove('btn-secondary');
+            breakBtn.classList.add('btn-break');
+            
+            // 休憩中でない場合はタスク終了ボタンを表示
+            endTaskBtn.style.display = 'flex';
+        }
     }
 
     formatTime(timeString) {
@@ -359,8 +493,9 @@ class NippoApp {
     }
 
     calculateTotalWorkTime() {
+        // 休憩時間を除外して作業時間のみを計算
         const totalMinutes = this.tasks.reduce((total, task) => {
-            if (task.endTime && task.startTime) {
+            if (task.endTime && task.startTime && !task.isBreak) {
                 const duration = this.calculateDuration(task.startTime, task.endTime);
                 if (!duration) return total;
                 
@@ -389,8 +524,10 @@ class NippoApp {
     }
 
     calculateProductivity() {
-        if (this.tasks.length === 0) return '-';
-        const completedRatio = this.tasks.filter(task => task.endTime).length / this.tasks.length;
+        // 休憩以外のタスクのみで生産性を計算
+        const workTasks = this.tasks.filter(task => !task.isBreak);
+        if (workTasks.length === 0) return '-';
+        const completedRatio = workTasks.filter(task => task.endTime).length / workTasks.length;
         return `${Math.round(completedRatio * 100)}%`;
     }
 
@@ -579,6 +716,9 @@ class NippoApp {
         // タスクサマリーを生成
         this.generateTaskSummary();
 
+        // 報告先リンクを生成
+        await this.generateReportLinks();
+
         // 保存済みの報告書内容を読み込み
         try {
             const result = await window.electronAPI.getReport();
@@ -667,6 +807,42 @@ class NippoApp {
         }
     }
 
+    async generateReportLinks() {
+        const linksContainer = document.getElementById('report-links');
+        
+        try {
+            const result = await window.electronAPI.getReportUrls();
+            if (result.success && result.urls && result.urls.length > 0) {
+                const linksHTML = result.urls.map(url => `
+                    <button class="report-link-btn" onclick="app.openReportUrl('${url.url}')">
+                        <span class="material-icons">open_in_new</span>
+                        ${url.name}
+                    </button>
+                `).join('');
+                linksContainer.innerHTML = linksHTML;
+            } else {
+                linksContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 16px;">報告先が設定されていません</p>';
+            }
+        } catch (error) {
+            console.error('報告先URL取得エラー:', error);
+            linksContainer.innerHTML = '<p style="color: var(--error); text-align: center; padding: 16px;">報告先の読み込みに失敗しました</p>';
+        }
+    }
+
+    async openReportUrl(url) {
+        try {
+            const result = await window.electronAPI.openExternalUrl(url);
+            if (result.success) {
+                this.showToast('ブラウザで開きました');
+            } else {
+                this.showToast('URLを開けませんでした', 'error');
+            }
+        } catch (error) {
+            console.error('URL開きエラー:', error);
+            this.showToast('URLを開けませんでした', 'error');
+        }
+    }
+
     async saveReport() {
         const reportContent = document.getElementById('report-content').value;
         
@@ -681,6 +857,99 @@ class NippoApp {
         } catch (error) {
             console.error('報告書保存エラー:', error);
             this.showToast('報告書の保存に失敗しました', 'error');
+        }
+    }
+
+    async showSettingsDialog() {
+        // URL一覧を読み込み
+        await this.loadReportUrls();
+
+        // ダイアログを表示
+        const dialog = document.getElementById('settings-dialog');
+        dialog.classList.add('show');
+    }
+
+    hideSettingsDialog() {
+        const dialog = document.getElementById('settings-dialog');
+        dialog.classList.remove('show');
+    }
+
+    async loadReportUrls() {
+        const urlList = document.getElementById('url-list');
+        
+        try {
+            const result = await window.electronAPI.getReportUrls();
+            if (result.success) {
+                if (result.urls && result.urls.length > 0) {
+                    const urlsHTML = result.urls.map(url => `
+                        <div class="url-item">
+                            <div class="url-info">
+                                <div class="url-name">${url.name}</div>
+                                <div class="url-address">${url.url}</div>
+                            </div>
+                            <div class="url-actions">
+                                <button onclick="app.deleteReportUrl(${url.id})" class="delete" title="削除">
+                                    <span class="material-icons">delete</span>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                    urlList.innerHTML = urlsHTML;
+                } else {
+                    urlList.innerHTML = `
+                        <div class="url-list-empty">
+                            <span class="material-icons">link_off</span>
+                            <p>報告先URLが登録されていません</p>
+                        </div>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('報告先URL読み込みエラー:', error);
+            urlList.innerHTML = '<p style="color: var(--error); text-align: center; padding: 20px;">読み込みに失敗しました</p>';
+        }
+    }
+
+    async addReportUrl() {
+        const nameInput = document.getElementById('url-name-input');
+        const urlInput = document.getElementById('url-input');
+        
+        const name = nameInput.value.trim();
+        const url = urlInput.value.trim();
+        
+        if (!name || !url) {
+            this.showToast('名前とURLを入力してください', 'warning');
+            return;
+        }
+        
+        try {
+            const result = await window.electronAPI.addReportUrl(name, url);
+            if (result.success) {
+                nameInput.value = '';
+                urlInput.value = '';
+                await this.loadReportUrls();
+                this.showToast(`「${name}」を追加しました`);
+            } else {
+                this.showToast(result.error || '追加に失敗しました', 'error');
+            }
+        } catch (error) {
+            console.error('報告先URL追加エラー:', error);
+            this.showToast('追加に失敗しました', 'error');
+        }
+    }
+
+    async deleteReportUrl(urlId) {
+        try {
+            const result = await window.electronAPI.deleteReportUrl(urlId);
+            if (result.success) {
+                await this.loadReportUrls();
+                this.showToast('削除しました');
+            } else {
+                this.showToast('削除に失敗しました', 'error');
+            }
+        } catch (error) {
+            console.error('報告先URL削除エラー:', error);
+            this.showToast('削除に失敗しました', 'error');
         }
     }
 }
