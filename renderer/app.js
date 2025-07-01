@@ -377,6 +377,22 @@ class NippoApp {
     updateTaskCounter() {
         const activeTasks = this.tasks.filter(task => !task.endTime).length;
         document.getElementById('task-count').textContent = activeTasks;
+        
+        // 実行中のタスクがない場合はタスク終了ボタンを非表示
+        this.updateEndTaskButtonVisibility();
+    }
+
+    updateEndTaskButtonVisibility() {
+        const endTaskBtn = document.getElementById('end-task-btn');
+        const runningTasks = this.tasks.filter(task => !task.endTime);
+        const isOnBreak = runningTasks.some(task => task.isBreak);
+        
+        // 実行中のタスクがない、または休憩中の場合は非表示
+        if (runningTasks.length === 0 || isOnBreak) {
+            endTaskBtn.style.display = 'none';
+        } else {
+            endTaskBtn.style.display = 'flex';
+        }
     }
 
     updateCurrentTask(taskName) {
@@ -385,7 +401,6 @@ class NippoApp {
 
     updateBreakButton(isOnBreak) {
         const breakBtn = document.getElementById('break-btn');
-        const endTaskBtn = document.getElementById('end-task-btn');
         const icon = breakBtn.querySelector('.material-icons');
         const text = breakBtn.querySelector('span:not(.material-icons)') || breakBtn.childNodes[breakBtn.childNodes.length - 1];
         
@@ -399,9 +414,6 @@ class NippoApp {
             }
             breakBtn.classList.remove('btn-break');
             breakBtn.classList.add('btn-secondary');
-            
-            // 休憩中はタスク終了ボタンを非表示
-            endTaskBtn.style.display = 'none';
         } else {
             // 休憩開始ボタンに変更
             icon.textContent = 'coffee';
@@ -412,10 +424,10 @@ class NippoApp {
             }
             breakBtn.classList.remove('btn-secondary');
             breakBtn.classList.add('btn-break');
-            
-            // 休憩中でない場合はタスク終了ボタンを表示
-            endTaskBtn.style.display = 'flex';
         }
+        
+        // タスク終了ボタンの表示状態を更新
+        this.updateEndTaskButtonVisibility();
     }
 
     formatTime(timeString) {
