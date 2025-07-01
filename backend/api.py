@@ -18,6 +18,7 @@ class TaskManager:
         self.data_file = DATA_DIR / "data.txt"
         self.task_list_file = DATA_DIR / "task_list.txt"
         self.report_file = DATA_DIR / "report.txt"
+        self.report_tabs_file = DATA_DIR / "report_tabs.json"
         self.urls_file = DATA_DIR / "report_urls.json"
     
     def get_time(self):
@@ -442,11 +443,95 @@ class TaskManager:
                 for i, url in enumerate(urls):
                     url['id'] = i
                 if self.save_report_urls(urls):
+                    # 関連する報告タブデータも削除
+                    self.cleanup_report_tab_data(url_id)
                     return deleted_url
             return None
         except Exception as e:
             print(f"URL削除エラー: {e}")
             return None
+    
+    def save_report_tabs(self, tab_data):
+        """報告先別の報告内容を保存"""
+        try:
+            with open(self.report_tabs_file, 'w', encoding='utf-8') as f:
+                json.dump(tab_data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            print(f"報告タブデータ保存エラー: {e}")
+            return False
+    
+    def load_report_tabs(self):
+        """報告先別の報告内容を読み込み"""
+        try:
+            if self.report_tabs_file.exists():
+                with open(self.report_tabs_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            print(f"報告タブデータ読み込みエラー: {e}")
+            return {}
+    
+    def save_report_tab_content(self, url_id, content):
+        """特定の報告先の報告内容を保存"""
+        try:
+            tab_data = self.load_report_tabs()
+            tab_data[str(url_id)] = content
+            return self.save_report_tabs(tab_data)
+        except Exception as e:
+            print(f"報告タブ内容保存エラー: {e}")
+            return False
+    
+    def get_report_tab_content(self, url_id):
+        """特定の報告先の報告内容を取得"""
+        try:
+            tab_data = self.load_report_tabs()
+            return tab_data.get(str(url_id), '')
+        except Exception as e:
+            print(f"報告タブ内容取得エラー: {e}")
+            return ''
+    
+    def cleanup_report_tab_data(self, deleted_url_id):
+        """削除された報告先の報告データをクリーンアップ"""
+        try:
+            tab_data = self.load_report_tabs()
+            
+            # 削除された報告先のデータを削除
+            if str(deleted_url_id) in tab_data:
+                del tab_data[str(deleted_url_id)]
+            
+            # IDの再振りに対応してデータを調整
+            current_urls = self.load_report_urls()
+            new_tab_data = {}
+            
+            for i, url in enumerate(current_urls):
+                old_id = url.get('original_id', i)  # 元のIDを保持していればそれを使用
+                if str(old_id) in tab_data:
+                    new_tab_data[str(i)] = tab_data[str(old_id)]
+                elif str(i) in tab_data:
+                    new_tab_data[str(i)] = tab_data[str(i)]
+            
+            return self.save_report_tabs(new_tab_data)
+        except Exception as e:
+            print(f"報告タブデータクリーンアップエラー: {e}")
+            return False
+    
+    def migrate_legacy_report_data(self):
+        """既存の単一報告書データを新形式に移行"""
+        try:
+            # 既存のレポートファイルがあるか確認
+            if self.report_file.exists() and not self.report_tabs_file.exists():
+                legacy_content = self.load_report()
+                if legacy_content.strip():
+                    # デフォルトタブとして保存
+                    tab_data = {'default': legacy_content}
+                    if self.save_report_tabs(tab_data):
+                        print("既存の報告書データを新形式に移行しました")
+                        return True
+            return True
+        except Exception as e:
+            print(f"データ移行エラー: {e}")
+            return False
 
 # グローバルなTaskManagerインスタンス
 task_manager = TaskManager()
@@ -631,6 +716,42 @@ def delete_report_url(url_id):
             return jsonify({'success': True, 'url': deleted_url})
         else:
             return jsonify({'success': False, 'error': 'URLが見つかりません'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report-tabs', methods=['GET'])
+def get_report_tabs():
+    """報告先別の報告内容を取得"""
+    try:
+        # データ移行を確認
+        task_manager.migrate_legacy_report_data()
+        
+        tab_data = task_manager.load_report_tabs()
+        return jsonify({'success': True, 'tabs': tab_data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report-tabs/<tab_id>', methods=['GET'])
+def get_report_tab_content(tab_id):
+    """特定の報告先の報告内容を取得"""
+    try:
+        content = task_manager.get_report_tab_content(tab_id)
+        return jsonify({'success': True, 'content': content})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report-tabs/<tab_id>', methods=['POST'])
+def save_report_tab_content(tab_id):
+    """特定の報告先の報告内容を保存"""
+    try:
+        data = request.get_json()
+        content = data.get('content', '')
+        
+        success = task_manager.save_report_tab_content(tab_id, content)
+        if success:
+            return jsonify({'success': True, 'message': '報告内容を保存しました'})
+        else:
+            return jsonify({'success': False, 'error': '報告内容の保存に失敗しました'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

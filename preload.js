@@ -14,5 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getReportUrls: () => ipcRenderer.invoke('get-report-urls'),
   addReportUrl: (name, url) => ipcRenderer.invoke('add-report-url', name, url),
   deleteReportUrl: (urlId) => ipcRenderer.invoke('delete-report-url', urlId),
-  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url)
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  getReportTabs: () => ipcRenderer.invoke('get-report-tabs'),
+  getReportTabContent: (tabId) => ipcRenderer.invoke('get-report-tab-content', tabId),
+  saveReportTabContent: (tabId, content) => ipcRenderer.invoke('save-report-tab-content', tabId, content)
 });

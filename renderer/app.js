@@ -2,6 +2,8 @@ class NippoApp {
     constructor() {
         this.tasks = [];
         this.currentTaskId = null;
+        this.currentTabId = 'default';
+        this.reportUrls = [];
         this.init();
     }
 
@@ -726,6 +728,8 @@ class NippoApp {
             await this.clearAllTasks();
         } else if (this.pendingAction === 'deleteTask') {
             await this.deleteTask();
+        } else if (this.pendingAction === 'deleteReportUrl') {
+            await this.executeDeleteReportUrl();
         }
         this.hideConfirmDialog();
     }
@@ -762,18 +766,8 @@ class NippoApp {
         // 報告先リンクを生成
         await this.generateReportLinks();
 
-        // 保存済みの報告書内容を読み込み
-        try {
-            const result = await window.electronAPI.getReport();
-            if (result.success) {
-                document.getElementById('report-content').value = result.content;
-            } else {
-                document.getElementById('report-content').value = '';
-            }
-        } catch (error) {
-            console.error('報告書読み込みエラー:', error);
-            document.getElementById('report-content').value = '';
-        }
+        // タブを生成
+        await this.generateReportTabs();
 
         // ダイアログを表示
         const dialog = document.getElementById('report-dialog');
@@ -886,20 +880,195 @@ class NippoApp {
         }
     }
 
-    async saveReport() {
-        const reportContent = document.getElementById('report-content').value;
+    async generateReportTabs() {
+        const tabNavigation = document.getElementById('tab-navigation');
+        const tabContent = document.getElementById('tab-content');
         
         try {
-            const result = await window.electronAPI.saveReport(reportContent);
-            if (result.success) {
-                this.hideReportDialog();
-                this.showToast('報告書を保存しました');
+            // 報告先URLを取得
+            const urlResult = await window.electronAPI.getReportUrls();
+            if (urlResult.success) {
+                this.reportUrls = urlResult.urls || [];
             } else {
-                this.showToast('報告書の保存に失敗しました', 'error');
+                this.reportUrls = [];
             }
+
+            // 報告先がない場合は単一のテキストエリアを表示
+            if (this.reportUrls.length === 0) {
+                tabNavigation.innerHTML = '';
+                
+                // 既存の報告書データを読み込み
+                let existingContent = '';
+                try {
+                    const result = await window.electronAPI.getReport();
+                    if (result.success) {
+                        existingContent = result.content;
+                    }
+                } catch (error) {
+                    console.error('既存報告書読み込みエラー:', error);
+                }
+                
+                tabContent.innerHTML = `
+                    <textarea class="tab-textarea" id="single-report-content" placeholder="今日の作業について詳しく記述してください...&#10;&#10;■ 完了した作業&#10;- &#10;&#10;■ 進行中の作業&#10;- &#10;&#10;■ 明日の予定&#10;- &#10;&#10;■ 課題・連絡事項&#10;- ">${existingContent}</textarea>
+                `;
+                return;
+            }
+
+            // 最初の報告先をデフォルトのアクティブタブに設定
+            if (!this.currentTabId || !this.reportUrls.find(url => url.id.toString() === this.currentTabId)) {
+                this.currentTabId = this.reportUrls[0].id.toString();
+            }
+
+            // タブナビゲーションを生成
+            let tabsHTML = '';
+
+            // 報告先ごとのタブ
+            this.reportUrls.forEach(url => {
+                const isActive = this.currentTabId === url.id.toString();
+                tabsHTML += `
+                    <button class="tab-button ${isActive ? 'active' : ''}" 
+                            onclick="app.switchTab('${url.id}')">
+                        ${url.name}
+                    </button>
+                `;
+            });
+
+            // タブパネルを生成
+            await this.generateTabPanels();
+
+            tabNavigation.innerHTML = tabsHTML;
         } catch (error) {
-            console.error('報告書保存エラー:', error);
-            this.showToast('報告書の保存に失敗しました', 'error');
+            console.error('タブ生成エラー:', error);
+            tabNavigation.innerHTML = '<p style="color: var(--error); text-align: center; padding: 16px;">タブの読み込みに失敗しました</p>';
+        }
+    }
+
+    async generateTabPanels() {
+        const tabContent = document.getElementById('tab-content');
+        let contentHTML = '';
+
+        // 報告先ごとのパネル
+        for (const url of this.reportUrls) {
+            const content = await this.getTabContent(url.id.toString());
+            const isActive = this.currentTabId === url.id.toString();
+            contentHTML += `
+                <div class="tab-panel ${isActive ? 'active' : ''}" id="tab-panel-${url.id}">
+                    <textarea class="tab-textarea" id="tab-content-${url.id}" placeholder="${url.name}向けの報告内容を記述してください...">${content}</textarea>
+                </div>
+            `;
+        }
+
+        tabContent.innerHTML = contentHTML;
+    }
+
+    async getTabContent(tabId) {
+        try {
+            const result = await window.electronAPI.getReportTabContent(tabId);
+            return result.success ? result.content : '';
+        } catch (error) {
+            console.error(`タブ${tabId}の内容取得エラー:`, error);
+            return '';
+        }
+    }
+
+    async switchTab(tabId) {
+        // 現在のタブの内容を保存
+        await this.saveCurrentTabContent();
+
+        // タブを切り替え
+        this.currentTabId = tabId.toString();
+
+        // UI更新
+        this.updateTabUI();
+    }
+
+    async saveCurrentTabContent() {
+        const textarea = document.getElementById(`tab-content-${this.currentTabId}`);
+        if (textarea) {
+            try {
+                await window.electronAPI.saveReportTabContent(this.currentTabId, textarea.value);
+            } catch (error) {
+                console.error('タブ内容保存エラー:', error);
+            }
+        }
+    }
+
+    updateTabUI() {
+        // タブボタンのアクティブ状態を更新
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.classList.remove('active');
+        });
+        
+        const activeButton = document.querySelector(`[onclick="app.switchTab('${this.currentTabId}')"]`);
+        if (activeButton) {
+            activeButton.classList.add('active');
+        }
+
+        // タブパネルの表示を更新
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.remove('active');
+        });
+        
+        const activePanel = document.getElementById(`tab-panel-${this.currentTabId}`);
+        if (activePanel) {
+            activePanel.classList.add('active');
+        }
+    }
+
+    async saveReport() {
+        // 報告先がない場合は単一のテキストエリアから保存
+        if (this.reportUrls.length === 0) {
+            const textarea = document.getElementById('single-report-content');
+            if (textarea) {
+                try {
+                    const result = await window.electronAPI.saveReport(textarea.value);
+                    if (result.success) {
+                        this.hideReportDialog();
+                        this.showToast('報告書を保存しました');
+                    } else {
+                        this.showToast('報告書の保存に失敗しました', 'error');
+                    }
+                } catch (error) {
+                    console.error('報告書保存エラー:', error);
+                    this.showToast('報告書の保存に失敗しました', 'error');
+                }
+            }
+            return;
+        }
+
+        // タブの内容を保存
+        await this.saveCurrentTabContent();
+        
+        this.hideReportDialog();
+        this.showToast('報告書を保存しました');
+    }
+
+    async copyReport() {
+        // 報告先がない場合は単一のテキストエリアからコピー
+        if (this.reportUrls.length === 0) {
+            const textarea = document.getElementById('single-report-content');
+            if (textarea) {
+                try {
+                    await navigator.clipboard.writeText(textarea.value);
+                    this.showToast('クリップボードにコピーしました');
+                } catch (error) {
+                    console.error('コピーエラー:', error);
+                    this.showToast('コピーに失敗しました', 'error');
+                }
+            }
+            return;
+        }
+
+        // 現在のタブの内容をコピー
+        const textarea = document.getElementById(`tab-content-${this.currentTabId}`);
+        if (textarea) {
+            try {
+                await navigator.clipboard.writeText(textarea.value);
+                this.showToast('クリップボードにコピーしました');
+            } catch (error) {
+                console.error('コピーエラー:', error);
+                this.showToast('コピーに失敗しました', 'error');
+            }
         }
     }
 
@@ -923,8 +1092,10 @@ class NippoApp {
         try {
             const result = await window.electronAPI.getReportUrls();
             if (result.success) {
-                if (result.urls && result.urls.length > 0) {
-                    const urlsHTML = result.urls.map(url => `
+                this.reportUrls = result.urls || [];
+                
+                if (this.reportUrls.length > 0) {
+                    const urlsHTML = this.reportUrls.map(url => `
                         <div class="url-item">
                             <div class="url-info">
                                 <div class="url-name">${url.name}</div>
@@ -982,17 +1153,36 @@ class NippoApp {
     }
 
     async deleteReportUrl(urlId) {
+        // 確認ダイアログを表示
+        const url = this.reportUrls.find(u => u.id === urlId);
+        if (!url) return;
+
+        const dialog = document.getElementById('confirm-dialog');
+        const title = document.getElementById('confirm-title');
+        const message = document.getElementById('confirm-message');
+        
+        title.textContent = '報告先を削除';
+        message.textContent = `報告先「${url.name}」を削除しますか？\n関連する報告データも同時に削除されます。この操作は元に戻せません。`;
+        
+        this.pendingAction = 'deleteReportUrl';
+        this.pendingUrlId = urlId;
+        dialog.classList.add('show');
+    }
+
+    async executeDeleteReportUrl() {
         try {
-            const result = await window.electronAPI.deleteReportUrl(urlId);
+            const result = await window.electronAPI.deleteReportUrl(this.pendingUrlId);
             if (result.success) {
                 await this.loadReportUrls();
-                this.showToast('削除しました');
+                this.showToast('報告先と関連データを削除しました');
             } else {
                 this.showToast('削除に失敗しました', 'error');
             }
         } catch (error) {
             console.error('報告先URL削除エラー:', error);
             this.showToast('削除に失敗しました', 'error');
+        } finally {
+            this.pendingUrlId = null;
         }
     }
 }

@@ -306,3 +306,42 @@ ipcMain.handle('open-external-url', async (event, url) => {
     return { success: false, error: error.message };
   }
 });
+
+ipcMain.handle('get-report-tabs', async () => {
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/report-tabs');
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告タブ取得エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-report-tab-content', async (event, tabId) => {
+  try {
+    const response = await fetch(`http://127.0.0.1:5000/api/report-tabs/${tabId}`);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告タブ内容取得エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('save-report-tab-content', async (event, tabId, content) => {
+  try {
+    const response = await fetch(`http://127.0.0.1:5000/api/report-tabs/${tabId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content })
+    });
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告タブ内容保存エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
