@@ -1,0 +1,39 @@
+{
+  "name": "nippo-app",
+  "version": "1.0.0",
+  "description": "Modern daily report management app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dev": "nodemon --exec electron ."
+  },
+  "keywords": ["electron", "nippo", "daily-report"],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^26.0.0",
+    "electron-builder": "^24.0.0",
+    "nodemon": "^3.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.5.0",
+    "node-fetch": "^2.7.0"
+  },
+  "build": {
+    "appId": "com.yourcompany.nippo-app",
+    "productName": "日報管理アプリ",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "renderer/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    }
+  }
+}

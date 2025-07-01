@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日報管理アプリ</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <!-- カスタムタイトルバー -->
+    <div class="titlebar">
+        <div class="titlebar-drag">
+            <span class="app-title">日報管理</span>
+        </div>
+        <div class="titlebar-controls">
+            <button class="titlebar-button minimize">
+                <span class="material-icons">remove</span>
+            </button>
+            <button class="titlebar-button close">
+                <span class="material-icons">close</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- サイドバー -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>📋 今日のタスク</h2>
+                <div class="task-counter">
+                    <span id="task-count">0</span> 件
+                </div>
+            </div>
+            
+            <div class="sidebar-content">
+                <div class="task-input-section">
+                    <div class="input-group">
+                        <input type="text" id="task-input" placeholder="新しいタスクを入力..." class="task-input">
+                        <button id="add-task-btn" class="btn-primary">
+                            <span class="material-icons">add</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button id="end-task-btn" class="btn-secondary">
+                        <span class="material-icons">check_circle</span>
+                        タスク終了
+                    </button>
+                    <button id="copy-timeline-btn" class="btn-secondary">
+                        <span class="material-icons">content_copy</span>
+                        タイムラインコピー
+                    </button>
+                    <button id="clear-all-btn" class="btn-danger">
+                        <span class="material-icons">clear_all</span>
+                        すべてクリア
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <div class="main-header">
+                <div class="date-display">
+                    <h1 id="current-date">2024年6月30日</h1>
+                    <p id="current-time">15:30</p>
+                </div>
+                <div class="status-indicators">
+                    <div class="status-card">
+                        <span class="material-icons">access_time</span>
+                        <div>
+                            <p class="status-label">実行中</p>
+                            <p id="current-task">タスクなし</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- タイムライン表示 -->
+            <div class="timeline-section">
+                <h3>📈 今日のタイムライン</h3>
+                <div class="timeline-container" id="timeline-container">
+                    <!-- タイムラインアイテムが動的に追加される -->
+                    <div class="timeline-empty">
+                        <span class="material-icons">schedule</span>
+                        <p>まだタスクがありません</p>
+                        <p class="sub-text">新しいタスクを追加してください</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 統計表示 -->
+            <div class="stats-section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <span class="material-icons">trending_up</span>
+                        </div>
+                        <div class="stat-content">
+                            <h4>完了タスク</h4>
+                            <p class="stat-number" id="completed-tasks">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <span class="material-icons">timer</span>
+                        </div>
+                        <div class="stat-content">
+                            <h4>作業時間</h4>
+                            <p class="stat-number" id="work-time">0:00</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <span class="material-icons">assessment</span>
+                        </div>
+                        <div class="stat-content">
+                            <h4>生産性</h4>
+                            <p class="stat-number" id="productivity">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 通知トースト -->
+    <div class="toast" id="toast">
+        <span class="material-icons">check_circle</span>
+        <span id="toast-message">操作が完了しました</span>
+    </div>
+
+    <!-- 確認ダイアログ -->
+    <div class="confirm-dialog" id="confirm-dialog">
+        <div class="confirm-content">
+            <h3 id="confirm-title">確認</h3>
+            <p id="confirm-message">この操作を実行しますか？</p>
+            <div class="confirm-buttons">
+                <button class="btn-cancel" id="confirm-cancel">キャンセル</button>
+                <button class="btn-confirm" id="confirm-ok">実行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- タスク編集ダイアログ -->
+    <div class="edit-dialog" id="edit-dialog">
+        <div class="edit-content">
+            <div class="edit-header">
+                <h3>タスクを編集</h3>
+                <button class="edit-close" id="edit-close">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="edit-body">
+                <div class="edit-field">
+                    <label for="edit-task-name">タスク名</label>
+                    <input type="text" id="edit-task-name" class="edit-input" placeholder="タスク名を入力">
+                </div>
+                <div class="edit-field">
+                    <label for="edit-start-time">開始時刻</label>
+                    <input type="text" id="edit-start-time" class="edit-input" placeholder="午前 10:30">
+                </div>
+                <div class="edit-field">
+                    <label for="edit-end-time">終了時刻</label>
+                    <input type="text" id="edit-end-time" class="edit-input" placeholder="午後 2:15 (空白で実行中)">
+                </div>
+            </div>
+            <div class="edit-footer">
+                <button class="btn-cancel" id="edit-cancel">キャンセル</button>
+                <button class="btn-primary" id="edit-save">保存</button>
+                <button class="btn-danger" id="edit-delete">削除</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
