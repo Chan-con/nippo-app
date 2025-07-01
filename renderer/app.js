@@ -12,15 +12,26 @@ class NippoApp {
         this.updateDateTime();
         this.updateTaskCounter();
         this.updateBreakButton(false); // 初期状態は休憩開始ボタン
-        
-        // APIサーバーの準備を待つ
-        console.log('APIサーバーの準備を待機中...');
-        await this.waitForAPI();
-        
-        // 起動時に既存データを読み込み
-        console.log('アプリ起動時のデータ読み込み開始...');
-        await this.loadTasks();
-        
+
+        // APIサーバーのポートを取得し、準備を待つ
+        window.electronAPI.onApiPort(async (port) => {
+            console.log(`APIポートを受信: ${port}`);
+            this.apiPort = port;
+            this.apiBaseUrl = `http://localhost:${port}`;
+
+            console.log('APIサーバーの準備を待機中...');
+            const isApiReady = await this.waitForAPI();
+
+            if (isApiReady) {
+                // 起動時に既存データを読み込み
+                console.log('アプリ起動時のデータ読み込み開始...');
+                await this.loadTasks();
+            } else {
+                console.error('APIの準備が完了しなかったため、タスクを読み込めません。');
+                // ここでユーザーにエラーメッセージを表示するなどの処理を追加できます
+            }
+        });
+
         // 1分ごとに時刻を更新
         setInterval(() => this.updateDateTime(), 60000);
     }
@@ -30,21 +41,19 @@ class NippoApp {
         for (let i = 0; i < maxRetries; i++) {
             try {
                 console.log(`API接続確認 ${i + 1}/${maxRetries}...`);
-                
-                // Electron経由でヘルスチェック
-                const result = await window.electronAPI.healthCheck();
-                if (result.success) {
-                    console.log('API接続成功 - サーバー準備完了');
-                    return true;
+                const response = await fetch(`${this.apiBaseUrl}/api/health`);
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.status === 'healthy') {
+                        console.log('API接続成功 - サーバー準備完了');
+                        return true;
+                    }
                 }
             } catch (error) {
                 console.log(`API接続待機中... (${error.message})`);
             }
-            
-            // 1秒待機
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
         console.error('API接続がタイムアウトしました');
         return false;
     }
@@ -142,21 +151,24 @@ class NippoApp {
         const currentRunningTask = this.tasks.find(task => !task.endTime);
         
         try {
-            const result = await window.electronAPI.addTask(taskName, false);
-            if (result.success) {
-                taskInput.value = '';
-                await this.loadTasks();
-                
-                // 前のタスクが自動終了された場合の通知
-                if (currentRunningTask) {
-                    this.showToast(`「${currentRunningTask.name}」を終了し、「${taskName}」を開始しました`);
-                } else {
-                    this.showToast(`タスク「${taskName}」を開始しました`);
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: taskName, isBreak: false }) });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    taskInput.value = '';
+                    await this.loadTasks();
+                    
+                    // 前のタスクが自動終了された場合の通知
+                    if (currentRunningTask) {
+                        this.showToast(`「${currentRunningTask.name}」を終了し、「${taskName}」を開始しました`);
+                    } else {
+                        this.showToast(`タスク「${taskName}」を開始しました`);
+                    }
+                    
+                    // 現在のタスクを更新
+                    this.currentTaskId = result.taskId;
+                    this.updateCurrentTask(taskName);
                 }
-                
-                // 現在のタスクを更新
-                this.currentTaskId = result.taskId;
-                this.updateCurrentTask(taskName);
             }
         } catch (error) {
             console.error('タスク追加エラー:', error);
@@ -182,15 +194,18 @@ class NippoApp {
         const currentRunningTask = this.tasks.find(task => !task.endTime);
         
         try {
-            const result = await window.electronAPI.addTask('休憩', true);
-            if (result.success) {
-                await this.loadTasks();
-                
-                // 前のタスクが自動終了された場合の通知
-                if (currentRunningTask) {
-                    this.showToast(`「${currentRunningTask.name}」を終了し、休憩を開始しました`);
-                } else {
-                    this.showToast('休憩を開始しました');
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '休憩', isBreak: true }) });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadTasks();
+                    
+                    // 前のタスクが自動終了された場合の通知
+                    if (currentRunningTask) {
+                        this.showToast(`「${currentRunningTask.name}」を終了し、休憩を開始しました`);
+                    } else {
+                        this.showToast('休憩を開始しました');
+                    }
                 }
             }
         } catch (error) {
@@ -201,10 +216,13 @@ class NippoApp {
 
     async endBreak() {
         try {
-            const result = await window.electronAPI.endTask();
-            if (result.success) {
-                await this.loadTasks();
-                this.showToast('休憩を終了しました');
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks/end`, { method: 'POST' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadTasks();
+                    this.showToast('休憩を終了しました');
+                }
             }
         } catch (error) {
             console.error('休憩終了エラー:', error);
@@ -222,12 +240,15 @@ class NippoApp {
         }
 
         try {
-            const result = await window.electronAPI.endTask();
-            if (result.success) {
-                await this.loadTasks();
-                this.showToast(`タスク「${runningTask.name}」を終了しました`);
-                this.currentTaskId = null;
-                this.updateCurrentTask('タスクなし');
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks/end`, { method: 'POST' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadTasks();
+                    this.showToast(`タスク「${runningTask.name}」を終了しました`);
+                    this.currentTaskId = null;
+                    this.updateCurrentTask('タスクなし');
+                }
             }
         } catch (error) {
             console.error('タスク終了エラー:', error);
@@ -237,9 +258,12 @@ class NippoApp {
 
     async copyTimeline() {
         try {
-            const result = await window.electronAPI.copyTimeline();
-            if (result.success) {
-                this.showToast('タイムラインをクリップボードにコピーしました');
+            const response = await fetch(`${this.apiBaseUrl}/api/timeline/copy`, { method: 'POST' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.showToast('タイムラインをクリップボードにコピーしました');
+                }
             }
         } catch (error) {
             console.error('コピーエラー:', error);
@@ -250,35 +274,41 @@ class NippoApp {
     async loadTasks() {
         try {
             console.log('タスクデータの読み込みを開始...');
-            const tasks = await window.electronAPI.getTasks();
-            console.log('読み込まれたタスク数:', tasks.length);
-            console.log('タスクデータ:', tasks);
-            
-            this.tasks = tasks;
-            this.updateTimeline();
-            this.updateStats();
-            this.updateTaskCounter();
-            
-            // 現在実行中のタスクを更新
-            const runningTask = this.tasks.find(task => !task.endTime);
-            if (runningTask) {
-                console.log('実行中のタスク:', runningTask);
-                this.currentTaskId = runningTask.id;
-                if (runningTask.isBreak) {
-                    this.updateCurrentTask('🔴 休憩中');
-                    this.updateBreakButton(true); // 休憩中の場合は終了ボタンに変更
-                } else {
-                    this.updateCurrentTask(runningTask.name);
-                    this.updateBreakButton(false); // 通常タスクの場合は開始ボタンに変更
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    const tasks = result.tasks;
+                    console.log('読み込まれたタスク数:', tasks.length);
+                    console.log('タスクデータ:', tasks);
+
+                    this.tasks = tasks;
+                    this.updateTimeline();
+                    this.updateStats();
+                    this.updateTaskCounter();
+
+                    // 現在実行中のタスクを更新
+                    const runningTask = this.tasks.find(task => !task.endTime);
+                    if (runningTask) {
+                        console.log('実行中のタスク:', runningTask);
+                        this.currentTaskId = runningTask.id;
+                        if (runningTask.isBreak) {
+                            this.updateCurrentTask('🔴 休憩中');
+                            this.updateBreakButton(true); // 休憩中の場合は終了ボタンに変更
+                        } else {
+                            this.updateCurrentTask(runningTask.name);
+                            this.updateBreakButton(false); // 通常タスクの場合は開始ボタンに変更
+                        }
+                    } else {
+                        console.log('実行中のタスクはありません');
+                        this.currentTaskId = null;
+                        this.updateCurrentTask('タスクなし');
+                        this.updateBreakButton(false); // タスクなしの場合は開始ボタン
+                    }
+
+                    console.log('タスクデータの読み込み完了');
                 }
-            } else {
-                console.log('実行中のタスクはありません');
-                this.currentTaskId = null;
-                this.updateCurrentTask('タスクなし');
-                this.updateBreakButton(false); // タスクなしの場合は開始ボタン
             }
-            
-            console.log('タスクデータの読み込み完了');
         } catch (error) {
             console.error('タスク読み込みエラー:', error);
         }
@@ -641,17 +671,20 @@ class NippoApp {
 
     async clearAllTasks() {
         try {
-            const result = await window.electronAPI.clearAllTasks();
-            if (result.success) {
-                this.tasks = [];
-                this.currentTaskId = null;
-                this.updateTimeline();
-                this.updateStats();
-                this.updateTaskCounter();
-                this.updateCurrentTask('タスクなし');
-                this.showToast('すべてのタスクをクリアしました');
-            } else {
-                this.showToast('タスクのクリアに失敗しました', 'error');
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks/clear`, { method: 'POST' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.tasks = [];
+                    this.currentTaskId = null;
+                    this.updateTimeline();
+                    this.updateStats();
+                    this.updateTaskCounter();
+                    this.updateCurrentTask('タスクなし');
+                    this.showToast('すべてのタスクをクリアしました');
+                } else {
+                    this.showToast('タスクのクリアに失敗しました', 'error');
+                }
             }
         } catch (error) {
             console.error('タスククリアエラー:', error);
@@ -707,19 +740,22 @@ class NippoApp {
                 endTime: endTime
             };
 
-            const result = await window.electronAPI.updateTask(this.editingTaskId, taskData);
-            if (result.success) {
-                await this.loadTasks();
-                this.hideEditDialog();
-                
-                // 調整があった場合は通知
-                if (result.adjustments && result.adjustments.length > 0) {
-                    this.showAdjustmentNotification(result.adjustments);
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks/${this.editingTaskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskData) });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadTasks();
+                    this.hideEditDialog();
+                    
+                    // 調整があった場合は通知
+                    if (result.adjustments && result.adjustments.length > 0) {
+                        this.showAdjustmentNotification(result.adjustments);
+                    } else {
+                        this.showToast('タスクを更新しました');
+                    }
                 } else {
-                    this.showToast('タスクを更新しました');
+                    this.showToast('タスクの更新に失敗しました', 'error');
                 }
-            } else {
-                this.showToast('タスクの更新に失敗しました', 'error');
             }
         } catch (error) {
             console.error('タスク更新エラー:', error);
@@ -802,12 +838,15 @@ class NippoApp {
                 return;
             }
             
-            const result = await window.electronAPI.deleteTask(taskId);
-            if (result.success) {
-                await this.loadTasks();
-                this.showToast('タスクを削除しました');
-            } else {
-                this.showToast('タスクの削除に失敗しました', 'error');
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks/${taskId}`, { method: 'DELETE' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadTasks();
+                    this.showToast('タスクを削除しました');
+                } else {
+                    this.showToast('タスクの削除に失敗しました', 'error');
+                }
             }
         } catch (error) {
             console.error('タスク削除エラー:', error);
@@ -906,17 +945,20 @@ class NippoApp {
         const linksContainer = document.getElementById('report-links');
         
         try {
-            const result = await window.electronAPI.getReportUrls();
-            if (result.success && result.urls && result.urls.length > 0) {
-                const linksHTML = result.urls.map(url => `
-                    <button class="report-link-btn" onclick="app.openReportUrl('${url.url}')">
-                        <span class="material-icons">open_in_new</span>
-                        ${url.name}
-                    </button>
-                `).join('');
-                linksContainer.innerHTML = linksHTML;
-            } else {
-                linksContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 16px;">報告先が設定されていません</p>';
+            const response = await fetch(`${this.apiBaseUrl}/api/report-urls`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.urls && result.urls.length > 0) {
+                    const linksHTML = result.urls.map(url => `
+                        <button class="report-link-btn" onclick="app.openReportUrl('${url.url}')">
+                            <span class="material-icons">open_in_new</span>
+                            ${url.name}
+                        </button>
+                    `).join('');
+                    linksContainer.innerHTML = linksHTML;
+                } else {
+                    linksContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 16px;">報告先が設定されていません</p>';
+                }
             }
         } catch (error) {
             console.error('報告先URL取得エラー:', error);
@@ -926,7 +968,7 @@ class NippoApp {
 
     async openReportUrl(url) {
         try {
-            const result = await window.electronAPI.openExternalUrl(url);
+            const result = await (await fetch(`${this.apiBaseUrl}/api/open-url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })).json();
             if (result.success) {
                 this.showToast('ブラウザで開きました');
             } else {
@@ -944,9 +986,14 @@ class NippoApp {
         
         try {
             // 報告先URLを取得
-            const urlResult = await window.electronAPI.getReportUrls();
-            if (urlResult.success) {
-                this.reportUrls = urlResult.urls || [];
+            const response = await fetch(`${this.apiBaseUrl}/api/report-urls`);
+            if (response.ok) {
+                const urlResult = await response.json();
+                if (urlResult.success) {
+                    this.reportUrls = urlResult.urls || [];
+                } else {
+                    this.reportUrls = [];
+                }
             } else {
                 this.reportUrls = [];
             }
@@ -958,9 +1005,12 @@ class NippoApp {
                 // 既存の報告書データを読み込み
                 let existingContent = '';
                 try {
-                    const result = await window.electronAPI.getReport();
-                    if (result.success) {
-                        existingContent = result.content;
+                    const reportResponse = await fetch(`${this.apiBaseUrl}/api/report`);
+                    if (reportResponse.ok) {
+                        const result = await reportResponse.json();
+                        if (result.success) {
+                            existingContent = result.content;
+                        }
                     }
                 } catch (error) {
                     console.error('既存報告書読み込みエラー:', error);
@@ -1021,8 +1071,12 @@ class NippoApp {
 
     async getTabContent(tabId) {
         try {
-            const result = await window.electronAPI.getReportTabContent(tabId);
-            return result.success ? result.content : '';
+            const response = await fetch(`${this.apiBaseUrl}/api/report-tabs/${tabId}`);
+            if (response.ok) {
+                const result = await response.json();
+                return result.success ? result.content : '';
+            }
+            return '';
         } catch (error) {
             console.error(`タブ${tabId}の内容取得エラー:`, error);
             return '';
@@ -1044,7 +1098,7 @@ class NippoApp {
         const textarea = document.getElementById(`tab-content-${this.currentTabId}`);
         if (textarea) {
             try {
-                await window.electronAPI.saveReportTabContent(this.currentTabId, textarea.value);
+                await fetch(`${this.apiBaseUrl}/api/report-tabs/${this.currentTabId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textarea.value }) });
             } catch (error) {
                 console.error('タブ内容保存エラー:', error);
             }
@@ -1079,12 +1133,15 @@ class NippoApp {
             const textarea = document.getElementById('single-report-content');
             if (textarea) {
                 try {
-                    const result = await window.electronAPI.saveReport(textarea.value);
-                    if (result.success) {
-                        this.hideReportDialog();
-                        this.showToast('報告書を保存しました');
-                    } else {
-                        this.showToast('報告書の保存に失敗しました', 'error');
+                    const response = await fetch(`${this.apiBaseUrl}/api/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: textarea.value }) });
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success) {
+                            this.hideReportDialog();
+                            this.showToast('報告書を保存しました');
+                        } else {
+                            this.showToast('報告書の保存に失敗しました', 'error');
+                        }
                     }
                 } catch (error) {
                     console.error('報告書保存エラー:', error);
@@ -1148,32 +1205,35 @@ class NippoApp {
         const urlList = document.getElementById('url-list');
         
         try {
-            const result = await window.electronAPI.getReportUrls();
-            if (result.success) {
-                this.reportUrls = result.urls || [];
-                
-                if (this.reportUrls.length > 0) {
-                    const urlsHTML = this.reportUrls.map(url => `
-                        <div class="url-item">
-                            <div class="url-info">
-                                <div class="url-name">${url.name}</div>
-                                <div class="url-address">${url.url}</div>
+            const response = await fetch(`${this.apiBaseUrl}/api/report-urls`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.reportUrls = result.urls || [];
+                    
+                    if (this.reportUrls.length > 0) {
+                        const urlsHTML = this.reportUrls.map(url => `
+                            <div class="url-item">
+                                <div class="url-info">
+                                    <div class="url-name">${url.name}</div>
+                                    <div class="url-address">${url.url}</div>
+                                </div>
+                                <div class="url-actions">
+                                    <button onclick="app.deleteReportUrl(${url.id})" class="delete" title="削除">
+                                        <span class="material-icons">delete</span>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="url-actions">
-                                <button onclick="app.deleteReportUrl(${url.id})" class="delete" title="削除">
-                                    <span class="material-icons">delete</span>
-                                </button>
+                        `).join('');
+                        urlList.innerHTML = urlsHTML;
+                    } else {
+                        urlList.innerHTML = `
+                            <div class="url-list-empty">
+                                <span class="material-icons">link_off</span>
+                                <p>報告先URLが登録されていません</p>
                             </div>
-                        </div>
-                    `).join('');
-                    urlList.innerHTML = urlsHTML;
-                } else {
-                    urlList.innerHTML = `
-                        <div class="url-list-empty">
-                            <span class="material-icons">link_off</span>
-                            <p>報告先URLが登録されていません</p>
-                        </div>
-                    `;
+                        `;
+                    }
                 }
             }
         } catch (error) {
@@ -1195,14 +1255,17 @@ class NippoApp {
         }
         
         try {
-            const result = await window.electronAPI.addReportUrl(name, url);
-            if (result.success) {
-                nameInput.value = '';
-                urlInput.value = '';
-                await this.loadReportUrls();
-                this.showToast(`「${name}」を追加しました`);
-            } else {
-                this.showToast(result.error || '追加に失敗しました', 'error');
+            const response = await fetch(`${this.apiBaseUrl}/api/report-urls`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, url }) });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    nameInput.value = '';
+                    urlInput.value = '';
+                    await this.loadReportUrls();
+                    this.showToast(`「${name}」を追加しました`);
+                } else {
+                    this.showToast(result.error || '追加に失敗しました', 'error');
+                }
             }
         } catch (error) {
             console.error('報告先URL追加エラー:', error);
@@ -1229,12 +1292,15 @@ class NippoApp {
 
     async executeDeleteReportUrl() {
         try {
-            const result = await window.electronAPI.deleteReportUrl(this.pendingUrlId);
-            if (result.success) {
-                await this.loadReportUrls();
-                this.showToast('報告先と関連データを削除しました');
-            } else {
-                this.showToast('削除に失敗しました', 'error');
+            const response = await fetch(`${this.apiBaseUrl}/api/report-urls/${this.pendingUrlId}`, { method: 'DELETE' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadReportUrls();
+                    this.showToast('報告先と関連データを削除しました');
+                } else {
+                    this.showToast('削除に失敗しました', 'error');
+                }
             }
         } catch (error) {
             console.error('報告先URL削除エラー:', error);
@@ -1252,8 +1318,7 @@ let app;
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('DOM読み込み完了 - アプリ初期化を開始');
     
-    // 少し待ってからアプリを初期化（Electronプロセスの準備を待つ）
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     
     console.log('アプリケーションを初期化中...');
     app = new NippoApp();

@@ -1,10 +1,54 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
-const fetch = require('node-fetch');
+const { TaskManager, createApp } = require('./backend/task-manager');
+const fs = require('fs'); // fsモジュールをグローバルにインポート
 
 let mainWindow;
-let pythonProcess;
+let taskManager;
+
+// デバッグログファイルのパスをグローバルに定義
+let debugLogPath;
+
+// 元のconsoleメソッドを保存
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+// デバッグログをファイルに書き込む関数
+function writeDebugLog(message) {
+  // パッケージ版では常にログを書き込まない
+  if (app.isPackaged) {
+    return;
+  }
+  // 開発モードでのみログを書き込む
+  if (!debugLogPath) {
+    debugLogPath = path.join(app.getPath('userData'), 'debug.log');
+  }
+  try {
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync(debugLogPath, `[${timestamp}] ${message}\n`);
+  } catch (error) {
+    if (originalConsoleError) {
+      originalConsoleError('Failed to write debug log:', error);
+    }
+  }
+}
+
+// console.logとconsole.errorをオーバーライド
+// パッケージ化されているかどうかにかかわらず、writeDebugLogを呼び出す
+// writeDebugLog内でapp.isPackagedのチェックを行う
+console.log = (...args) => {
+  // オブジェクトをJSON文字列に変換してログに含める
+  const formattedArgs = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg);
+  writeDebugLog(`[INFO] ${formattedArgs.join(' ')}`);
+  originalConsoleLog.apply(console, args); // 元のconsole.logも呼び出す
+};
+
+console.error = (...args) => {
+  const formattedArgs = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg);
+  writeDebugLog(`[ERROR] ${formattedArgs.join(' ')}`);
+  originalConsoleError.apply(console, args); // 元のconsole.errorも呼び出す
+};
+
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -35,70 +79,124 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-    if (pythonProcess) {
-      pythonProcess.kill();
+  });
+}
+
+// アプリケーションメニューを作成する関数
+function createApplicationMenu() {
+  const template = [
+    {
+      label: 'ファイル',
+      submenu: [
+        { role: 'quit', label: '終了' }
+      ]
+    },
+    {
+      label: 'ヘルプ',
+      submenu: [
+        /*
+        {
+          label: 'デバッグログを開く',
+          click: () => {
+            // debugLogPathが設定されており、ファイルが存在する場合のみ開く
+            if (debugLogPath && fs.existsSync(debugLogPath)) {
+              shell.openPath(debugLogPath).catch(err => {
+                dialog.showErrorBox('エラー', `ログファイルを開けませんでした: ${err.message}`);
+                console.error('Failed to open debug log file:', err);
+              });
+            } else {
+              dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'ログファイル',
+                message: 'デバッグログファイルはまだ作成されていません。アプリケーションを操作すると作成されます。'
+              });
+            }
+          }
+        },
+        */
+      ]
     }
-  });
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
-// Python バックエンドを起動
-function startPythonBackend() {
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  
-  if (isDev) {
-    // 開発時: Pythonスクリプトを直接実行
-    pythonProcess = spawn('python', ['backend/api.py'], {
-      cwd: __dirname
-    });
-  } else {
-    // パッケージ時: 実行ファイルを使用
-    const pythonExePath = path.join(process.resourcesPath, 'python', 'api.exe');
-    pythonProcess = spawn(pythonExePath);
-  }
 
-  pythonProcess.stdout.on('data', (data) => {
-    console.log(`Python stdout: ${data}`);
-  });
+// Node.js バックエンドを初期化
+async function initializeBackend() {
+  try {
+    const userDataPath = app.getPath('userData');
+    console.log('ユーザーデータパス:', userDataPath);
+    console.log('アプリがパッケージ化されている:', app.isPackaged);
+    console.log('現在の作業ディレクトリ:', process.cwd());
+    
+    writeDebugLog(`初期化開始 - ユーザーデータパス: ${userDataPath}`);
+    writeDebugLog(`パッケージ化: ${app.isPackaged}`);
+    
+    taskManager = new TaskManager(userDataPath);
+    await taskManager.initialize();
+    console.log('Node.js TaskManager を初期化しました');
+    writeDebugLog('TaskManager初期化完了');
 
-  pythonProcess.stderr.on('data', (data) => {
-    console.error(`Python stderr: ${data}`);
-  });
-}
-
-// APIサーバーの起動を待つ
-async function waitForAPI() {
-  const maxRetries = 30;
-  for (let i = 0; i < maxRetries; i++) {
+    // データディレクトリの存在と書き込み権限をチェック
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/health');
-      if (response.ok) {
-        console.log('Python API サーバーが利用可能です');
-        return true;
-      }
+      await fs.promises.mkdir(taskManager.dataDir, { recursive: true });
+      const testFile = path.join(taskManager.dataDir, 'write_test.tmp');
+      await fs.promises.writeFile(testFile, 'test');
+      await fs.promises.unlink(testFile);
+      writeDebugLog(`データディレクトリの書き込み権限を確認しました: ${taskManager.dataDir}`);
     } catch (error) {
-      // 接続エラーは無視
+      console.error('データディレクトリのセットアップに失敗しました:', error);
+      writeDebugLog(`データディレクトリのセットアップエラー: ${error.message}`);
+      dialog.showErrorBox(
+        '致命的なエラー',
+        `データディレクトリのセットアップに失敗しました。\nパス: ${taskManager.dataDir}\nエラー: ${error.message}\n\nアプリケーションを再インストールするか、管理者として実行してみてください。`
+      );
+      app.quit();
+      return;
     }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // パッケージ版では初期化完了を通知で確認
+    if (!app.isPackaged) {
+      /* dialog.showMessageBox(null, {
+        type: "info",
+        title: "初期化完了",
+        message: `TaskManager初期化完了\nデータディレクトリ: ${taskManager.dataDir}\n\nデバッグログ: ${path.join(userDataPath, "debug.log")}`
+      }); */
+    }
+  } catch (error) {
+    console.error('TaskManager初期化エラー:', error);
+    writeDebugLog(`初期化エラー: ${error.message}`);
+    if (app.isPackaged) {
+      dialog.showErrorBox('初期化エラー', `TaskManager初期化に失敗しました: ${error.message}`);
+    }
+    throw error;
   }
-  console.error('Python API サーバーの起動に失敗しました');
-  return false;
 }
+
 
 app.whenReady().then(async () => {
-  createWindow();
-  startPythonBackend();
-  
-  // APIサーバーの起動を待つ
-  console.log('Python APIサーバーの起動を待機中...');
-  const apiReady = await waitForAPI();
-  
-  if (apiReady) {
-    console.log('アプリケーションの初期化が完了しました');
-    // フロントエンドに初期化完了を通知（オプション）
-  } else {
-    console.error('Python APIサーバーの起動に失敗しました');
-  }
+  // debugLogPathを初期化（initializeBackendより前に実行される可能性のあるログのため）
+  debugLogPath = path.join(app.getPath('userData'), 'debug.log');
 
+  await initializeBackend();
+  createWindow();
+  createApplicationMenu(); // アプリケーションメニューを作成
+
+  // Expressサーバーを起動
+  const expressApp = createApp(taskManager);
+  const server = expressApp.app.listen(0, () => { // 0番ポートで利用可能なポートを自動的に選択
+    const port = server.address().port;
+    console.log(`Expressサーバーがポート${port}で起動しました`);
+    // レンダラープロセスにポート番号を渡す
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow.webContents.send('set-api-port', port);
+    });
+  });
+
+  console.log('アプリケーションの初期化が完了しました');
+  
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -112,87 +210,166 @@ app.on('window-all-closed', () => {
   }
 });
 
-// IPC handlers
+// メインプロセスでの未捕捉例外をキャッチ
+process.on('uncaughtException', (error) => {
+  console.error('メインプロセスで未捕捉の例外が発生しました:', error);
+  dialog.showErrorBox('致命的なエラー', `アプリケーションで予期せぬエラーが発生しました: ${error.message}
+
+詳細はデバッグログを確認してください。`);
+  app.quit();
+});
+
+// レンダラープロセスでのクラッシュをキャッチ
+app.on('render-process-gone', (event, webContents, details) => {
+  console.error('レンダラープロセスがクラッシュまたは終了しました:', details);
+  dialog.showErrorBox('レンダラープロセスエラー', `レンダラープロセスがクラッシュまたは終了しました: ${details.reason}
+
+詳細はデバッグログを確認してください。`);
+});
+
+// webContentsのエラーをキャッチ
+// did-fail-load: ページの読み込みに失敗したとき
+// crashed: レンダラープロセスがクラッシュしたとき
+// unresponsive: レンダラープロセスが応答しなくなったとき
+app.on('web-contents-created', (event, contents) => {
+  contents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`ページの読み込みに失敗しました: ${validatedURL}, エラー: ${errorCode} - ${errorDescription}`);
+    dialog.showErrorBox('ページ読み込みエラー', `ページの読み込みに失敗しました: ${errorDescription}`);
+  });
+
+  contents.on('crashed', (event, killed) => {
+    console.error('レンダラープロセスがクラッシュしました。');
+    dialog.showErrorBox('レンダラークラッシュ', 'レンダラープロセスがクラッシュしました。アプリケーションを再起動してください。');
+  });
+
+  contents.on('unresponsive', () => {
+    console.warn('レンダラープロセスが応答しません。');
+    dialog.showErrorBox('応答なし', 'レンダラープロセスが応答しません。');
+  });
+});
+
+// IPC handlers (変更なし)
 ipcMain.handle('get-tasks', async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/tasks');
-    const data = await response.json();
-    return data.success ? data.tasks : [];
+    if (!taskManager) {
+      console.error('TaskManagerが初期化されていません');
+      return [];
+    }
+    const tasks = await taskManager.loadSchedule();
+    return tasks;
   } catch (error) {
     console.error('タスク取得エラー:', error);
+    writeDebugLog(`get-tasks エラー: ${error.message}`);
     return [];
   }
 });
 
 ipcMain.handle('add-task', async (event, taskName, isBreak = false) => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/tasks', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: taskName, isBreak })
-    });
-    const data = await response.json();
-    return data;
+    if (!taskManager) {
+      const errorMsg = 'TaskManagerが初期化されていません';
+      console.error(errorMsg);
+      // デバッグ用通知（パッケージ版で確認）
+      if (!app.isPackaged) {
+        dialog.showErrorBox('エラー', errorMsg);
+      }
+      return { success: false, error: errorMsg };
+    }
+    console.log('タスク追加リクエスト:', { taskName, isBreak });
+    writeDebugLog(`タスク追加リクエスト: ${taskName}, isBreak: ${isBreak}`);
+    
+    // データディレクトリ情報をデバッグ出力
+    if (app.isPackaged) {
+      console.log('パッケージ版 - データディレクトリ:', taskManager.dataDir);
+      console.log('パッケージ版 - ユーザーデータパス:', app.getPath('userData'));
+      writeDebugLog(`データディレクトリ: ${taskManager.dataDir}`);
+    }
+    
+    const newTask = await taskManager.addTask(taskName, isBreak);
+    writeDebugLog(`タスク追加結果: ${newTask ? 'SUCCESS' : 'NULL'}`);
+    console.log('タスク追加結果:', newTask);
+    if (newTask) {
+      return { success: true, task: newTask, taskId: newTask.id };
+    } else {
+      const errorMsg = 'addTaskがnullを返しました - TaskManager内でエラーが発生した可能性があります';
+      console.error(errorMsg);
+      if (!app.isPackaged) {
+        dialog.showErrorBox('タスク追加エラー', `${errorMsg}\n\nデバッグ情報:\n- データディレクトリ: ${taskManager.dataDir}\n- 初期化状態: ${taskManager.initialized}`);
+      }
+      return { success: false, error: errorMsg };
+    }
   } catch (error) {
     console.error('タスク追加エラー:', error);
+    writeDebugLog(`add-task エラー: ${error.message}\n${error.stack}`);
+    if (!app.isPackaged) {
+      dialog.showErrorBox('タスク追加エラー', `エラー詳細: ${error.message}\nデータディレクトリ: ${taskManager ? taskManager.dataDir : 'undefined'}`);
+    }
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('end-task', async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/tasks/end', {
-      method: 'POST'
-    });
-    const data = await response.json();
-    return data;
+    const endedTask = await taskManager.endCurrentTask();
+    if (endedTask) {
+      return { success: true, task: endedTask };
+    } else {
+      return { success: false, error: '終了するタスクがありません' };
+    }
   } catch (error) {
     console.error('タスク終了エラー:', error);
+    writeDebugLog(`end-task エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('copy-timeline', async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/timeline/copy', {
-      method: 'POST'
-    });
-    const data = await response.json();
-    return data;
+    const timelineText = await taskManager.getTimelineText();
+    if (timelineText) {
+      const clipboardy = require('clipboardy');
+      await clipboardy.default.write(timelineText);
+      return { success: true, message: 'タイムラインをコピーしました' };
+    } else {
+      return { success: false, error: 'コピーするデータがありません' };
+    }
   } catch (error) {
     console.error('タイムラインコピーエラー:', error);
+    writeDebugLog(`copy-timeline エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('clear-all-tasks', async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/tasks/clear', {
-      method: 'POST'
-    });
-    const data = await response.json();
-    return data;
+    const success = await taskManager.clearAllTasks();
+    if (success) {
+      return { success: true, message: 'すべてのタスクをクリアしました' };
+    } else {
+      return { success: false, error: 'タスクのクリアに失敗しました' };
+    }
   } catch (error) {
     console.error('タスククリアエラー:', error);
+    writeDebugLog(`clear-all-tasks エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('update-task', async (event, taskId, taskData) => {
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/tasks/${taskId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(taskData)
-    });
-    const data = await response.json();
-    return data;
+    const result = await taskManager.updateTask(taskId, taskData.name, taskData.startTime, taskData.endTime);
+    if (result) {
+      const responseData = { success: true, task: result.task };
+      if (result.adjustments) {
+        responseData.adjustments = result.adjustments;
+      }
+      return responseData;
+    } else {
+      return { success: false, error: 'タスクが見つかりません' };
+    }
   } catch (error) {
     console.error('タスク更新エラー:', error);
+    writeDebugLog(`update-task エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
@@ -205,153 +382,127 @@ ipcMain.handle('delete-task', async (event, taskId) => {
       return { success: false, error: 'タスクIDが無効です' };
     }
     
-    const response = await fetch(`http://127.0.0.1:5000/api/tasks/${taskId}`, {
-      method: 'DELETE'
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('HTTP エラー:', response.status, errorText);
-      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+    const deletedTask = await taskManager.deleteTask(taskId);
+    if (deletedTask) {
+      return { success: true, task: deletedTask };
+    } else {
+      return { success: false, error: 'タスクが見つかりません' };
     }
-    
-    const data = await response.json();
-    return data;
   } catch (error) {
     console.error('タスク削除エラー:', error);
+    writeDebugLog(`delete-task エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('health-check', async () => {
-  try {
-    const response = await fetch('http://127.0.0.1:5000/api/health');
-    if (response.ok) {
-      const data = await response.json();
-      return { success: true, data };
-    } else {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
+
 
 ipcMain.handle('get-report', async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/report');
-    const data = await response.json();
-    return data;
+    const content = await taskManager.loadReport();
+    return { success: true, content: content };
   } catch (error) {
     console.error('報告書取得エラー:', error);
+    writeDebugLog(`get-report エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('save-report', async (event, content) => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/report', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ content })
-    });
-    const data = await response.json();
-    return data;
+    const success = await taskManager.saveReport(content);
+    if (success) {
+      return { success: true, message: '報告書を保存しました' };
+    } else {
+      return { success: false, error: '報告書の保存に失敗しました' };
+    }
   } catch (error) {
     console.error('報告書保存エラー:', error);
+    writeDebugLog(`save-report エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('get-report-urls', async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/report-urls');
-    const data = await response.json();
-    return data;
+    const urls = await taskManager.loadReportUrls();
+    return { success: true, urls: urls };
   } catch (error) {
     console.error('報告先URL取得エラー:', error);
+    writeDebugLog(`get-report-urls エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('add-report-url', async (event, name, url) => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/report-urls', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name, url })
-    });
-    const data = await response.json();
-    return data;
+    const newUrl = await taskManager.addReportUrl(name, url);
+    if (newUrl) {
+      return { success: true, url: newUrl };
+    } else {
+      return { success: false, error: 'URLの追加に失敗しました' };
+    }
   } catch (error) {
     console.error('報告先URL追加エラー:', error);
+    writeDebugLog(`add-report-url エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('delete-report-url', async (event, urlId) => {
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/report-urls/${urlId}`, {
-      method: 'DELETE'
-    });
-    const data = await response.json();
-    return data;
+    const deletedUrl = await taskManager.deleteReportUrl(urlId);
+    if (deletedUrl) {
+      return { success: true, url: deletedUrl };
+    } else {
+      return { success: false, error: 'URLが見つかりません' };
+    }
   } catch (error) {
     console.error('報告先URL削除エラー:', error);
+    writeDebugLog(`delete-report-url エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('open-external-url', async (event, url) => {
-  try {
-    const { shell } = require('electron');
-    await shell.openExternal(url);
-    return { success: true };
-  } catch (error) {
-    console.error('外部URL開きエラー:', error);
-    return { success: false, error: error.message };
-  }
-});
+
 
 ipcMain.handle('get-report-tabs', async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/report-tabs');
-    const data = await response.json();
-    return data;
+    // データ移行を確認
+    await taskManager.migrateLegacyReportData();
+    
+    const tabData = await taskManager.loadReportTabs();
+    return { success: true, tabs: tabData };
   } catch (error) {
     console.error('報告タブ取得エラー:', error);
+    writeDebugLog(`get-report-tabs エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('get-report-tab-content', async (event, tabId) => {
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/report-tabs/${tabId}`);
-    const data = await response.json();
-    return data;
+    const content = await taskManager.getReportTabContent(tabId);
+    return { success: true, content: content };
   } catch (error) {
     console.error('報告タブ内容取得エラー:', error);
+    writeDebugLog(`get-report-tab-content エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('save-report-tab-content', async (event, tabId, content) => {
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/report-tabs/${tabId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ content })
-    });
-    const data = await response.json();
-    return data;
+    const success = await taskManager.saveReportTabContent(tabId, content);
+    if (success) {
+      return { success: true, message: '報告内容を保存しました' };
+    }
+    else {
+      return { success: false, error: '報告内容の保存に失敗しました' };
+    }
   } catch (error) {
     console.error('報告タブ内容保存エラー:', error);
+    writeDebugLog(`save-report-tab-content エラー: ${error.message}`);
     return { success: false, error: error.message };
   }
 });

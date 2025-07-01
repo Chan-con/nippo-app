@@ -61,4 +61,4 @@ venv.bak/
 
 # Temporary files
 *.tmp
-*.temp
+*.temp.claude/ 

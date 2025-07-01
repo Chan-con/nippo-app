@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(git init:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ls -la /mnt/c/app/nippo/datas/)",
+      "Bash(cat:*)",
+      "Bash(rm:*)",
+      "Bash(npm start)",
+      "Bash(grep:*)",
+      "Bash(git tag:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(npm run build:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(rg:*)",
+      "Bash(ls:*)"
+    ],
+    "deny": []
+  }
+}

@@ -6,10 +6,9 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "package:win": "npm run build:python && electron-builder --win",
-    "package:mac": "npm run build:python && electron-builder --mac",
-    "package:linux": "npm run build:python && electron-builder --linux",
-    "build:python": "cd backend && python -m PyInstaller --onefile --distpath ../dist/python api.py",
+    "package:win": "electron-builder --win",
+    "package:mac": "electron-builder --mac",
+    "package:linux": "electron-builder --linux",
     "dev": "nodemon --exec electron ."
   },
   "keywords": ["electron", "nippo", "daily-report"],
@@ -22,7 +21,10 @@
   },
   "dependencies": {
     "axios": "^1.5.0",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "clipboardy": "^3.0.0"
   },
   "build": {
     "appId": "com.yourcompany.nippo-app",
@@ -32,17 +34,19 @@
     },
     "files": [
       "main.js",
+      "preload.js",
       "renderer/**/*",
       "backend/**/*",
       "assets/**/*",
       "node_modules/**/*"
     ],
-    "extraResources": [
-      {
-        "from": "dist/python/",
-        "to": "python/"
-      }
+    "asarUnpack": [
+      "**\\*.node",
+      "**\\clipboardy\\**\\*"
     ],
+    "extraMetadata": {
+      "devTools": true
+    },
     "win": {
       "target": [
         {
@@ -65,7 +69,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "日報管理アプリ"
+      "shortcutName": "日報管理アプリ",
+      "perMachine": true,
+      "allowElevation": true
     },
     "mac": {
       "icon": "assets/icon.png"
