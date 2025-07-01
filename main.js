@@ -327,7 +327,7 @@ ipcMain.handle('copy-timeline', async () => {
   try {
     const timelineText = await taskManager.getTimelineText();
     if (timelineText) {
-      const clipboardy = require('clipboardy');
+      const clipboardy = await import('clipboardy');
       await clipboardy.default.write(timelineText);
       return { success: true, message: 'タイムラインをコピーしました' };
     } else {

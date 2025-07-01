@@ -793,8 +793,8 @@ function createApp(taskManagerInstance) {
         try {
             const timelineText = await taskManager.getTimelineText();
             if (timelineText) {
-                const clipboardy = require('clipboardy');
-                await clipboardy.write(timelineText);
+                const clipboardy = await import('clipboardy');
+                await clipboardy.default.write(timelineText);
                 res.json({ success: true, message: 'タイムラインをコピーしました' });
             } else {
                 res.status(400).json({ success: false, error: 'コピーするデータがありません' });

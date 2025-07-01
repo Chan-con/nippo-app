@@ -258,12 +258,11 @@ class NippoApp {
 
     async copyTimeline() {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/timeline/copy`, { method: 'POST' });
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
-                    this.showToast('タイムラインをクリップボードにコピーしました');
-                }
+            const result = await window.electronAPI.copyTimeline();
+            if (result.success) {
+                this.showToast('タイムラインをクリップボードにコピーしました');
+            } else {
+                this.showToast(result.error || 'コピーに失敗しました', 'error');
             }
         } catch (error) {
             console.error('コピーエラー:', error);
