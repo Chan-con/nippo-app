@@ -1136,7 +1136,6 @@ class NippoApp {
                     if (response.ok) {
                         const result = await response.json();
                         if (result.success) {
-                            this.hideReportDialog();
                             this.showToast('報告書を保存しました');
                         } else {
                             this.showToast('報告書の保存に失敗しました', 'error');
@@ -1153,7 +1152,6 @@ class NippoApp {
         // タブの内容を保存
         await this.saveCurrentTabContent();
         
-        this.hideReportDialog();
         this.showToast('報告書を保存しました');
     }
 
