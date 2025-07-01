@@ -215,12 +215,25 @@ class TaskManager:
         return None
     
     def get_timeline_text(self):
-        """タイムラインのテキストを取得"""
+        """タイムラインのテキストを取得（コピー用に[BREAK]プレフィックスを除去）"""
         if not self.data_file.exists():
             return ""
         
         with open(self.data_file, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+        
+        # コピー時は[BREAK]プレフィックスを除去
+        lines = content.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            if line.startswith('[BREAK]'):
+                # [BREAK]プレフィックスを除去
+                cleaned_line = line.replace('[BREAK]', '').strip()
+                cleaned_lines.append(cleaned_line)
+            else:
+                cleaned_lines.append(line)
+        
+        return '\n'.join(cleaned_lines)
     
     def clear_all_tasks(self):
         """すべてのタスクをクリア"""

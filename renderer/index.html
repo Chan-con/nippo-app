@@ -173,11 +173,12 @@
                 </div>
                 <div class="edit-field">
                     <label for="edit-start-time">開始時刻</label>
-                    <input type="text" id="edit-start-time" class="edit-input" placeholder="午前 10:30">
+                    <input type="time" id="edit-start-time" class="edit-input">
                 </div>
                 <div class="edit-field">
                     <label for="edit-end-time">終了時刻</label>
-                    <input type="text" id="edit-end-time" class="edit-input" placeholder="午後 2:15 (空白で実行中)">
+                    <input type="time" id="edit-end-time" class="edit-input">
+                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">空白にすると実行中のタスクになります</small>
                 </div>
             </div>
             <div class="edit-footer">

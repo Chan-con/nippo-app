@@ -436,6 +436,48 @@ class NippoApp {
         return timeString.replace('午前 ', '').replace('午後 ', '');
     }
 
+    // 12時間形式（午前/午後）を24時間形式（HH:mm）に変換
+    convertTo24Hour(timeString) {
+        if (!timeString) return '';
+        
+        const isAM = timeString.includes('午前');
+        const timeOnly = timeString.replace('午前 ', '').replace('午後 ', '').trim();
+        
+        if (!timeOnly.includes(':')) return '';
+        
+        const [hours, minutes] = timeOnly.split(':');
+        let hour = parseInt(hours);
+        
+        if (!isAM && hour !== 12) {
+            hour += 12;
+        } else if (isAM && hour === 12) {
+            hour = 0;
+        }
+        
+        return `${hour.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+    }
+
+    // 24時間形式（HH:mm）を12時間形式（午前/午後）に変換
+    convertTo12Hour(timeString) {
+        if (!timeString) return '';
+        
+        const [hours, minutes] = timeString.split(':');
+        let hour = parseInt(hours);
+        const minute = minutes;
+        
+        let period = '午前';
+        if (hour === 0) {
+            hour = 12;
+        } else if (hour === 12) {
+            period = '午後';
+        } else if (hour > 12) {
+            hour -= 12;
+            period = '午後';
+        }
+        
+        return `${period} ${hour}:${minute}`;
+    }
+
     calculateDuration(startTime, endTime) {
         if (!startTime || !endTime) return '';
         
@@ -624,10 +666,10 @@ class NippoApp {
             return;
         }
 
-        // 編集ダイアログに値を設定
+        // 編集ダイアログに値を設定（time inputは24時間形式で設定）
         document.getElementById('edit-task-name').value = task.name;
-        document.getElementById('edit-start-time').value = task.startTime;
-        document.getElementById('edit-end-time').value = task.endTime || '';
+        document.getElementById('edit-start-time').value = this.convertTo24Hour(task.startTime);
+        document.getElementById('edit-end-time').value = task.endTime ? this.convertTo24Hour(task.endTime) : '';
 
         this.editingTaskId = taskId;
         this.showEditDialog();
@@ -646,13 +688,17 @@ class NippoApp {
 
     async saveTask() {
         const taskName = document.getElementById('edit-task-name').value.trim();
-        const startTime = document.getElementById('edit-start-time').value.trim();
-        const endTime = document.getElementById('edit-end-time').value.trim();
+        const startTime24 = document.getElementById('edit-start-time').value.trim();
+        const endTime24 = document.getElementById('edit-end-time').value.trim();
 
-        if (!taskName || !startTime) {
+        if (!taskName || !startTime24) {
             this.showToast('タスク名と開始時刻は必須です', 'warning');
             return;
         }
+
+        // 24時間形式を12時間形式（午前/午後）に変換
+        const startTime = this.convertTo12Hour(startTime24);
+        const endTime = endTime24 ? this.convertTo12Hour(endTime24) : '';
 
         try {
             const taskData = {
