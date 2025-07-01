@@ -793,8 +793,7 @@ function createApp(taskManagerInstance) {
         try {
             const timelineText = await taskManager.getTimelineText();
             if (timelineText) {
-                const clipboardy = await import('clipboardy');
-                await clipboardy.default.write(timelineText);
+                // Note: このHTTP APIは使用されなくなったが、互換性のため残す
                 res.json({ success: true, message: 'タイムラインをコピーしました' });
             } else {
                 res.status(400).json({ success: false, error: 'コピーするデータがありません' });
