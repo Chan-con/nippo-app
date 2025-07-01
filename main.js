@@ -226,3 +226,31 @@ ipcMain.handle('health-check', async () => {
     return { success: false, error: error.message };
   }
 });
+
+ipcMain.handle('get-report', async () => {
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/report');
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告書取得エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('save-report', async (event, content) => {
+  try {
+    const response = await fetch('http://127.0.0.1:5000/api/report', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content })
+    });
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('報告書保存エラー:', error);
+    return { success: false, error: error.message };
+  }
+});

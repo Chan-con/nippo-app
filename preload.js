@@ -8,5 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearAllTasks: () => ipcRenderer.invoke('clear-all-tasks'),
   updateTask: (taskId, taskData) => ipcRenderer.invoke('update-task', taskId, taskData),
   deleteTask: (taskId) => ipcRenderer.invoke('delete-task', taskId),
-  healthCheck: () => ipcRenderer.invoke('health-check')
+  healthCheck: () => ipcRenderer.invoke('health-check'),
+  getReport: () => ipcRenderer.invoke('get-report'),
+  saveReport: (content) => ipcRenderer.invoke('save-report', content)
 });

@@ -17,6 +17,7 @@ class TaskManager:
     def __init__(self):
         self.data_file = DATA_DIR / "data.txt"
         self.task_list_file = DATA_DIR / "task_list.txt"
+        self.report_file = DATA_DIR / "report.txt"
     
     def get_time(self):
         """現在の時間を取得して12時間表示に変換"""
@@ -184,6 +185,27 @@ class TaskManager:
         except Exception as e:
             print(f"タスク削除エラー: {e}")
             return None
+    
+    def save_report(self, content):
+        """報告書を保存"""
+        try:
+            with open(self.report_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            print(f"報告書保存エラー: {e}")
+            return False
+    
+    def load_report(self):
+        """報告書を読み込み"""
+        try:
+            if self.report_file.exists():
+                with open(self.report_file, 'r', encoding='utf-8') as f:
+                    return f.read()
+            return ""
+        except Exception as e:
+            print(f"報告書読み込みエラー: {e}")
+            return ""
 
 # グローバルなTaskManagerインスタンス
 task_manager = TaskManager()
@@ -287,6 +309,30 @@ def delete_task(task_id):
             return jsonify({'success': False, 'error': 'タスクが見つかりません'}), 404
     except Exception as e:
         print(f"タスク削除エラー: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report', methods=['GET'])
+def get_report():
+    """報告書を取得"""
+    try:
+        content = task_manager.load_report()
+        return jsonify({'success': True, 'content': content})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/report', methods=['POST'])
+def save_report():
+    """報告書を保存"""
+    try:
+        data = request.get_json()
+        content = data.get('content', '')
+        
+        success = task_manager.save_report(content)
+        if success:
+            return jsonify({'success': True, 'message': '報告書を保存しました'})
+        else:
+            return jsonify({'success': False, 'error': '報告書の保存に失敗しました'}), 500
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health', methods=['GET'])

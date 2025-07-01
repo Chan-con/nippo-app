@@ -65,6 +65,9 @@ class NippoApp {
         // すべてクリア
         document.getElementById('clear-all-btn').addEventListener('click', () => this.showClearConfirmation());
 
+        // 報告書作成
+        document.getElementById('create-report-btn').addEventListener('click', () => this.showReportDialog());
+
         // タイトルバーボタン
         document.querySelector('.titlebar-button.minimize').addEventListener('click', () => {
             // 最小化処理（Electronのメインプロセスで処理）
@@ -83,6 +86,12 @@ class NippoApp {
         document.getElementById('edit-cancel').addEventListener('click', () => this.hideEditDialog());
         document.getElementById('edit-save').addEventListener('click', () => this.saveTask());
         document.getElementById('edit-delete').addEventListener('click', () => this.deleteCurrentTask());
+
+        // 報告書ダイアログのイベントリスナー
+        document.getElementById('report-close').addEventListener('click', () => this.hideReportDialog());
+        document.getElementById('report-cancel').addEventListener('click', () => this.hideReportDialog());
+        document.getElementById('report-copy').addEventListener('click', () => this.copyReport());
+        document.getElementById('report-save').addEventListener('click', () => this.saveReport());
     }
 
     updateDateTime() {
@@ -563,6 +572,115 @@ class NippoApp {
             this.showToast('タスクの削除に失敗しました', 'error');
         } finally {
             this.pendingTaskId = null; // クリーンアップ
+        }
+    }
+
+    async showReportDialog() {
+        // タスクサマリーを生成
+        this.generateTaskSummary();
+
+        // 保存済みの報告書内容を読み込み
+        try {
+            const result = await window.electronAPI.getReport();
+            if (result.success) {
+                document.getElementById('report-content').value = result.content;
+            } else {
+                document.getElementById('report-content').value = '';
+            }
+        } catch (error) {
+            console.error('報告書読み込みエラー:', error);
+            document.getElementById('report-content').value = '';
+        }
+
+        // ダイアログを表示
+        const dialog = document.getElementById('report-dialog');
+        dialog.classList.add('show');
+    }
+
+    hideReportDialog() {
+        const dialog = document.getElementById('report-dialog');
+        dialog.classList.remove('show');
+    }
+
+    generateTaskSummary() {
+        const summaryContainer = document.getElementById('task-summary');
+        
+        if (this.tasks.length === 0) {
+            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">今日はまだタスクがありません</p>';
+            return;
+        }
+
+        // 完了したタスクと実行中のタスクを分ける
+        const completedTasks = this.tasks.filter(task => task.endTime);
+        const runningTasks = this.tasks.filter(task => !task.endTime);
+
+        let summaryHTML = '';
+
+        // 完了したタスク
+        if (completedTasks.length > 0) {
+            summaryHTML += '<div style="margin-bottom: 16px;"><strong>✅ 完了したタスク:</strong></div>';
+            completedTasks.forEach(task => {
+                const duration = this.calculateDuration(task.startTime, task.endTime);
+                const timeRange = `${this.formatTime(task.startTime)} - ${this.formatTime(task.endTime)}`;
+                
+                summaryHTML += `
+                    <div class="task-item">
+                        <div>
+                            <div class="task-item-name">${task.name}</div>
+                            <div class="task-item-time">${timeRange}</div>
+                        </div>
+                        <div class="task-item-duration">${duration}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // 実行中のタスク
+        if (runningTasks.length > 0) {
+            summaryHTML += '<div style="margin: 16px 0 16px 0;"><strong>🔄 実行中のタスク:</strong></div>';
+            runningTasks.forEach(task => {
+                summaryHTML += `
+                    <div class="task-item">
+                        <div>
+                            <div class="task-item-name">${task.name}</div>
+                            <div class="task-item-time">${this.formatTime(task.startTime)} - 実行中</div>
+                        </div>
+                        <div class="task-item-duration">実行中</div>
+                    </div>
+                `;
+            });
+        }
+
+        summaryContainer.innerHTML = summaryHTML;
+    }
+
+
+    async copyReport() {
+        const reportContent = document.getElementById('report-content').value;
+        
+        try {
+            await navigator.clipboard.writeText(reportContent);
+            this.showToast('報告書をクリップボードにコピーしました');
+        } catch (error) {
+            console.error('コピーエラー:', error);
+            this.showToast('コピーに失敗しました', 'error');
+        }
+    }
+
+    async saveReport() {
+        const reportContent = document.getElementById('report-content').value;
+        
+        try {
+            const result = await window.electronAPI.saveReport(reportContent);
+            if (result.success) {
+                this.hideReportDialog();
+                this.showToast('報告書を保存しました');
+            } else {
+                this.showToast('報告書の保存に失敗しました', 'error');
+            }
+        } catch (error) {
+            console.error('報告書保存エラー:', error);
+            this.showToast('報告書の保存に失敗しました', 'error');
         }
     }
 }

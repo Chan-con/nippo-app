@@ -53,6 +53,10 @@
                         <span class="material-icons">content_copy</span>
                         タイムラインコピー
                     </button>
+                    <button id="create-report-btn" class="btn-secondary">
+                        <span class="material-icons">description</span>
+                        報告書作成
+                    </button>
                     <button id="clear-all-btn" class="btn-danger">
                         <span class="material-icons">clear_all</span>
                         すべてクリア
@@ -172,6 +176,35 @@
                 <button class="btn-cancel" id="edit-cancel">キャンセル</button>
                 <button class="btn-primary" id="edit-save">保存</button>
                 <button class="btn-danger" id="edit-delete">削除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 報告書編集ダイアログ -->
+    <div class="report-dialog" id="report-dialog">
+        <div class="report-content">
+            <div class="report-header">
+                <h3>📋 日報作成</h3>
+                <button class="report-close" id="report-close">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="report-body">
+                <div class="report-section">
+                    <h4>📅 今日の作業内容</h4>
+                    <div class="task-summary" id="task-summary">
+                        <!-- タスクサマリーが動的に挿入される -->
+                    </div>
+                </div>
+                <div class="report-section">
+                    <h4>📝 報告内容</h4>
+                    <textarea id="report-content" class="report-textarea" placeholder="今日の作業について詳しく記述してください...&#10;&#10;■ 完了した作業&#10;- &#10;&#10;■ 進行中の作業&#10;- &#10;&#10;■ 明日の予定&#10;- &#10;&#10;■ 課題・連絡事項&#10;- "></textarea>
+                </div>
+            </div>
+            <div class="report-footer">
+                <button class="btn-cancel" id="report-cancel">キャンセル</button>
+                <button class="btn-secondary" id="report-copy">クリップボードにコピー</button>
+                <button class="btn-primary" id="report-save">保存</button>
             </div>
         </div>
     </div>
