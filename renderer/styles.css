@@ -903,6 +903,13 @@ body {
   margin-bottom: 8px;
 }
 
+.task-summary-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .task-item {
   display: flex;
   justify-content: space-between;

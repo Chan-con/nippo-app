@@ -4,6 +4,7 @@ class NippoApp {
         this.currentTaskId = null;
         this.currentTabId = 'default';
         this.reportUrls = [];
+        this.toastTimer = null;
         this.init();
     }
 
@@ -12,6 +13,12 @@ class NippoApp {
         this.updateDateTime();
         this.updateTaskCounter();
         this.updateBreakButton(false); // 初期状態は休憩開始ボタン
+
+        // タスク入力フォーカスのイベントリスナーを追加
+        window.electronAPI.onFocusTaskInput(() => {
+            const taskInput = document.getElementById('task-input');
+            taskInput.focus();
+        });
 
         // APIサーバーのポートを取得し、準備を待つ
         window.electronAPI.onApiPort(async (port) => {
@@ -88,7 +95,7 @@ class NippoApp {
 
         // タイトルバーボタン
         document.querySelector('.titlebar-button.minimize').addEventListener('click', () => {
-            // 最小化処理（Electronのメインプロセスで処理）
+            window.close(); // 最小化はcloseイベントで処理されタスクトレイに格納される
         });
 
         document.querySelector('.titlebar-button.close').addEventListener('click', () => {
@@ -378,7 +385,7 @@ class NippoApp {
                 <div class="${itemClass}">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
-                        <div class="timeline-task">${displayName}</div>
+                        <div class="timeline-task" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" title="右クリックでタスク名をコピー">${displayName}</div>
                         ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
                         ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
                     </div>
@@ -616,10 +623,47 @@ class NippoApp {
         return `${Math.round(completedRatio * 100)}%`;
     }
 
+    copyTaskToInput(taskName, event) {
+        event.preventDefault(); // デフォルトのコンテキストメニューを無効化
+        
+        // 休憩タスクの場合はコピーしない
+        if (taskName === '休憩' || taskName.includes('休憩')) {
+            this.showToast('休憩タスクはコピーできません', 'warning');
+            return;
+        }
+        
+        const taskInput = document.getElementById('task-input');
+        taskInput.value = taskName;
+        taskInput.focus();
+        taskInput.select(); // テキストを選択状態にする
+        
+        this.showToast(`「${taskName}」をタスク入力にコピーしました`);
+    }
+
     showToast(message, type = 'success') {
         const toast = document.getElementById('toast');
         const messageElement = document.getElementById('toast-message');
         
+        // 既存のタイマーをクリア
+        if (this.toastTimer) {
+            clearTimeout(this.toastTimer);
+            this.toastTimer = null;
+        }
+        
+        // 既に表示されている場合は一度非表示にしてから再表示
+        if (toast.classList.contains('show')) {
+            toast.classList.remove('show');
+            
+            // 少し待ってから新しいメッセージを表示
+            setTimeout(() => {
+                this.displayToast(toast, messageElement, message, type);
+            }, 100);
+        } else {
+            this.displayToast(toast, messageElement, message, type);
+        }
+    }
+    
+    displayToast(toast, messageElement, message, type) {
         messageElement.textContent = message;
         
         // タイプに応じて色を変更
@@ -632,8 +676,10 @@ class NippoApp {
         toast.style.background = colors[type] || colors.success;
         toast.classList.add('show');
         
-        setTimeout(() => {
+        // 新しいタイマーを設定
+        this.toastTimer = setTimeout(() => {
             toast.classList.remove('show');
+            this.toastTimer = null;
         }, 3000);
     }
 

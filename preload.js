@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   onApiPort: (callback) => ipcRenderer.on('set-api-port', (event, port) => callback(port)),
+  onFocusTaskInput: (callback) => ipcRenderer.on('focus-task-input', callback),
   getTasks: () => ipcRenderer.invoke('get-tasks'),
   addTask: (taskName, isBreak = false) => ipcRenderer.invoke('add-task', taskName, isBreak),
   endTask: () => ipcRenderer.invoke('end-task'),

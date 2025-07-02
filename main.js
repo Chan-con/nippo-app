@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, Tray } = require('electron');
 const path = require('path');
 const { TaskManager, createApp } = require('./backend/task-manager');
 const fs = require('fs'); // fsモジュールをグローバルにインポート
 
 let mainWindow;
 let taskManager;
+let tray;
 
 // デバッグログファイルのパスをグローバルに定義
 let debugLogPath;
@@ -49,6 +50,25 @@ console.error = (...args) => {
   originalConsoleError.apply(console, args); // 元のconsole.errorも呼び出す
 };
 
+// 単一インスタンスの確保
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log('アプリケーションは既に起動中です。終了します。');
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // 誰かが二番目のインスタンスを実行しようとしたときの処理
+    console.log('2つ目のインスタンスが起動されました。既存のウィンドウを表示します。');
+    
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -77,8 +97,28 @@ function createWindow() {
     mainWindow.show();
   });
 
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      
+      if (process.platform === 'win32' && !tray.isDestroyed()) {
+        tray.displayBalloon({
+          iconType: 'info',
+          title: 'SlackTracker',
+          content: 'アプリケーションはタスクトレイで動作しています'
+        });
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  mainWindow.on('minimize', (event) => {
+    event.preventDefault();
+    mainWindow.hide();
   });
 }
 
@@ -120,6 +160,54 @@ function createApplicationMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, 'assets/icon.png');
+  tray = new Tray(iconPath);
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'SlackTracker を表示',
+      click: () => {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    },
+    {
+      label: 'タスク追加',
+      click: () => {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send('focus-task-input');
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '終了',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+  
+  tray.setToolTip('SlackTracker - 生産性追跡ツール');
+  tray.setContextMenu(contextMenu);
+  
+  tray.on('click', () => {
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+  
+  tray.on('double-click', () => {
+    mainWindow.show();
+    mainWindow.focus();
+  });
 }
 
 
@@ -183,6 +271,7 @@ app.whenReady().then(async () => {
   await initializeBackend();
   createWindow();
   createApplicationMenu(); // アプリケーションメニューを作成
+  createTray(); // システムトレイを作成
 
   // Expressサーバーを起動
   const expressApp = createApp(taskManager);
@@ -205,8 +294,17 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+  // システムトレイに残すため、アプリを終了しない
+  // macOSでも同様の動作にする
+});
+
+app.on('before-quit', () => {
+  app.isQuitting = true;
+});
+
+app.on('will-quit', () => {
+  if (tray && !tray.isDestroyed()) {
+    tray.destroy();
   }
 });
 
