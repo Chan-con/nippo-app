@@ -385,7 +385,7 @@ class NippoApp {
                 <div class="${itemClass}">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
-                        <div class="timeline-task" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" title="右クリックでタスク名をコピー">${displayName}</div>
+                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
                         ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
                         ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
                     </div>
@@ -624,7 +624,10 @@ class NippoApp {
     }
 
     copyTaskToInput(taskName, event) {
-        event.preventDefault(); // デフォルトのコンテキストメニューを無効化
+        // 右クリックの場合のみコンテキストメニューを無効化
+        if (event.type === 'contextmenu') {
+            event.preventDefault();
+        }
         
         // 休憩タスクの場合はコピーしない
         if (taskName === '休憩' || taskName.includes('休憩')) {
@@ -633,7 +636,7 @@ class NippoApp {
         }
         
         const taskInput = document.getElementById('task-input');
-        taskInput.value = taskName;
+        taskInput.value = taskName; // 既存の入力内容をクリアして新しいタスク名をセット
         taskInput.focus();
         taskInput.select(); // テキストを選択状態にする
         

@@ -385,6 +385,7 @@ body {
   animation: slideIn 0.3s ease;
   border-radius: var(--radius-small);
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .timeline-item.running {
@@ -435,6 +436,8 @@ body {
   cursor: pointer;
   color: var(--text-muted);
   flex-shrink: 0;
+  align-self: center;
+  margin-right: 12px;
 }
 
 .timeline-edit:hover {
@@ -462,6 +465,12 @@ body {
   font-size: 16px;
   color: var(--text-primary);
   margin-bottom: 4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.timeline-task:hover {
+  color: var(--accent);
 }
 
 .timeline-duration {
@@ -545,16 +554,18 @@ body {
   align-items: flex-start;
   gap: 12px;
   box-shadow: var(--shadow-large);
-  transform: translateX(400px);
-  transition: transform 0.3s ease;
+  transform: translateX(500px);
+  transition: transform 0.3s ease, visibility 0.3s ease;
   font-weight: 500;
   z-index: 1000;
   max-width: 400px;
   word-wrap: break-word;
+  visibility: hidden;
 }
 
 .toast.show {
   transform: translateX(0);
+  visibility: visible;
 }
 
 .toast .material-icons {
