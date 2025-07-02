@@ -378,6 +378,7 @@ body {
 
 .timeline-item {
   display: flex;
+  align-items: flex-start;
   gap: 16px;
   padding: 16px 0;
   border-bottom: 1px solid var(--border);
@@ -426,11 +427,14 @@ body {
   border-radius: var(--radius-small);
   width: 32px;
   height: 32px;
+  min-width: 32px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .timeline-edit:hover {
@@ -679,7 +683,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-medium);
   width: 90%;
-  max-width: 500px;
+  max-width: 550px;
   max-height: 80vh;
   overflow: hidden;
   transform: scale(0.9);
@@ -767,14 +771,14 @@ body {
 }
 
 .edit-footer button {
-  padding: 10px 20px;
+  padding: 10px 16px;
   border-radius: var(--radius-small);
   border: none;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
   transition: all 0.2s ease;
-  min-width: 80px;
+  min-width: 70px;
 }
 
 .edit-footer .btn-primary {
