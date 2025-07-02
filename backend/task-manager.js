@@ -973,8 +973,143 @@ function createApp(taskManagerInstance) {
         try {
             const { url } = req.body;
             if (url) {
-                const { shell } = require('electron');
-                await shell.openExternal(url);
+                const { spawn } = require('child_process');
+                const os = require('os');
+                const platform = os.platform();
+                
+                // メインウィンドウの位置を取得
+                let windowArgs = [];
+                try {
+                    const { BrowserWindow } = require('electron');
+                    const mainWindow = BrowserWindow.getAllWindows()[0];
+                    if (mainWindow) {
+                        const bounds = mainWindow.getBounds();
+                        // ブラウザウィンドウを少し右にずらして配置
+                        const offsetX = bounds.x + 50;
+                        const offsetY = bounds.y + 50;
+                        windowArgs = [
+                            `--window-position=${offsetX},${offsetY}`,
+                            `--window-size=1200,800`
+                        ];
+                    }
+                } catch (error) {
+                    console.log('ウィンドウ位置の取得に失敗:', error);
+                }
+                
+                let command;
+                let args;
+                
+                if (platform === 'win32') {
+                    // Windowsでは複数のChromeパスを試行
+                    const chromePaths = [
+                        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                        process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
+                    ];
+                    
+                    let chromeFound = false;
+                    const fs = require('fs');
+                    
+                    for (const chromePath of chromePaths) {
+                        try {
+                            if (fs.existsSync(chromePath)) {
+                                const os = require('os');
+                                const path = require('path');
+                                const userDataDir = path.join(os.homedir(), '.nippo-chrome-profile');
+                                
+                                // ディレクトリが存在しない場合は作成
+                                if (!fs.existsSync(userDataDir)) {
+                                    fs.mkdirSync(userDataDir, { recursive: true });
+                                }
+                                
+                                const chromeArgs = [
+                                    '--new-window',
+                                    '--no-default-browser-check',
+                                    '--no-first-run',
+                                    '--disable-default-apps',
+                                    `--user-data-dir=${userDataDir}`
+                                ];
+                                chromeArgs.push(...windowArgs);
+                                chromeArgs.push(url);
+                                
+                                spawn(chromePath, chromeArgs, { detached: true, stdio: 'ignore' });
+                                chromeFound = true;
+                                break;
+                            }
+                        } catch (error) {
+                            continue;
+                        }
+                    }
+                    
+                    if (!chromeFound) {
+                        // デフォルトブラウザで開く
+                        spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' });
+                    }
+                } else if (platform === 'darwin') {
+                    // Macでは新規ウィンドウでブラウザを開く
+                    try {
+                        const os = require('os');
+                        const path = require('path');
+                        const userDataDir = path.join(os.homedir(), '.nippo-chrome-profile');
+                        
+                        // ディレクトリが存在しない場合は作成
+                        if (!fs.existsSync(userDataDir)) {
+                            fs.mkdirSync(userDataDir, { recursive: true });
+                        }
+                        
+                        const chromeArgs = [
+                            '--new-window',
+                            '--no-default-browser-check',
+                            '--no-first-run',
+                            '--disable-default-apps',
+                            `--user-data-dir=${userDataDir}`
+                        ];
+                        chromeArgs.push(...windowArgs);
+                        chromeArgs.push(url);
+                        
+                        spawn('open', ['-n', '-a', 'Google Chrome', '--args', ...chromeArgs], { detached: true, stdio: 'ignore' });
+                    } catch (error) {
+                        // フォールバック
+                        spawn('open', [url], { detached: true, stdio: 'ignore' });
+                    }
+                } else {
+                    // Linux用（ChromeまたはFirefoxで新規ウィンドウ）
+                    try {
+                        const os = require('os');
+                        const path = require('path');
+                        const userDataDir = path.join(os.homedir(), '.nippo-chrome-profile');
+                        
+                        // ディレクトリが存在しない場合は作成
+                        if (!fs.existsSync(userDataDir)) {
+                            fs.mkdirSync(userDataDir, { recursive: true });
+                        }
+                        
+                        const chromeArgs = [
+                            '--new-window',
+                            '--no-default-browser-check',
+                            '--no-first-run',
+                            '--disable-default-apps',
+                            `--user-data-dir=${userDataDir}`
+                        ];
+                        chromeArgs.push(...windowArgs);
+                        chromeArgs.push(url);
+                        
+                        spawn('google-chrome', chromeArgs, { detached: true, stdio: 'ignore' });
+                    } catch (error) {
+                        try {
+                            const firefoxArgs = ['-new-window'];
+                            if (windowArgs.length > 0) {
+                                // Firefoxでは位置指定が異なる
+                                firefoxArgs.push(`-width=1200`, `-height=800`);
+                            }
+                            firefoxArgs.push(url);
+                            spawn('firefox', firefoxArgs, { detached: true, stdio: 'ignore' });
+                        } catch (error) {
+                            spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
+                        }
+                    }
+                }
+                
                 res.json({ success: true });
             } else {
                 res.status(400).json({ success: false, error: 'URL is required' });
