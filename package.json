@@ -1,7 +1,7 @@
 {
-  "name": "nippo-app",
+  "name": "slack-tracker",
   "version": "1.0.0",
-  "description": "Modern daily report management app",
+  "description": "Productivity tracker for lazy people - effortless task and time management",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -13,8 +13,10 @@
   },
   "keywords": [
     "electron",
-    "nippo",
-    "daily-report"
+    "productivity",
+    "task-management",
+    "time-tracking",
+    "lazy-friendly"
   ],
   "author": "Your Name",
   "license": "MIT",
@@ -30,8 +32,8 @@
     "node-fetch": "^2.7.0"
   },
   "build": {
-    "appId": "com.yourcompany.nippo-app",
-    "productName": "日報管理アプリ",
+    "appId": "com.yourcompany.slack-tracker",
+    "productName": "SlackTracker",
     "directories": {
       "output": "dist"
     },
@@ -77,7 +79,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "日報管理アプリ",
+      "shortcutName": "SlackTracker",
       "perMachine": true,
       "allowElevation": true
     },
