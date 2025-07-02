@@ -102,13 +102,14 @@ function createWindow() {
       event.preventDefault();
       mainWindow.hide();
       
-      if (process.platform === 'win32' && !tray.isDestroyed()) {
-        tray.displayBalloon({
-          iconType: 'info',
-          title: 'SlackTracker',
-          content: 'アプリケーションはタスクトレイで動作しています'
-        });
-      }
+      // タスクトレイ格納時の通知を無効化
+      // if (process.platform === 'win32' && !tray.isDestroyed()) {
+      //   tray.displayBalloon({
+      //     iconType: 'info',
+      //     title: 'SlackTracker',
+      //     content: 'アプリケーションはタスクトレイで動作しています'
+      //   });
+      // }
     }
   });
 
