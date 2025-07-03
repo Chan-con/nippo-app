@@ -62,9 +62,7 @@ if (!gotTheLock) {
     console.log('2つ目のインスタンスが起動されました。既存のウィンドウを表示します。');
     
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      if (!mainWindow.isVisible()) mainWindow.show();
-      mainWindow.focus();
+      restoreAndFocusWindow();
     }
   });
 }
@@ -123,6 +121,65 @@ function createWindow() {
   });
 }
 
+// ウィンドウを確実に復元してフォーカスする関数
+function restoreAndFocusWindow() {
+  if (!mainWindow) {
+    console.error('メインウィンドウが存在しません');
+    return;
+  }
+
+  console.log('ウィンドウの復元処理を開始します...');
+  
+  try {
+    // 1. ウィンドウの現在状態をログ出力
+    console.log(`ウィンドウ状態: 表示=${mainWindow.isVisible()}, 最小化=${mainWindow.isMinimized()}, フォーカス=${mainWindow.isFocused()}`);
+    
+    // 2. 最小化されている場合は復元
+    if (mainWindow.isMinimized()) {
+      console.log('最小化状態から復元します');
+      mainWindow.restore();
+    }
+    
+    // 3. 非表示の場合は表示
+    if (!mainWindow.isVisible()) {
+      console.log('非表示状態から表示します');
+      mainWindow.show();
+    }
+    
+    // 4. タスクバーに確実に表示
+    mainWindow.setSkipTaskbar(false);
+    
+    // 5. 一時的に最前面に表示（Windowsでのフォーカス問題を解決）
+    if (process.platform === 'win32') {
+      console.log('Windows用のフォーカス処理を実行します');
+      mainWindow.setAlwaysOnTop(true);
+      mainWindow.focus();
+      
+      // 500ms後に最前面表示を解除
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.setAlwaysOnTop(false);
+          console.log('最前面表示を解除しました');
+        }
+      }, 500);
+    } else {
+      // macOSやLinux用の処理
+      mainWindow.focus();
+      if (process.platform === 'darwin') {
+        app.focus();
+      }
+    }
+    
+    // 6. ウィンドウを中央に移動（必要に応じて）
+    // mainWindow.center();
+    
+    console.log('ウィンドウの復元処理が完了しました');
+    
+  } catch (error) {
+    console.error('ウィンドウ復元中にエラーが発生しました:', error);
+  }
+}
+
 // アプリケーションメニューを作成する関数
 function createApplicationMenu() {
   const template = [
@@ -171,16 +228,19 @@ function createTray() {
     {
       label: 'SlackTracker を表示',
       click: () => {
-        mainWindow.show();
-        mainWindow.focus();
+        restoreAndFocusWindow();
       }
     },
     {
       label: 'タスク追加',
       click: () => {
-        mainWindow.show();
-        mainWindow.focus();
-        mainWindow.webContents.send('focus-task-input');
+        restoreAndFocusWindow();
+        // ウィンドウが表示された後にタスク入力にフォーカス
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('focus-task-input');
+          }
+        }, 100);
       }
     },
     { type: 'separator' },
@@ -200,14 +260,12 @@ function createTray() {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
-      mainWindow.show();
-      mainWindow.focus();
+      restoreAndFocusWindow();
     }
   });
   
   tray.on('double-click', () => {
-    mainWindow.show();
-    mainWindow.focus();
+    restoreAndFocusWindow();
   });
 }
 
