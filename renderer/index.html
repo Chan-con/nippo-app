@@ -200,12 +200,6 @@
                     <div class="task-summary" id="task-summary">
                         <!-- タスクサマリーが動的に挿入される -->
                     </div>
-                    <div class="task-summary-actions">
-                        <button id="copy-timeline-btn" class="btn-secondary">
-                            <span class="material-icons">content_copy</span>
-                            タイムラインコピー
-                        </button>
-                    </div>
                 </div>
                 <div class="report-section">
                     <h4>🔗 報告先</h4>
@@ -227,7 +221,14 @@
             </div>
             <div class="report-footer">
                 <button class="btn-cancel" id="report-cancel">戻る</button>
-                <button class="btn-secondary" id="report-copy">クリップボードにコピー</button>
+                <button class="btn-secondary" id="copy-timeline-btn">
+                    <span class="material-icons">content_copy</span>
+                    タイムラインコピー
+                </button>
+                <button class="btn-secondary" id="report-copy">
+                    <span class="material-icons">content_copy</span>
+                    テキストコピー
+                </button>
                 <button class="btn-primary" id="report-save">保存</button>
             </div>
         </div>

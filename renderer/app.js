@@ -5,6 +5,9 @@ class NippoApp {
         this.currentTabId = 'default';
         this.reportUrls = [];
         this.toastTimer = null;
+        this.originalReportContent = '';
+        this.originalTabContents = new Map();
+        this.hasUnsavedChanges = false;
         this.init();
     }
 
@@ -113,8 +116,8 @@ class NippoApp {
         document.getElementById('edit-delete').addEventListener('click', () => this.deleteCurrentTask());
 
         // 報告書ダイアログのイベントリスナー
-        document.getElementById('report-close').addEventListener('click', () => this.hideReportDialog());
-        document.getElementById('report-cancel').addEventListener('click', () => this.hideReportDialog());
+        document.getElementById('report-close').addEventListener('click', () => this.handleReportClose());
+        document.getElementById('report-cancel').addEventListener('click', () => this.handleReportClose());
         document.getElementById('report-copy').addEventListener('click', () => this.copyReport());
         document.getElementById('report-save').addEventListener('click', () => this.saveReport());
 
@@ -710,12 +713,6 @@ class NippoApp {
         this.pendingTaskId = null; // クリーンアップ
     }
 
-    async executeConfirmedAction() {
-        if (this.pendingAction === 'clearAll') {
-            await this.clearAllTasks();
-        }
-        this.hideConfirmDialog();
-    }
 
     async clearAllTasks() {
         try {
@@ -872,6 +869,8 @@ class NippoApp {
             await this.deleteTask();
         } else if (this.pendingAction === 'deleteReportUrl') {
             await this.executeDeleteReportUrl();
+        } else if (this.pendingAction === 'closeReportDialog') {
+            this.hideReportDialog();
         }
         this.hideConfirmDialog();
     }
@@ -914,14 +913,181 @@ class NippoApp {
         // タブを生成
         await this.generateReportTabs();
 
+        // 元のコンテンツを保存（変更検知用）
+        await this.saveOriginalContent();
+
+        // 変更監視を開始
+        this.setupContentChangeListeners();
+
+        // 保存ボタンの初期状態を設定
+        this.updateSaveButtonState();
+        
+        // タイムラインコピーボタンの状態を設定
+        this.updateTimelineCopyButtonState();
+        
+        // クリップボードコピーボタンの状態を設定
+        this.updateClipboardCopyButtonState();
+
         // ダイアログを表示
         const dialog = document.getElementById('report-dialog');
+        dialog.classList.add('show');
+    }
+
+    handleReportClose() {
+        if (this.hasUnsavedChanges) {
+            this.showUnsavedChangesDialog();
+        } else {
+            this.hideReportDialog();
+        }
+    }
+
+    showUnsavedChangesDialog() {
+        const dialog = document.getElementById('confirm-dialog');
+        const title = document.getElementById('confirm-title');
+        const message = document.getElementById('confirm-message');
+        
+        title.textContent = '変更が保存されていません';
+        message.textContent = '報告書に未保存の変更があります。\n変更を破棄してダイアログを閉じますか？';
+        
+        this.pendingAction = 'closeReportDialog';
         dialog.classList.add('show');
     }
 
     hideReportDialog() {
         const dialog = document.getElementById('report-dialog');
         dialog.classList.remove('show');
+        this.hasUnsavedChanges = false;
+        this.originalReportContent = '';
+        this.originalTabContents.clear();
+    }
+
+    async saveOriginalContent() {
+        this.hasUnsavedChanges = false;
+        this.originalReportContent = '';
+        this.originalTabContents.clear();
+        
+        // 報告先がない場合の単一テキストエリア
+        if (this.reportUrls.length === 0) {
+            const textarea = document.getElementById('single-report-content');
+            if (textarea) {
+                this.originalReportContent = textarea.value;
+            }
+        } else {
+            // タブ別コンテンツを保存
+            for (const url of this.reportUrls) {
+                const tabId = url.id.toString();
+                const content = await this.getTabContent(tabId);
+                this.originalTabContents.set(tabId, content);
+            }
+        }
+    }
+
+    setupContentChangeListeners() {
+        // 報告先がない場合の単一テキストエリア
+        if (this.reportUrls.length === 0) {
+            const textarea = document.getElementById('single-report-content');
+            if (textarea) {
+                textarea.addEventListener('input', () => this.checkForChanges());
+            }
+        } else {
+            // タブ別テキストエリア
+            for (const url of this.reportUrls) {
+                const tabId = url.id.toString();
+                const textarea = document.getElementById(`tab-content-${tabId}`);
+                if (textarea) {
+                    textarea.addEventListener('input', () => this.checkForChanges());
+                }
+            }
+        }
+    }
+
+    checkForChanges() {
+        let hasChanges = false;
+        
+        // 報告先がない場合の単一テキストエリア
+        if (this.reportUrls.length === 0) {
+            const textarea = document.getElementById('single-report-content');
+            if (textarea) {
+                hasChanges = textarea.value !== this.originalReportContent;
+            }
+        } else {
+            // タブ別コンテンツをチェック
+            for (const url of this.reportUrls) {
+                const tabId = url.id.toString();
+                const textarea = document.getElementById(`tab-content-${tabId}`);
+                if (textarea) {
+                    const originalContent = this.originalTabContents.get(tabId) || '';
+                    if (textarea.value !== originalContent) {
+                        hasChanges = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        this.hasUnsavedChanges = hasChanges;
+        this.updateSaveButtonState();
+        this.updateClipboardCopyButtonState();
+    }
+
+    updateSaveButtonState() {
+        const saveButton = document.getElementById('report-save');
+        if (saveButton) {
+            if (this.hasUnsavedChanges) {
+                saveButton.classList.add('active');
+                saveButton.disabled = false;
+            } else {
+                saveButton.classList.remove('active');
+                saveButton.disabled = true;
+            }
+        }
+    }
+
+    updateTimelineCopyButtonState() {
+        const timelineCopyButton = document.getElementById('copy-timeline-btn');
+        if (timelineCopyButton) {
+            // 終了していないタスクがあるかチェック
+            const hasRunningTasks = this.tasks.some(task => !task.endTime);
+            
+            if (hasRunningTasks) {
+                timelineCopyButton.disabled = true;
+                timelineCopyButton.classList.add('disabled');
+            } else {
+                timelineCopyButton.disabled = false;
+                timelineCopyButton.classList.remove('disabled');
+            }
+        }
+    }
+
+    updateClipboardCopyButtonState() {
+        const clipboardCopyButton = document.getElementById('report-copy');
+        if (clipboardCopyButton) {
+            // テキストが保存されているかチェック
+            const hasContent = this.checkIfReportHasContent();
+            // 未保存の変更があるかチェック
+            const hasUnsavedChanges = this.hasUnsavedChanges;
+            
+            // コンテンツがあり、かつ未保存の変更がない場合のみ有効
+            if (hasContent && !hasUnsavedChanges) {
+                clipboardCopyButton.disabled = false;
+                clipboardCopyButton.classList.remove('disabled');
+            } else {
+                clipboardCopyButton.disabled = true;
+                clipboardCopyButton.classList.add('disabled');
+            }
+        }
+    }
+
+    checkIfReportHasContent() {
+        // 報告先がない場合の単一テキストエリア
+        if (this.reportUrls.length === 0) {
+            const textarea = document.getElementById('single-report-content');
+            return textarea && textarea.value.trim() !== '';
+        } else {
+            // タブ別コンテンツをチェック
+            const currentTabTextarea = document.getElementById(`tab-content-${this.currentTabId}`);
+            return currentTabTextarea && currentTabTextarea.value.trim() !== '';
+        }
     }
 
     generateTaskSummary() {
@@ -1067,6 +1233,11 @@ class NippoApp {
                 tabContent.innerHTML = `
                     <textarea class="tab-textarea" id="single-report-content" placeholder="今日の作業について詳しく記述してください...&#10;&#10;■ 完了した作業&#10;- &#10;&#10;■ 進行中の作業&#10;- &#10;&#10;■ 明日の予定&#10;- &#10;&#10;■ 課題・連絡事項&#10;- ">${existingContent}</textarea>
                 `;
+                
+                // コンテンツが追加された後に変更監視を設定
+                setTimeout(() => {
+                    this.setupContentChangeListeners();
+                }, 100);
                 return;
             }
 
@@ -1115,6 +1286,11 @@ class NippoApp {
         }
 
         tabContent.innerHTML = contentHTML;
+        
+        // コンテンツが追加された後に変更監視を設定
+        setTimeout(() => {
+            this.setupContentChangeListeners();
+        }, 100);
     }
 
     async getTabContent(tabId) {
@@ -1173,6 +1349,9 @@ class NippoApp {
         if (activePanel) {
             activePanel.classList.add('active');
         }
+        
+        // タブ切り替え時にボタン状態を更新
+        this.updateClipboardCopyButtonState();
     }
 
     async saveReport() {
@@ -1186,6 +1365,12 @@ class NippoApp {
                         const result = await response.json();
                         if (result.success) {
                             this.showToast('報告書を保存しました');
+                            // 保存後に変更フラグをリセット
+                            this.hasUnsavedChanges = false;
+                            this.updateSaveButtonState();
+                            this.updateClipboardCopyButtonState();
+                            // 元のコンテンツを更新
+                            this.originalReportContent = document.getElementById('single-report-content').value;
                         } else {
                             this.showToast('報告書の保存に失敗しました', 'error');
                         }
@@ -1200,6 +1385,20 @@ class NippoApp {
 
         // タブの内容を保存
         await this.saveCurrentTabContent();
+        
+        // 保存後に変更フラグをリセット
+        this.hasUnsavedChanges = false;
+        this.updateSaveButtonState();
+        this.updateClipboardCopyButtonState();
+        
+        // 元のコンテンツを更新
+        for (const url of this.reportUrls) {
+            const tabId = url.id.toString();
+            const textarea = document.getElementById(`tab-content-${tabId}`);
+            if (textarea) {
+                this.originalTabContents.set(tabId, textarea.value);
+            }
+        }
         
         this.showToast('報告書を保存しました');
     }
