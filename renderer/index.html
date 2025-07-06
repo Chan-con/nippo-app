@@ -57,6 +57,10 @@
                         <span class="material-icons">description</span>
                         報告書作成
                     </button>
+                    <button id="task-stock-btn" class="btn-secondary">
+                        <span class="material-icons">bookmark</span>
+                        タスクストック
+                    </button>
                     <button id="settings-btn" class="btn-secondary">
                         <span class="material-icons" style="font-size: 18px;">settings</span>
                         設定
@@ -261,7 +265,44 @@
                 </div>
             </div>
             <div class="settings-footer">
-                <button class="btn-cancel" id="settings-cancel">閉じる</button>
+                <button class="btn-cancel" id="settings-cancel">戻る</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- タスクストック管理ダイアログ -->
+    <div class="task-stock-dialog" id="task-stock-dialog">
+        <div class="task-stock-content">
+            <div class="task-stock-header">
+                <h3>📚 タスクストック</h3>
+                <button class="task-stock-close" id="task-stock-close">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="task-stock-body">
+                <div class="task-stock-section">
+                    <h4>💾 保存済みタスク</h4>
+                    <div class="task-stock-list" id="task-stock-list">
+                        <!-- ストック済みタスクが動的に挿入される -->
+                    </div>
+                </div>
+                <div class="task-stock-section">
+                    <h4>➕ 新しいタスクを追加</h4>
+                    <div class="task-stock-input">
+                        <input type="text" id="task-stock-input" class="edit-input" placeholder="タスク名を入力してください">
+                        <button id="add-task-stock-btn" class="btn-primary">
+                            <span class="material-icons">add</span>
+                            追加
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="task-stock-footer">
+                <button class="btn-cancel" id="task-stock-cancel">戻る</button>
+                <button class="btn-danger" id="clear-task-stock-btn">
+                    <span class="material-icons">clear_all</span>
+                    すべてクリア
+                </button>
             </div>
         </div>
     </div>

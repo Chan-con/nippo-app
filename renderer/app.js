@@ -8,6 +8,7 @@ class NippoApp {
         this.originalReportContent = '';
         this.originalTabContents = new Map();
         this.hasUnsavedChanges = false;
+        this.taskStock = [];
         this.init();
     }
 
@@ -96,6 +97,9 @@ class NippoApp {
         // 設定
         document.getElementById('settings-btn').addEventListener('click', () => this.showSettingsDialog());
 
+        // タスクストック
+        document.getElementById('task-stock-btn').addEventListener('click', () => this.showTaskStockDialog());
+
         // タイトルバーボタン
         document.querySelector('.titlebar-button.minimize').addEventListener('click', () => {
             window.close(); // 最小化はcloseイベントで処理されタスクトレイに格納される
@@ -125,6 +129,17 @@ class NippoApp {
         document.getElementById('settings-close').addEventListener('click', () => this.hideSettingsDialog());
         document.getElementById('settings-cancel').addEventListener('click', () => this.hideSettingsDialog());
         document.getElementById('add-url-btn').addEventListener('click', () => this.addReportUrl());
+
+        // タスクストックダイアログのイベントリスナー
+        document.getElementById('task-stock-close').addEventListener('click', () => this.hideTaskStockDialog());
+        document.getElementById('task-stock-cancel').addEventListener('click', () => this.hideTaskStockDialog());
+        document.getElementById('add-task-stock-btn').addEventListener('click', () => this.addTaskStock());
+        document.getElementById('clear-task-stock-btn').addEventListener('click', () => this.clearTaskStock());
+        
+        // タスクストック入力のEnterキー対応
+        document.getElementById('task-stock-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addTaskStock();
+        });
     }
 
     updateDateTime() {
@@ -639,7 +654,9 @@ class NippoApp {
         }
         
         const taskInput = document.getElementById('task-input');
-        taskInput.value = taskName; // 既存の入力内容をクリアして新しいタスク名をセット
+        // 既存の入力内容をクリアしてから新しいタスク名をセット
+        taskInput.value = '';
+        taskInput.value = taskName;
         taskInput.focus();
         taskInput.select(); // テキストを選択状態にする
         
@@ -871,6 +888,8 @@ class NippoApp {
             await this.executeDeleteReportUrl();
         } else if (this.pendingAction === 'closeReportDialog') {
             this.hideReportDialog();
+        } else if (this.pendingAction === 'clearTaskStock') {
+            await this.executeClearTaskStock();
         }
         this.hideConfirmDialog();
     }
@@ -1553,6 +1572,160 @@ class NippoApp {
         } finally {
             this.pendingUrlId = null;
         }
+    }
+
+    // タスクストック管理機能
+    async showTaskStockDialog() {
+        // タスクストックを読み込み
+        await this.loadTaskStock();
+        
+        // ダイアログを表示
+        const dialog = document.getElementById('task-stock-dialog');
+        dialog.classList.add('show');
+    }
+
+    hideTaskStockDialog() {
+        const dialog = document.getElementById('task-stock-dialog');
+        dialog.classList.remove('show');
+    }
+
+    async loadTaskStock() {
+        // ローカルストレージからタスクストックを読み込み
+        try {
+            const storedTaskStock = localStorage.getItem('taskStock');
+            this.taskStock = storedTaskStock ? JSON.parse(storedTaskStock) : [];
+            this.updateTaskStockList();
+        } catch (error) {
+            console.error('タスクストック読み込みエラー:', error);
+            this.taskStock = [];
+            this.updateTaskStockList();
+        }
+    }
+
+    async saveTaskStock() {
+        // ローカルストレージにタスクストックを保存
+        try {
+            localStorage.setItem('taskStock', JSON.stringify(this.taskStock));
+        } catch (error) {
+            console.error('タスクストック保存エラー:', error);
+            this.showToast('タスクストックの保存に失敗しました', 'error');
+        }
+    }
+
+    updateTaskStockList() {
+        const stockList = document.getElementById('task-stock-list');
+        
+        if (this.taskStock.length === 0) {
+            stockList.innerHTML = `
+                <div class="task-stock-empty">
+                    <span class="material-icons">bookmark_border</span>
+                    <p>まだタスクが保存されていません</p>
+                    <p class="sub-text">新しいタスクを追加してください</p>
+                </div>
+            `;
+            return;
+        }
+
+        const stockHTML = this.taskStock.map((task, index) => `
+            <div class="task-stock-item" onclick="app.selectTaskStock('${task.name.replace(/'/g, "\\'")}')">
+                <div class="task-stock-item-name">${task.name}</div>
+                <div class="task-stock-item-actions">
+                    <button class="task-stock-item-delete" onclick="event.stopPropagation(); app.deleteTaskStock(${index})" title="削除">
+                        <span class="material-icons">delete</span>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        stockList.innerHTML = stockHTML;
+    }
+
+    async addTaskStock() {
+        const input = document.getElementById('task-stock-input');
+        const taskName = input.value.trim();
+
+        if (!taskName) {
+            this.showToast('タスク名を入力してください', 'warning');
+            return;
+        }
+
+        // 重複チェック
+        if (this.taskStock.some(task => task.name === taskName)) {
+            this.showToast('このタスクは既に保存されています', 'warning');
+            return;
+        }
+
+        // タスクを追加
+        this.taskStock.push({
+            id: Date.now(),
+            name: taskName,
+            createdAt: new Date().toISOString()
+        });
+
+        // 保存
+        await this.saveTaskStock();
+        
+        // UI更新
+        this.updateTaskStockList();
+        input.value = '';
+        
+        this.showToast(`「${taskName}」をタスクストックに追加しました`);
+    }
+
+    async deleteTaskStock(index) {
+        if (index < 0 || index >= this.taskStock.length) return;
+        
+        const taskName = this.taskStock[index].name;
+        this.taskStock.splice(index, 1);
+        
+        // 保存
+        await this.saveTaskStock();
+        
+        // UI更新
+        this.updateTaskStockList();
+        
+        this.showToast(`「${taskName}」をタスクストックから削除しました`);
+    }
+
+    selectTaskStock(taskName) {
+        // タスク入力フィールドに選択されたタスクをセット
+        const taskInput = document.getElementById('task-input');
+        // 既存の入力内容をクリアしてから新しいタスク名をセット
+        taskInput.value = '';
+        taskInput.value = taskName;
+        taskInput.focus();
+        taskInput.select();
+        
+        // ダイアログを閉じる
+        this.hideTaskStockDialog();
+        
+        this.showToast(`「${taskName}」を入力フィールドにセットしました`);
+    }
+
+    async clearTaskStock() {
+        if (this.taskStock.length === 0) {
+            this.showToast('クリアするタスクがありません', 'warning');
+            return;
+        }
+
+        // 確認ダイアログを表示（既存の確認ダイアログを流用）
+        const dialog = document.getElementById('confirm-dialog');
+        const title = document.getElementById('confirm-title');
+        const message = document.getElementById('confirm-message');
+        
+        title.textContent = 'タスクストックをクリア';
+        message.textContent = 'すべてのタスクストックが削除されます。この操作は元に戻せません。本当に実行しますか？';
+        
+        this.pendingAction = 'clearTaskStock';
+        this.hideTaskStockDialog();
+        dialog.classList.add('show');
+    }
+
+    async executeClearTaskStock() {
+        this.taskStock = [];
+        await this.saveTaskStock();
+        this.updateTaskStockList();
+        this.showToast('タスクストックをクリアしました');
     }
 }
 
