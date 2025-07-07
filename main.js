@@ -91,6 +91,7 @@ function createWindow() {
 
   mainWindow.loadFile('renderer/index.html');
 
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
@@ -149,25 +150,46 @@ function restoreAndFocusWindow() {
     // 4. タスクバーに確実に表示
     mainWindow.setSkipTaskbar(false);
     
-    // 5. 一時的に最前面に表示（Windowsでのフォーカス問題を解決）
+    // 5. プラットフォーム別のフォーカス処理
     if (process.platform === 'win32') {
       console.log('Windows用のフォーカス処理を実行します');
-      mainWindow.setAlwaysOnTop(true);
-      mainWindow.focus();
       
-      // 500ms後に最前面表示を解除
-      setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.setAlwaysOnTop(false);
-          console.log('最前面表示を解除しました');
-        }
-      }, 500);
+      // ページを完全にリロードしてDOM状態をリセット
+      console.log('ページをリロードしてDOM状態をリセットします');
+      mainWindow.webContents.reload();
+      
+      // リロード完了後にフォーカス処理を実行
+      mainWindow.webContents.once('did-finish-load', () => {
+        console.log('ページリロードが完了しました');
+        
+        // ウィンドウを表示してフォーカス
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.moveTop();
+        mainWindow.center();
+        
+        // 短時間だけ最前面に表示
+        mainWindow.setAlwaysOnTop(true);
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.setAlwaysOnTop(false);
+            console.log('フォーカス処理が完了しました');
+          }
+        }, 200);
+      });
     } else {
       // macOSやLinux用の処理
       mainWindow.focus();
       if (process.platform === 'darwin') {
         app.focus();
       }
+      
+      // レンダラープロセスにフォーカス復元を通知
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('window-restored');
+        }
+      }, 100);
     }
     
     // 6. ウィンドウを中央に移動（必要に応じて）
@@ -218,6 +240,7 @@ function createApplicationMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  
 }
 
 function createTray() {

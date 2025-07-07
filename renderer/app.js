@@ -9,6 +9,7 @@ class NippoApp {
         this.originalTabContents = new Map();
         this.hasUnsavedChanges = false;
         this.taskStock = [];
+        this.eventListenersInitialized = false;
         this.init();
     }
 
@@ -18,11 +19,24 @@ class NippoApp {
         this.updateTaskCounter();
         this.updateBreakButton(false); // 初期状態は休憩開始ボタン
 
-        // タスク入力フォーカスのイベントリスナーを追加
-        window.electronAPI.onFocusTaskInput(() => {
-            const taskInput = document.getElementById('task-input');
-            taskInput.focus();
-        });
+        // タスク入力フォーカスのイベントリスナーを追加（重複防止）
+        if (!this.eventListenersInitialized) {
+            window.electronAPI.onFocusTaskInput(() => {
+                const taskInput = document.getElementById('task-input');
+                if (taskInput) {
+                    taskInput.focus();
+                }
+            });
+            
+            // ウィンドウ復元時の処理を追加
+            window.electronAPI.onWindowRestored(() => {
+                console.log('ウィンドウが復元されました - DOM状態を確認中...');
+                this.handleWindowRestored();
+            });
+            
+            
+            this.eventListenersInitialized = true;
+        }
 
         // APIサーバーのポートを取得し、準備を待つ
         window.electronAPI.onApiPort(async (port) => {
@@ -1002,10 +1016,16 @@ class NippoApp {
     }
 
     setupContentChangeListeners() {
+        // 既存のイベントリスナーを削除してから新しいものを追加
+        this.removeContentChangeListeners();
+        
         // 報告先がない場合の単一テキストエリア
         if (this.reportUrls.length === 0) {
             const textarea = document.getElementById('single-report-content');
             if (textarea) {
+                // 既存のリスナーを削除
+                textarea.removeEventListener('input', this.checkForChanges);
+                // 新しいリスナーを追加
                 textarea.addEventListener('input', () => this.checkForChanges());
             }
         } else {
@@ -1014,7 +1034,29 @@ class NippoApp {
                 const tabId = url.id.toString();
                 const textarea = document.getElementById(`tab-content-${tabId}`);
                 if (textarea) {
+                    // 既存のリスナーを削除
+                    textarea.removeEventListener('input', this.checkForChanges);
+                    // 新しいリスナーを追加
                     textarea.addEventListener('input', () => this.checkForChanges());
+                }
+            }
+        }
+    }
+
+    removeContentChangeListeners() {
+        // 単一テキストエリアのリスナーを削除
+        const singleTextarea = document.getElementById('single-report-content');
+        if (singleTextarea) {
+            singleTextarea.removeEventListener('input', this.checkForChanges);
+        }
+        
+        // タブ別テキストエリアのリスナーを削除
+        if (this.reportUrls && this.reportUrls.length > 0) {
+            for (const url of this.reportUrls) {
+                const tabId = url.id.toString();
+                const textarea = document.getElementById(`tab-content-${tabId}`);
+                if (textarea) {
+                    textarea.removeEventListener('input', this.checkForChanges);
                 }
             }
         }
@@ -1727,6 +1769,99 @@ class NippoApp {
         this.updateTaskStockList();
         this.showToast('タスクストックをクリアしました');
     }
+
+    handleWindowRestored() {
+        console.log('ウィンドウ復元処理を実行中...');
+        
+        // 最優先で全てのオーバーレイダイアログを強制的に非表示にする
+        const dialogs = document.querySelectorAll('.edit-dialog, .report-dialog, .confirm-dialog, .task-stock-dialog');
+        dialogs.forEach(dialog => {
+            if (dialog) {
+                dialog.classList.remove('show');
+                dialog.style.display = 'none';
+                dialog.style.pointerEvents = 'none';
+                dialog.style.zIndex = '-1';
+                console.log('ダイアログを強制的に非表示にしました:', dialog.className);
+            }
+        });
+        
+        // 背景オーバーレイがある場合は削除
+        const overlays = document.querySelectorAll('[style*="background: rgba(0, 0, 0"]');
+        overlays.forEach(overlay => {
+            if (overlay.style.position === 'fixed') {
+                overlay.style.display = 'none';
+                overlay.style.pointerEvents = 'none';
+                console.log('背景オーバーレイを無効化しました');
+            }
+        });
+        
+        // DOM要素の状態を確認
+        const taskInput = document.getElementById('task-input');
+        const reportContent = document.getElementById('single-report-content');
+        
+        if (taskInput) {
+            console.log('タスク入力フィールドが見つかりました');
+            // フォーカス可能な状態に復元
+            taskInput.disabled = false;
+            taskInput.style.pointerEvents = 'auto';
+            taskInput.style.opacity = '1';
+            taskInput.style.zIndex = 'auto';
+        } else {
+            console.warn('タスク入力フィールドが見つかりません');
+        }
+        
+        if (reportContent) {
+            console.log('レポートコンテンツが見つかりました');
+            // レポートエリアも操作可能に復元
+            reportContent.disabled = false;
+            reportContent.style.pointerEvents = 'auto';
+            reportContent.style.opacity = '1';
+            reportContent.style.zIndex = 'auto';
+        }
+        
+        // 全てのボタンを操作可能に復元
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(button => {
+            button.disabled = false;
+            button.style.pointerEvents = 'auto';
+            button.style.opacity = '1';
+            button.style.cursor = 'pointer';
+            button.style.zIndex = 'auto';
+        });
+        
+        // 全てのinput要素を操作可能に復元
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.disabled = false;
+            input.style.pointerEvents = 'auto';
+            input.style.opacity = '1';
+            input.style.zIndex = 'auto';
+        });
+        
+        // 全てのtextarea要素を操作可能に復元
+        const textareas = document.querySelectorAll('textarea');
+        textareas.forEach(textarea => {
+            textarea.disabled = false;
+            textarea.style.pointerEvents = 'auto';
+            textarea.style.opacity = '1';
+            textarea.style.zIndex = 'auto';
+        });
+        
+        // body要素のスタイルも復元
+        document.body.style.pointerEvents = 'auto !important';
+        document.body.style.userSelect = 'auto';
+        document.body.style.zIndex = 'auto';
+        
+        // メインコンテナを確実に操作可能にする
+        const mainContent = document.querySelector('.main-content, .container, main');
+        if (mainContent) {
+            mainContent.style.pointerEvents = 'auto';
+            mainContent.style.zIndex = '1';
+        }
+        
+        console.log('ウィンドウ復元処理が完了しました');
+    }
+
 }
 
 // グローバルにアクセスできるようにする

@@ -39,6 +39,7 @@ body {
   color: var(--text-primary);
   overflow: hidden;
   user-select: none;
+  pointer-events: auto !important;
 }
 
 /* タイトルバー */
