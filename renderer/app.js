@@ -10,6 +10,9 @@ class NippoApp {
         this.hasUnsavedChanges = false;
         this.taskStock = [];
         this.eventListenersInitialized = false;
+        this.currentHotkeyTarget = null;
+        this.isCapturingHotkey = false;
+        this.settings = {};
         this.init();
     }
 
@@ -34,6 +37,12 @@ class NippoApp {
                 this.handleWindowRestored();
             });
             
+            // タスク終了のグローバルホットキー処理
+            window.electronAPI.onEndCurrentTask(() => {
+                console.log('グローバルホットキーでタスク終了が要求されました');
+                this.endTask();
+            });
+            
             
             this.eventListenersInitialized = true;
         }
@@ -51,6 +60,13 @@ class NippoApp {
                 // 起動時に既存データを読み込み
                 console.log('アプリ起動時のデータ読み込み開始...');
                 await this.loadTasks();
+                
+                // 設定を読み込み
+                try {
+                    await this.loadSettings();
+                } catch (error) {
+                    console.error('設定の読み込みに失敗しました:', error);
+                }
             } else {
                 console.error('APIの準備が完了しなかったため、タスクを読み込めません。');
                 // ここでユーザーにエラーメッセージを表示するなどの処理を追加できます
@@ -109,7 +125,7 @@ class NippoApp {
         document.getElementById('create-report-btn').addEventListener('click', () => this.showReportDialog());
 
         // 設定
-        document.getElementById('settings-btn').addEventListener('click', () => this.showSettingsDialog());
+        document.getElementById('settings-btn').addEventListener('click', () => this.openSettingsDialog());
 
         // タスクストック
         document.getElementById('task-stock-btn').addEventListener('click', () => this.showTaskStockDialog());
@@ -140,9 +156,24 @@ class NippoApp {
         document.getElementById('report-save').addEventListener('click', () => this.saveReport());
 
         // 設定ダイアログのイベントリスナー
-        document.getElementById('settings-close').addEventListener('click', () => this.hideSettingsDialog());
-        document.getElementById('settings-cancel').addEventListener('click', () => this.hideSettingsDialog());
+        document.getElementById('settings-close').addEventListener('click', () => this.closeSettingsDialog());
+        document.getElementById('settings-cancel').addEventListener('click', () => this.closeSettingsDialog());
+        document.getElementById('settings-save').addEventListener('click', () => this.saveSettings());
         document.getElementById('add-url-btn').addEventListener('click', () => this.addReportUrl());
+        
+        // ホットキー入力フィールドのイベントリスナー
+        document.getElementById('hotkey-toggle').addEventListener('click', () => this.startHotkeyCapture('hotkey-toggle'));
+        document.getElementById('hotkey-new-task').addEventListener('click', () => this.startHotkeyCapture('hotkey-new-task'));
+        document.getElementById('hotkey-end-task').addEventListener('click', () => this.startHotkeyCapture('hotkey-end-task'));
+        
+        // クリアボタンのイベントリスナー
+        document.querySelectorAll('.clear-hotkey').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = e.target.closest('.clear-hotkey').dataset.target;
+                this.clearHotkey(target);
+            });
+        });
+        
 
         // タスクストックダイアログのイベントリスナー
         document.getElementById('task-stock-close').addEventListener('click', () => this.hideTaskStockDialog());
@@ -153,6 +184,13 @@ class NippoApp {
         // タスクストック入力のEnterキー対応
         document.getElementById('task-stock-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.addTaskStock();
+        });
+        
+        // ホットキーキャプチャ用のキーボードイベントリスナー
+        document.addEventListener('keydown', (e) => {
+            if (this.isCapturingHotkey) {
+                this.captureHotkey(e);
+            }
         });
     }
 
@@ -1493,19 +1531,300 @@ class NippoApp {
         }
     }
 
-    async showSettingsDialog() {
+    async openSettingsDialog() {
         // URL一覧を読み込み
         await this.loadReportUrls();
+
+        // 設定を読み込み（ダイアログ表示前に実行）
+        await this.loadSettings();
 
         // ダイアログを表示
         const dialog = document.getElementById('settings-dialog');
         dialog.classList.add('show');
     }
 
-    hideSettingsDialog() {
+    closeSettingsDialog() {
         const dialog = document.getElementById('settings-dialog');
         dialog.classList.remove('show');
+        
+        // ホットキーキャプチャを停止
+        this.isCapturingHotkey = false;
+        this.currentHotkeyTarget = null;
     }
+    
+    async loadSettings() {
+        try {
+            const settings = await window.electronAPI.getSettings();
+            this.settings = settings;
+            
+            // UI要素に設定を反映
+            const hotkeyToggle = document.getElementById('hotkey-toggle');
+            const hotkeyNewTask = document.getElementById('hotkey-new-task');
+            const hotkeyEndTask = document.getElementById('hotkey-end-task');
+            
+            if (hotkeyToggle) {
+                hotkeyToggle.value = settings.globalHotkey?.toggleWindow || '';
+            }
+            
+            if (hotkeyNewTask) {
+                hotkeyNewTask.value = settings.globalHotkey?.newTask || '';
+            }
+            
+            if (hotkeyEndTask) {
+                hotkeyEndTask.value = settings.globalHotkey?.endTask || '';
+            }
+            
+        } catch (error) {
+            console.error('設定の読み込みエラー:', error);
+            this.showToast('設定の読み込みに失敗しました', 'error');
+        }
+    }
+    
+    async saveSettings() {
+        try {
+            const hotkeyToggle = document.getElementById('hotkey-toggle').value;
+            const hotkeyNewTask = document.getElementById('hotkey-new-task').value;
+            const hotkeyEndTask = document.getElementById('hotkey-end-task').value;
+            
+            const settings = {
+                ...this.settings,
+                globalHotkey: {
+                    toggleWindow: hotkeyToggle,
+                    newTask: hotkeyNewTask,
+                    endTask: hotkeyEndTask
+                }
+            };
+            
+            const result = await window.electronAPI.saveSettings(settings);
+            if (result) {
+                this.settings = settings;
+                this.showToast('設定を保存しました');
+            } else {
+                this.showToast('設定の保存に失敗しました', 'error');
+            }
+        } catch (error) {
+            console.error('設定の保存エラー:', error);
+            this.showToast('設定の保存に失敗しました', 'error');
+        }
+    }
+    
+    startHotkeyCapture(targetId) {
+        this.currentHotkeyTarget = targetId;
+        this.isCapturingHotkey = true;
+        
+        const input = document.getElementById(targetId);
+        if (input) {
+            input.value = '';
+            input.placeholder = 'キーの組み合わせを押してください...';
+            input.focus();
+        }
+    }
+    
+    captureHotkey(event) {
+        if (!this.isCapturingHotkey || !this.currentHotkeyTarget) return;
+        
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const modifiers = [];
+        let key = event.key;
+        
+        // 修飾キーの処理
+        if (event.ctrlKey || event.metaKey) {
+            modifiers.push('CommandOrControl');
+        }
+        if (event.altKey) {
+            modifiers.push('Alt');
+        }
+        if (event.shiftKey) {
+            modifiers.push('Shift');
+        }
+        
+        // 修飾キーのみの場合は無視
+        if (['Control', 'Alt', 'Shift', 'Meta', 'Cmd', 'Command'].includes(key)) {
+            return;
+        }
+        
+        // キーの正規化処理
+        key = this.normalizeKey(key);
+        
+        // 有効なキーの組み合わせを作成
+        let hotkey = '';
+        if (modifiers.length > 0) {
+            hotkey = modifiers.join('+') + '+' + key;
+        } else {
+            // 修飾キーなしの場合は受け付けない
+            this.showToast('修飾キーと組み合わせてください', 'warning');
+            return;
+        }
+        
+        // ホットキーを検証
+        if (this.validateHotkey(hotkey)) {
+            const input = document.getElementById(this.currentHotkeyTarget);
+            if (input) {
+                input.value = hotkey;
+                input.placeholder = 'クリックしてキーを設定';
+            }
+            
+            this.isCapturingHotkey = false;
+            this.currentHotkeyTarget = null;
+            
+            this.showToast('ホットキーを設定しました');
+        } else {
+            this.showToast('無効なキーの組み合わせです', 'error');
+        }
+    }
+    
+    normalizeKey(key) {
+        // 記号キーのマッピング（キーボードのキーイベントからElectronのglobalShortcut形式に変換）
+        const keyMap = {
+            // 記号キー
+            ',': 'Comma',
+            '.': 'Period',
+            ';': 'Semicolon',
+            ':': 'Colon',
+            '!': 'Exclamation',
+            '?': 'Question',
+            '/': 'Slash',
+            '\\': 'Backslash',
+            '-': 'Minus',
+            '_': 'Underscore',
+            '=': 'Equal',
+            '+': 'Plus',
+            '[': 'BracketLeft',
+            ']': 'BracketRight',
+            '{': 'BraceLeft',
+            '}': 'BraceRight',
+            '(': 'ParenLeft',
+            ')': 'ParenRight',
+            '<': 'Less',
+            '>': 'Greater',
+            '\'': 'Quote',
+            '"': 'DoubleQuote',
+            '`': 'Backtick',
+            '~': 'Tilde',
+            '@': 'At',
+            '#': 'Hash',
+            '$': 'Dollar',
+            '%': 'Percent',
+            '^': 'Caret',
+            '&': 'Ampersand',
+            '*': 'Asterisk',
+            '|': 'Pipe',
+            
+            // 特殊キー
+            ' ': 'Space',
+            'Enter': 'Return',
+            'Escape': 'Escape',
+            'Backspace': 'Backspace',
+            'Delete': 'Delete',
+            'Tab': 'Tab',
+            'ArrowUp': 'Up',
+            'ArrowDown': 'Down',
+            'ArrowLeft': 'Left',
+            'ArrowRight': 'Right',
+            'Home': 'Home',
+            'End': 'End',
+            'PageUp': 'PageUp',
+            'PageDown': 'PageDown',
+            'Insert': 'Insert',
+            'CapsLock': 'CapsLock',
+            'ScrollLock': 'ScrollLock',
+            'NumLock': 'NumLock',
+            'PrintScreen': 'PrintScreen',
+            'Pause': 'Pause',
+            'ContextMenu': 'ContextMenu',
+            
+            // ファンクションキー（F1-F24）
+            'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4', 'F5': 'F5', 'F6': 'F6',
+            'F7': 'F7', 'F8': 'F8', 'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12',
+            'F13': 'F13', 'F14': 'F14', 'F15': 'F15', 'F16': 'F16', 'F17': 'F17', 'F18': 'F18',
+            'F19': 'F19', 'F20': 'F20', 'F21': 'F21', 'F22': 'F22', 'F23': 'F23', 'F24': 'F24',
+            
+            // テンキー
+            'Numpad0': 'Num0', 'Numpad1': 'Num1', 'Numpad2': 'Num2', 'Numpad3': 'Num3',
+            'Numpad4': 'Num4', 'Numpad5': 'Num5', 'Numpad6': 'Num6', 'Numpad7': 'Num7',
+            'Numpad8': 'Num8', 'Numpad9': 'Num9',
+            'NumpadAdd': 'NumAdd',
+            'NumpadSubtract': 'NumSub',
+            'NumpadMultiply': 'NumMult',
+            'NumpadDivide': 'NumDiv',
+            'NumpadDecimal': 'NumDecimal',
+            'NumpadEnter': 'NumReturn',
+            
+            // メディアキー
+            'MediaPlayPause': 'MediaPlayPause',
+            'MediaStop': 'MediaStop',
+            'MediaTrackNext': 'MediaNextTrack',
+            'MediaTrackPrevious': 'MediaPreviousTrack',
+            'VolumeUp': 'VolumeUp',
+            'VolumeDown': 'VolumeDown',
+            'VolumeMute': 'VolumeMute'
+        };
+        
+        // マッピングテーブルにある場合はそれを使用
+        if (keyMap[key]) {
+            return keyMap[key];
+        }
+        
+        // 英数字の場合は大文字に変換
+        if (key.length === 1 && /[a-zA-Z0-9]/.test(key)) {
+            return key.toUpperCase();
+        }
+        
+        // その他の場合はそのまま返す
+        return key;
+    }
+    
+    validateHotkey(hotkey) {
+        if (!hotkey || typeof hotkey !== 'string') {
+            return false;
+        }
+        
+        // 基本的な検証
+        const parts = hotkey.split('+');
+        if (parts.length < 2) {
+            return false;
+        }
+        
+        const validModifiers = ['CommandOrControl', 'Command', 'Control', 'Alt', 'Shift', 'Super'];
+        const key = parts[parts.length - 1];
+        const modifiers = parts.slice(0, -1);
+        
+        // 修飾キーの検証
+        for (const modifier of modifiers) {
+            if (!validModifiers.includes(modifier)) {
+                return false;
+            }
+        }
+        
+        // キーの検証（拡張版）
+        const validKeys = [
+            // 英数字
+            /^[A-Z0-9]$/,
+            // ファンクションキー
+            /^F([1-9]|1[0-9]|2[0-4])$/,
+            // 特殊キー
+            /^(Space|Return|Tab|Backspace|Delete|Escape|Up|Down|Left|Right|Home|End|PageUp|PageDown|Insert|CapsLock|ScrollLock|NumLock|PrintScreen|Pause|ContextMenu)$/,
+            // 記号キー
+            /^(Comma|Period|Semicolon|Colon|Exclamation|Question|Slash|Backslash|Minus|Underscore|Equal|Plus|BracketLeft|BracketRight|BraceLeft|BraceRight|ParenLeft|ParenRight|Less|Greater|Quote|DoubleQuote|Backtick|Tilde|At|Hash|Dollar|Percent|Caret|Ampersand|Asterisk|Pipe)$/,
+            // テンキー
+            /^(Num[0-9]|NumAdd|NumSub|NumMult|NumDiv|NumDecimal|NumReturn)$/,
+            // メディアキー
+            /^(MediaPlayPause|MediaStop|MediaNextTrack|MediaPreviousTrack|VolumeUp|VolumeDown|VolumeMute)$/
+        ];
+        
+        return validKeys.some(regex => regex.test(key));
+    }
+    
+    clearHotkey(targetId) {
+        const input = document.getElementById(targetId);
+        if (input) {
+            input.value = '';
+            this.showToast('ホットキーをクリアしました');
+        }
+    }
+    
 
     async loadReportUrls() {
         const urlList = document.getElementById('url-list');
