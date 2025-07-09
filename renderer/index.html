@@ -249,6 +249,20 @@
             </div>
             <div class="settings-body">
                 <div class="settings-section">
+                    <h4>⌨️ グローバルホットキー</h4>
+                    <div class="hotkey-section">
+                        <div class="hotkey-group">
+                            <label for="hotkey-toggle">アプリの表示/非表示切り替え</label>
+                            <div class="hotkey-input-group">
+                                <input type="text" id="hotkey-toggle" class="hotkey-input" placeholder="クリックしてキーを設定" readonly />
+                                <button class="clear-hotkey" data-target="hotkey-toggle">
+                                    <span class="material-icons">clear</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section">
                     <h4>🔗 報告先URL</h4>
                     <div class="url-list" id="url-list">
                         <!-- URL一覧が動的に挿入される -->
@@ -266,6 +280,7 @@
             </div>
             <div class="settings-footer">
                 <button class="btn-cancel" id="settings-cancel">戻る</button>
+                <button class="btn-primary" id="settings-save">保存</button>
             </div>
         </div>
     </div>

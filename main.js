@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell, Tray } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, Tray, globalShortcut } = require('electron');
 const path = require('path');
 const { TaskManager, createApp } = require('./backend/task-manager');
 const fs = require('fs'); // fsモジュールをグローバルにインポート
@@ -6,6 +6,8 @@ const fs = require('fs'); // fsモジュールをグローバルにインポー�
 let mainWindow;
 let taskManager;
 let tray;
+let settings = {};
+let registeredHotkeys = [];
 
 // デバッグログファイルのパスをグローバルに定義
 let debugLogPath;
@@ -249,25 +251,6 @@ function createTray() {
   
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'SlackTracker を表示',
-      click: () => {
-        restoreAndFocusWindow();
-      }
-    },
-    {
-      label: 'タスク追加',
-      click: () => {
-        restoreAndFocusWindow();
-        // ウィンドウが表示された後にタスク入力にフォーカス
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('focus-task-input');
-          }
-        }, 100);
-      }
-    },
-    { type: 'separator' },
-    {
       label: '終了',
       click: () => {
         app.isQuitting = true;
@@ -351,9 +334,16 @@ app.whenReady().then(async () => {
   debugLogPath = path.join(app.getPath('userData'), 'debug.log');
 
   await initializeBackend();
+  
+  // 設定を読み込み
+  await loadSettings();
+  
   createWindow();
   createApplicationMenu(); // アプリケーションメニューを作成
   createTray(); // システムトレイを作成
+  
+  // ホットキーを登録
+  registerHotkeys();
 
   // Expressサーバーを起動
   const expressApp = createApp(taskManager);
@@ -385,6 +375,9 @@ app.on('before-quit', () => {
 });
 
 app.on('will-quit', () => {
+  // ホットキーを解除
+  unregisterAllHotkeys();
+  
   if (tray && !tray.isDestroyed()) {
     tray.destroy();
   }
@@ -427,6 +420,107 @@ app.on('web-contents-created', (event, contents) => {
     dialog.showErrorBox('応答なし', 'レンダラープロセスが応答しません。');
   });
 });
+
+// 設定管理機能
+function getSettingsPath() {
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+
+async function loadSettings() {
+  try {
+    const settingsPath = getSettingsPath();
+    if (fs.existsSync(settingsPath)) {
+      const data = await fs.promises.readFile(settingsPath, 'utf8');
+      settings = JSON.parse(data);
+    } else {
+      settings = {
+        globalHotkey: {
+          toggleWindow: ''
+        }
+      };
+    }
+    console.log('設定を読み込みました:', settings);
+  } catch (error) {
+    console.error('設定の読み込みに失敗しました:', error);
+    settings = {
+      globalHotkey: {
+        toggleWindow: ''
+      }
+    };
+  }
+}
+
+async function saveSettings(newSettings) {
+  try {
+    const settingsPath = getSettingsPath();
+    await fs.promises.writeFile(settingsPath, JSON.stringify(newSettings, null, 2));
+    
+    // 古いホットキーを解除
+    unregisterAllHotkeys();
+    
+    // 新しい設定を保存
+    settings = newSettings;
+    
+    // 新しいホットキーを登録
+    registerHotkeys();
+    
+    console.log('設定を保存しました:', settings);
+    return true;
+  } catch (error) {
+    console.error('設定の保存に失敗しました:', error);
+    return false;
+  }
+}
+
+// ホットキー管理機能
+function registerHotkeys() {
+  if (!settings.globalHotkey) return;
+  
+  // アプリの表示/非表示切り替え
+  if (settings.globalHotkey.toggleWindow) {
+    try {
+      const success = globalShortcut.register(settings.globalHotkey.toggleWindow, () => {
+        console.log('アプリの表示/非表示を切り替えます');
+        toggleWindowVisibility();
+      });
+      
+      if (success) {
+        registeredHotkeys.push(settings.globalHotkey.toggleWindow);
+        console.log(`ホットキー「${settings.globalHotkey.toggleWindow}」を登録しました (アプリ表示/非表示)`);
+      } else {
+        console.error(`ホットキー「${settings.globalHotkey.toggleWindow}」の登録に失敗しました`);
+      }
+    } catch (error) {
+      console.error('ホットキー登録エラー:', error);
+    }
+  }
+}
+
+function unregisterAllHotkeys() {
+  registeredHotkeys.forEach(hotkey => {
+    globalShortcut.unregister(hotkey);
+    console.log(`ホットキー「${hotkey}」を解除しました`);
+  });
+  registeredHotkeys = [];
+}
+
+function toggleWindowVisibility() {
+  if (!mainWindow) return;
+  
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    restoreAndFocusWindow();
+  }
+}
+
+function showWindow() {
+  if (!mainWindow) return;
+  
+  if (!mainWindow.isVisible()) {
+    restoreAndFocusWindow();
+  }
+}
 
 // IPC handlers (変更なし)
 ipcMain.handle('get-tasks', async () => {
@@ -684,5 +778,31 @@ ipcMain.handle('save-report-tab-content', async (event, tabId, content) => {
     console.error('報告タブ内容保存エラー:', error);
     writeDebugLog(`save-report-tab-content エラー: ${error.message}`);
     return { success: false, error: error.message };
+  }
+});
+
+// 設定管理のIPCハンドラ
+ipcMain.handle('get-settings', async () => {
+  try {
+    return settings;
+  } catch (error) {
+    console.error('設定取得エラー:', error);
+    writeDebugLog(`get-settings エラー: ${error.message}`);
+    return {
+      globalHotkey: {
+        toggleWindow: ''
+      }
+    };
+  }
+});
+
+ipcMain.handle('save-settings', async (event, newSettings) => {
+  try {
+    const success = await saveSettings(newSettings);
+    return success;
+  } catch (error) {
+    console.error('設定保存エラー:', error);
+    writeDebugLog(`save-settings エラー: ${error.message}`);
+    return false;
   }
 });

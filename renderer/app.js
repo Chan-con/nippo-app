@@ -37,11 +37,6 @@ class NippoApp {
                 this.handleWindowRestored();
             });
             
-            // タスク終了のグローバルホットキー処理
-            window.electronAPI.onEndCurrentTask(() => {
-                console.log('グローバルホットキーでタスク終了が要求されました');
-                this.endTask();
-            });
             
             
             this.eventListenersInitialized = true;
@@ -163,8 +158,6 @@ class NippoApp {
         
         // ホットキー入力フィールドのイベントリスナー
         document.getElementById('hotkey-toggle').addEventListener('click', () => this.startHotkeyCapture('hotkey-toggle'));
-        document.getElementById('hotkey-new-task').addEventListener('click', () => this.startHotkeyCapture('hotkey-new-task'));
-        document.getElementById('hotkey-end-task').addEventListener('click', () => this.startHotkeyCapture('hotkey-end-task'));
         
         // クリアボタンのイベントリスナー
         document.querySelectorAll('.clear-hotkey').forEach(btn => {
@@ -1559,19 +1552,9 @@ class NippoApp {
             
             // UI要素に設定を反映
             const hotkeyToggle = document.getElementById('hotkey-toggle');
-            const hotkeyNewTask = document.getElementById('hotkey-new-task');
-            const hotkeyEndTask = document.getElementById('hotkey-end-task');
             
             if (hotkeyToggle) {
                 hotkeyToggle.value = settings.globalHotkey?.toggleWindow || '';
-            }
-            
-            if (hotkeyNewTask) {
-                hotkeyNewTask.value = settings.globalHotkey?.newTask || '';
-            }
-            
-            if (hotkeyEndTask) {
-                hotkeyEndTask.value = settings.globalHotkey?.endTask || '';
             }
             
         } catch (error) {
@@ -1583,15 +1566,11 @@ class NippoApp {
     async saveSettings() {
         try {
             const hotkeyToggle = document.getElementById('hotkey-toggle').value;
-            const hotkeyNewTask = document.getElementById('hotkey-new-task').value;
-            const hotkeyEndTask = document.getElementById('hotkey-end-task').value;
             
             const settings = {
                 ...this.settings,
                 globalHotkey: {
-                    toggleWindow: hotkeyToggle,
-                    newTask: hotkeyNewTask,
-                    endTask: hotkeyEndTask
+                    toggleWindow: hotkeyToggle
                 }
             };
             

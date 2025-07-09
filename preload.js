@@ -20,5 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   getReportTabs: () => ipcRenderer.invoke('get-report-tabs'),
   getReportTabContent: (tabId) => ipcRenderer.invoke('get-report-tab-content', tabId),
-  saveReportTabContent: (tabId, content) => ipcRenderer.invoke('save-report-tab-content', tabId, content)
+  saveReportTabContent: (tabId, content) => ipcRenderer.invoke('save-report-tab-content', tabId, content),
+  
+  // 設定管理
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings)
 });
