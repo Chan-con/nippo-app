@@ -197,11 +197,13 @@ body {
   box-shadow: var(--shadow-small);
 }
 
-.btn-primary:disabled {
+.btn-primary:disabled,
+.btn-primary.disabled {
   background: var(--surface);
   color: var(--text-muted);
   cursor: not-allowed;
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .btn-primary.active {
@@ -1641,23 +1643,42 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
-  margin-bottom: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-small);
-  cursor: pointer;
   transition: all 0.2s ease;
+  min-height: 40px;
 }
 
 .task-stock-item:hover {
   background: var(--bg-tertiary);
   border-color: var(--accent);
-  transform: translateX(4px);
 }
 
 .task-stock-item:last-child {
   margin-bottom: 0;
+}
+
+.task-stock-item-drag-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  cursor: grab;
+  padding: 4px;
+  margin-right: 8px;
+  border-radius: var(--radius-small);
+  transition: all 0.2s ease;
+}
+
+.task-stock-item-drag-handle:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent);
+}
+
+.task-stock-item-drag-handle:active {
+  cursor: grabbing;
 }
 
 .task-stock-item-name {
@@ -1730,11 +1751,26 @@ body {
 
 .task-stock-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 16px 24px 24px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.task-stock-footer-buttons {
+  display: flex;
   gap: 12px;
+}
+
+/* 目標作成画面の項目は選択不可 */
+#goal-stock-dialog .task-stock-item {
+  cursor: default;
+  pointer-events: none;
+}
+
+#goal-stock-dialog .task-stock-item .task-stock-item-drag-handle,
+#goal-stock-dialog .task-stock-item .task-stock-item-delete {
+  pointer-events: all;
 }
 
 .task-stock-footer button {

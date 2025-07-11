@@ -57,6 +57,10 @@
                         <span class="material-icons">description</span>
                         報告書作成
                     </button>
+                    <button id="goal-stock-btn" class="btn-secondary">
+                        <span class="material-icons">flag</span>
+                        目標作成
+                    </button>
                     <button id="task-stock-btn" class="btn-secondary">
                         <span class="material-icons">bookmark</span>
                         タスクストック
@@ -200,6 +204,12 @@
             </div>
             <div class="report-body">
                 <div class="report-section">
+                    <h4>🎯 目標</h4>
+                    <div class="goal-summary" id="goal-summary">
+                        <!-- 目標サマリーが動的に挿入される -->
+                    </div>
+                </div>
+                <div class="report-section">
                     <h4>📅 今日の作業内容</h4>
                     <div class="task-summary" id="task-summary">
                         <!-- タスクサマリーが動的に挿入される -->
@@ -227,11 +237,15 @@
                 <button class="btn-cancel" id="report-cancel">戻る</button>
                 <button class="btn-secondary" id="copy-timeline-btn">
                     <span class="material-icons">content_copy</span>
-                    タイムラインコピー
+                    タイムライン
+                </button>
+                <button class="btn-secondary" id="copy-goals-btn">
+                    <span class="material-icons">content_copy</span>
+                    目標
                 </button>
                 <button class="btn-secondary" id="report-copy">
                     <span class="material-icons">content_copy</span>
-                    テキストコピー
+                    テキスト
                 </button>
                 <button class="btn-primary" id="report-save">保存</button>
             </div>
@@ -285,6 +299,45 @@
         </div>
     </div>
 
+    <!-- 目標ストック管理ダイアログ -->
+    <div class="task-stock-dialog" id="goal-stock-dialog">
+        <div class="task-stock-content">
+            <div class="task-stock-header">
+                <h3>🎯 目標管理</h3>
+                <button class="task-stock-close" id="goal-stock-close">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="task-stock-body">
+                <div class="task-stock-section">
+                    <h4>🎯 保存済み目標</h4>
+                    <div class="task-stock-list" id="goal-stock-list">
+                        <!-- ストック済み目標が動的に挿入される -->
+                    </div>
+                </div>
+                <div class="task-stock-section">
+                    <h4>➕ 新しい目標を追加</h4>
+                    <div class="task-stock-input">
+                        <input type="text" id="goal-stock-input" class="edit-input" placeholder="目標を入力してください">
+                        <button id="add-goal-stock-btn" class="btn-primary">
+                            <span class="material-icons">add</span>
+                            追加
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="task-stock-footer">
+                <div class="task-stock-footer-buttons">
+                    <button class="btn-cancel" id="goal-stock-cancel">戻る</button>
+                    <button class="btn-primary" id="save-goal-stock-btn">
+                        <span class="material-icons">save</span>
+                        保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- タスクストック管理ダイアログ -->
     <div class="task-stock-dialog" id="task-stock-dialog">
         <div class="task-stock-content">
@@ -313,11 +366,13 @@
                 </div>
             </div>
             <div class="task-stock-footer">
-                <button class="btn-cancel" id="task-stock-cancel">戻る</button>
-                <button class="btn-danger" id="clear-task-stock-btn">
-                    <span class="material-icons">clear_all</span>
-                    すべてクリア
-                </button>
+                <div class="task-stock-footer-buttons">
+                    <button class="btn-cancel" id="task-stock-cancel">戻る</button>
+                    <button class="btn-primary" id="save-task-stock-btn">
+                        <span class="material-icons">save</span>
+                        保存
+                    </button>
+                </div>
             </div>
         </div>
     </div>

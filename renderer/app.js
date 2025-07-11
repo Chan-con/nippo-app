@@ -9,6 +9,11 @@ class NippoApp {
         this.originalTabContents = new Map();
         this.hasUnsavedChanges = false;
         this.taskStock = [];
+        this.goalStock = [];
+        this.tempGoalStock = [];
+        this.tempTaskStock = [];
+        this.hasGoalStockChanges = false;
+        this.hasTaskStockChanges = false;
         this.eventListenersInitialized = false;
         this.currentHotkeyTarget = null;
         this.isCapturingHotkey = false;
@@ -55,6 +60,9 @@ class NippoApp {
                 // 起動時に既存データを読み込み
                 console.log('アプリ起動時のデータ読み込み開始...');
                 await this.loadTasks();
+                
+                // 目標ストックを読み込み
+                await this.loadGoalStock();
                 
                 // 設定を読み込み
                 try {
@@ -122,6 +130,9 @@ class NippoApp {
         // 設定
         document.getElementById('settings-btn').addEventListener('click', () => this.openSettingsDialog());
 
+        // 目標ストック
+        document.getElementById('goal-stock-btn').addEventListener('click', () => this.showGoalStockDialog());
+
         // タスクストック
         document.getElementById('task-stock-btn').addEventListener('click', () => this.showTaskStockDialog());
 
@@ -147,6 +158,7 @@ class NippoApp {
         // 報告書ダイアログのイベントリスナー
         document.getElementById('report-close').addEventListener('click', () => this.handleReportClose());
         document.getElementById('report-cancel').addEventListener('click', () => this.handleReportClose());
+        document.getElementById('copy-goals-btn').addEventListener('click', () => this.copyGoals());
         document.getElementById('report-copy').addEventListener('click', () => this.copyReport());
         document.getElementById('report-save').addEventListener('click', () => this.saveReport());
 
@@ -168,11 +180,22 @@ class NippoApp {
         });
         
 
+        // 目標ストックダイアログのイベントリスナー
+        document.getElementById('goal-stock-close').addEventListener('click', () => this.hideGoalStockDialog());
+        document.getElementById('goal-stock-cancel').addEventListener('click', () => this.hideGoalStockDialog());
+        document.getElementById('add-goal-stock-btn').addEventListener('click', () => this.addGoalStock());
+        document.getElementById('save-goal-stock-btn').addEventListener('click', () => this.saveGoalStockChanges());
+        
+        // 目標ストック入力のEnterキー対応
+        document.getElementById('goal-stock-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addGoalStock();
+        });
+
         // タスクストックダイアログのイベントリスナー
         document.getElementById('task-stock-close').addEventListener('click', () => this.hideTaskStockDialog());
         document.getElementById('task-stock-cancel').addEventListener('click', () => this.hideTaskStockDialog());
         document.getElementById('add-task-stock-btn').addEventListener('click', () => this.addTaskStock());
-        document.getElementById('clear-task-stock-btn').addEventListener('click', () => this.clearTaskStock());
+        document.getElementById('save-task-stock-btn').addEventListener('click', () => this.saveTaskStockChanges());
         
         // タスクストック入力のEnterキー対応
         document.getElementById('task-stock-input').addEventListener('keypress', (e) => {
@@ -968,6 +991,12 @@ class NippoApp {
     }
 
     async showReportDialog() {
+        // 目標ストックを読み込み
+        await this.loadGoalStock();
+        
+        // 目標サマリーを生成
+        this.generateGoalSummary();
+
         // タスクサマリーを生成
         this.generateTaskSummary();
 
@@ -1180,6 +1209,22 @@ class NippoApp {
             const currentTabTextarea = document.getElementById(`tab-content-${this.currentTabId}`);
             return currentTabTextarea && currentTabTextarea.value.trim() !== '';
         }
+    }
+
+    generateGoalSummary() {
+        const summaryContainer = document.getElementById('goal-summary');
+        
+        if (!this.goalStock || this.goalStock.length === 0) {
+            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">目標が設定されていません</p>';
+            return;
+        }
+
+        let summaryHTML = '';
+        this.goalStock.forEach((goal, index) => {
+            summaryHTML += `<div style="margin-bottom: 8px;">・${goal.name}</div>`;
+        });
+
+        summaryContainer.innerHTML = summaryHTML;
     }
 
     generateTaskSummary() {
@@ -1521,6 +1566,29 @@ class NippoApp {
                 console.error('コピーエラー:', error);
                 this.showToast('コピーに失敗しました', 'error');
             }
+        }
+    }
+
+    async copyGoals() {
+        // 目標ストックを読み込み
+        await this.loadGoalStock();
+        
+        if (!this.goalStock || this.goalStock.length === 0) {
+            this.showToast('コピーできる目標がありません', 'warning');
+            return;
+        }
+
+        // 目標を・目標１、・目標２の形式でコピー
+        const goalText = this.goalStock.map((goal, index) => {
+            return `・${goal.name}`;
+        }).join('\n');
+
+        try {
+            await navigator.clipboard.writeText(goalText);
+            this.showToast('目標をクリップボードにコピーしました');
+        } catch (error) {
+            console.error('目標コピーエラー:', error);
+            this.showToast('目標のコピーに失敗しました', 'error');
         }
     }
 
@@ -1914,10 +1982,283 @@ class NippoApp {
         }
     }
 
+    // 目標ストック管理機能
+    async showGoalStockDialog() {
+        // 目標ストックを読み込み
+        await this.loadGoalStock();
+        
+        // 一時的な配列にコピー
+        this.tempGoalStock = JSON.parse(JSON.stringify(this.goalStock));
+        
+        // 変更状態をリセット
+        this.hasGoalStockChanges = false;
+        this.updateGoalStockSaveButton();
+        
+        // UI更新
+        this.updateGoalStockList();
+        
+        // ダイアログを表示
+        const dialog = document.getElementById('goal-stock-dialog');
+        dialog.classList.add('show');
+    }
+
+    hideGoalStockDialog() {
+        // 保存されていない変更を破棄
+        this.tempGoalStock = [];
+        this.hasGoalStockChanges = false;
+        
+        const dialog = document.getElementById('goal-stock-dialog');
+        dialog.classList.remove('show');
+    }
+
+    async loadGoalStock() {
+        // ローカルストレージから目標ストックを読み込み
+        try {
+            const storedGoalStock = localStorage.getItem('goalStock');
+            this.goalStock = storedGoalStock ? JSON.parse(storedGoalStock) : [];
+        } catch (error) {
+            console.error('目標ストック読み込みエラー:', error);
+            this.goalStock = [];
+        }
+    }
+
+    async saveGoalStock() {
+        // ローカルストレージに目標ストックを保存
+        try {
+            localStorage.setItem('goalStock', JSON.stringify(this.goalStock));
+        } catch (error) {
+            console.error('目標ストック保存エラー:', error);
+            this.showToast('目標ストックの保存に失敗しました', 'error');
+        }
+    }
+
+    updateGoalStockList() {
+        const stockList = document.getElementById('goal-stock-list');
+        
+        if (this.tempGoalStock.length === 0) {
+            stockList.innerHTML = `
+                <div class="task-stock-empty">
+                    <span class="material-icons">flag</span>
+                    <p>まだ目標が保存されていません</p>
+                    <p class="sub-text">新しい目標を追加してください</p>
+                </div>
+            `;
+            return;
+        }
+
+        const stockHTML = this.tempGoalStock.map((goal, index) => `
+            <div class="task-stock-item" draggable="true" data-index="${index}">
+                <div class="task-stock-item-drag-handle">
+                    <span class="material-icons">drag_handle</span>
+                </div>
+                <div class="task-stock-item-name">${goal.name}</div>
+                <div class="task-stock-item-actions">
+                    <button class="task-stock-item-delete" onclick="event.stopPropagation(); app.deleteGoalStock(${index})" title="削除">
+                        <span class="material-icons">delete</span>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        stockList.innerHTML = stockHTML;
+        
+        // ドラッグ&ドロップイベントを設定
+        this.setupGoalStockDragAndDrop();
+    }
+
+    async addGoalStock() {
+        const input = document.getElementById('goal-stock-input');
+        const goalName = input.value.trim();
+
+        if (!goalName) {
+            this.showToast('目標を入力してください', 'warning');
+            return;
+        }
+
+        // 重複チェック
+        if (this.tempGoalStock.some(goal => goal.name === goalName)) {
+            this.showToast('この目標は既に追加されています', 'warning');
+            return;
+        }
+
+        // 目標を一時的に追加
+        this.tempGoalStock.push({
+            id: Date.now(),
+            name: goalName,
+            createdAt: new Date().toISOString()
+        });
+
+        // 変更状態を更新
+        this.hasGoalStockChanges = true;
+        this.updateGoalStockSaveButton();
+        
+        // UI更新
+        this.updateGoalStockList();
+        input.value = '';
+        
+        this.showToast(`「${goalName}」を追加しました（未保存）`);
+    }
+
+    async deleteGoalStock(index) {
+        if (index < 0 || index >= this.tempGoalStock.length) return;
+        
+        const goalName = this.tempGoalStock[index].name;
+        this.tempGoalStock.splice(index, 1);
+        
+        // 変更状態を更新
+        this.hasGoalStockChanges = true;
+        this.updateGoalStockSaveButton();
+        
+        // UI更新
+        this.updateGoalStockList();
+        
+        this.showToast(`「${goalName}」を削除しました（未保存）`);
+    }
+
+    selectGoalStock(goalName) {
+        // 目標ストックから選択された目標を使用（現在は追加のみ）
+        this.hideGoalStockDialog();
+        this.showToast(`目標「${goalName}」を選択しました`);
+    }
+
+
+    async saveGoalStockChanges() {
+        // 一時的な変更を実際のデータに反映
+        this.goalStock = JSON.parse(JSON.stringify(this.tempGoalStock));
+        
+        // 保存
+        await this.saveGoalStock();
+        
+        // 変更状態をリセット
+        this.hasGoalStockChanges = false;
+        this.updateGoalStockSaveButton();
+        
+        this.showToast('目標ストックを保存しました');
+    }
+
+    setupGoalStockDragAndDrop() {
+        const stockList = document.getElementById('goal-stock-list');
+        let draggedElement = null;
+        let draggedIndex = null;
+        let dragStartIndex = null;
+
+        // 既存のリスナーをクリア
+        stockList.removeEventListener('dragstart', this.goalDragStart);
+        stockList.removeEventListener('dragend', this.goalDragEnd);
+        stockList.removeEventListener('dragover', this.goalDragOver);
+        stockList.removeEventListener('drop', this.goalDrop);
+
+        // ドラッグ開始
+        this.goalDragStart = (e) => {
+            if (e.target.classList.contains('task-stock-item')) {
+                draggedElement = e.target;
+                draggedIndex = parseInt(e.target.dataset.index);
+                dragStartIndex = draggedIndex;
+                e.target.style.opacity = '0.5';
+                e.target.classList.add('dragging');
+            }
+        };
+
+        // ドラッグ終了
+        this.goalDragEnd = (e) => {
+            if (e.target.classList.contains('task-stock-item')) {
+                e.target.style.opacity = '1';
+                e.target.classList.remove('dragging');
+                
+                // 最終位置を計算
+                const allItems = [...stockList.querySelectorAll('.task-stock-item')];
+                const finalIndex = allItems.indexOf(draggedElement);
+                
+                if (dragStartIndex !== null && dragStartIndex !== finalIndex) {
+                    this.reorderGoalStock(dragStartIndex, finalIndex);
+                }
+                
+                draggedElement = null;
+                draggedIndex = null;
+                dragStartIndex = null;
+            }
+        };
+
+        // ドラッグオーバー
+        this.goalDragOver = (e) => {
+            e.preventDefault();
+            if (draggedElement) {
+                const afterElement = this.getDragAfterElement(stockList, e.clientY);
+                if (afterElement == null) {
+                    stockList.appendChild(draggedElement);
+                } else {
+                    stockList.insertBefore(draggedElement, afterElement);
+                }
+            }
+        };
+
+        // ドロップ
+        this.goalDrop = (e) => {
+            e.preventDefault();
+        };
+
+        stockList.addEventListener('dragstart', this.goalDragStart);
+        stockList.addEventListener('dragend', this.goalDragEnd);
+        stockList.addEventListener('dragover', this.goalDragOver);
+        stockList.addEventListener('drop', this.goalDrop);
+    }
+
+    getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.task-stock-item:not(.dragging)')];
+        
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    async reorderGoalStock(fromIndex, toIndex) {
+        // 配列を並び替え
+        const movedGoal = this.tempGoalStock.splice(fromIndex, 1)[0];
+        this.tempGoalStock.splice(toIndex, 0, movedGoal);
+        
+        // 変更状態を更新
+        this.hasGoalStockChanges = true;
+        this.updateGoalStockSaveButton();
+        
+        // UI更新
+        this.updateGoalStockList();
+        
+        this.showToast('目標の順序を変更しました（未保存）');
+    }
+
+    updateGoalStockSaveButton() {
+        const saveButton = document.getElementById('save-goal-stock-btn');
+        if (saveButton) {
+            saveButton.disabled = !this.hasGoalStockChanges;
+            if (this.hasGoalStockChanges) {
+                saveButton.classList.remove('disabled');
+            } else {
+                saveButton.classList.add('disabled');
+            }
+        }
+    }
+
     // タスクストック管理機能
     async showTaskStockDialog() {
         // タスクストックを読み込み
         await this.loadTaskStock();
+        
+        // 一時的な配列にコピー
+        this.tempTaskStock = JSON.parse(JSON.stringify(this.taskStock));
+        
+        // 変更状態をリセット
+        this.hasTaskStockChanges = false;
+        this.updateTaskStockSaveButton();
+        
+        // UI更新
+        this.updateTaskStockList();
         
         // ダイアログを表示
         const dialog = document.getElementById('task-stock-dialog');
@@ -1925,6 +2266,10 @@ class NippoApp {
     }
 
     hideTaskStockDialog() {
+        // 保存されていない変更を破棄
+        this.tempTaskStock = [];
+        this.hasTaskStockChanges = false;
+        
         const dialog = document.getElementById('task-stock-dialog');
         dialog.classList.remove('show');
     }
@@ -1934,11 +2279,9 @@ class NippoApp {
         try {
             const storedTaskStock = localStorage.getItem('taskStock');
             this.taskStock = storedTaskStock ? JSON.parse(storedTaskStock) : [];
-            this.updateTaskStockList();
         } catch (error) {
             console.error('タスクストック読み込みエラー:', error);
             this.taskStock = [];
-            this.updateTaskStockList();
         }
     }
 
@@ -1955,7 +2298,7 @@ class NippoApp {
     updateTaskStockList() {
         const stockList = document.getElementById('task-stock-list');
         
-        if (this.taskStock.length === 0) {
+        if (this.tempTaskStock.length === 0) {
             stockList.innerHTML = `
                 <div class="task-stock-empty">
                     <span class="material-icons">bookmark_border</span>
@@ -1966,8 +2309,11 @@ class NippoApp {
             return;
         }
 
-        const stockHTML = this.taskStock.map((task, index) => `
-            <div class="task-stock-item" onclick="app.selectTaskStock('${task.name.replace(/'/g, "\\'")}')">
+        const stockHTML = this.tempTaskStock.map((task, index) => `
+            <div class="task-stock-item" draggable="true" data-index="${index}" onclick="app.selectTaskStock('${task.name.replace(/'/g, "\\'")}')">
+                <div class="task-stock-item-drag-handle">
+                    <span class="material-icons">drag_handle</span>
+                </div>
                 <div class="task-stock-item-name">${task.name}</div>
                 <div class="task-stock-item-actions">
                     <button class="task-stock-item-delete" onclick="event.stopPropagation(); app.deleteTaskStock(${index})" title="削除">
@@ -1978,6 +2324,9 @@ class NippoApp {
         `).join('');
 
         stockList.innerHTML = stockHTML;
+        
+        // ドラッグ&ドロップイベントを設定
+        this.setupTaskStockDragAndDrop();
     }
 
     async addTaskStock() {
@@ -1990,41 +2339,43 @@ class NippoApp {
         }
 
         // 重複チェック
-        if (this.taskStock.some(task => task.name === taskName)) {
-            this.showToast('このタスクは既に保存されています', 'warning');
+        if (this.tempTaskStock.some(task => task.name === taskName)) {
+            this.showToast('このタスクは既に追加されています', 'warning');
             return;
         }
 
-        // タスクを追加
-        this.taskStock.push({
+        // タスクを一時的に追加
+        this.tempTaskStock.push({
             id: Date.now(),
             name: taskName,
             createdAt: new Date().toISOString()
         });
 
-        // 保存
-        await this.saveTaskStock();
+        // 変更状態を更新
+        this.hasTaskStockChanges = true;
+        this.updateTaskStockSaveButton();
         
         // UI更新
         this.updateTaskStockList();
         input.value = '';
         
-        this.showToast(`「${taskName}」をタスクストックに追加しました`);
+        this.showToast(`「${taskName}」を追加しました（未保存）`);
     }
 
     async deleteTaskStock(index) {
-        if (index < 0 || index >= this.taskStock.length) return;
+        if (index < 0 || index >= this.tempTaskStock.length) return;
         
-        const taskName = this.taskStock[index].name;
-        this.taskStock.splice(index, 1);
+        const taskName = this.tempTaskStock[index].name;
+        this.tempTaskStock.splice(index, 1);
         
-        // 保存
-        await this.saveTaskStock();
+        // 変更状態を更新
+        this.hasTaskStockChanges = true;
+        this.updateTaskStockSaveButton();
         
         // UI更新
         this.updateTaskStockList();
         
-        this.showToast(`「${taskName}」をタスクストックから削除しました`);
+        this.showToast(`「${taskName}」を削除しました（未保存）`);
     }
 
     selectTaskStock(taskName) {
@@ -2042,23 +2393,113 @@ class NippoApp {
         this.showToast(`「${taskName}」を入力フィールドにセットしました`);
     }
 
-    async clearTaskStock() {
-        if (this.taskStock.length === 0) {
-            this.showToast('クリアするタスクがありません', 'warning');
-            return;
-        }
 
-        // 確認ダイアログを表示（既存の確認ダイアログを流用）
-        const dialog = document.getElementById('confirm-dialog');
-        const title = document.getElementById('confirm-title');
-        const message = document.getElementById('confirm-message');
+    async saveTaskStockChanges() {
+        // 一時的な変更を実際のデータに反映
+        this.taskStock = JSON.parse(JSON.stringify(this.tempTaskStock));
         
-        title.textContent = 'タスクストックをクリア';
-        message.textContent = 'すべてのタスクストックが削除されます。この操作は元に戻せません。本当に実行しますか？';
+        // 保存
+        await this.saveTaskStock();
         
-        this.pendingAction = 'clearTaskStock';
-        this.hideTaskStockDialog();
-        dialog.classList.add('show');
+        // 変更状態をリセット
+        this.hasTaskStockChanges = false;
+        this.updateTaskStockSaveButton();
+        
+        this.showToast('タスクストックを保存しました');
+    }
+
+    setupTaskStockDragAndDrop() {
+        const stockList = document.getElementById('task-stock-list');
+        let draggedElement = null;
+        let draggedIndex = null;
+        let dragStartIndex = null;
+
+        // 既存のリスナーをクリア
+        stockList.removeEventListener('dragstart', this.taskDragStart);
+        stockList.removeEventListener('dragend', this.taskDragEnd);
+        stockList.removeEventListener('dragover', this.taskDragOver);
+        stockList.removeEventListener('drop', this.taskDrop);
+
+        // ドラッグ開始
+        this.taskDragStart = (e) => {
+            if (e.target.classList.contains('task-stock-item')) {
+                draggedElement = e.target;
+                draggedIndex = parseInt(e.target.dataset.index);
+                dragStartIndex = draggedIndex;
+                e.target.style.opacity = '0.5';
+                e.target.classList.add('dragging');
+            }
+        };
+
+        // ドラッグ終了
+        this.taskDragEnd = (e) => {
+            if (e.target.classList.contains('task-stock-item')) {
+                e.target.style.opacity = '1';
+                e.target.classList.remove('dragging');
+                
+                // 最終位置を計算
+                const allItems = [...stockList.querySelectorAll('.task-stock-item')];
+                const finalIndex = allItems.indexOf(draggedElement);
+                
+                if (dragStartIndex !== null && dragStartIndex !== finalIndex) {
+                    this.reorderTaskStock(dragStartIndex, finalIndex);
+                }
+                
+                draggedElement = null;
+                draggedIndex = null;
+                dragStartIndex = null;
+            }
+        };
+
+        // ドラッグオーバー
+        this.taskDragOver = (e) => {
+            e.preventDefault();
+            if (draggedElement) {
+                const afterElement = this.getDragAfterElement(stockList, e.clientY);
+                if (afterElement == null) {
+                    stockList.appendChild(draggedElement);
+                } else {
+                    stockList.insertBefore(draggedElement, afterElement);
+                }
+            }
+        };
+
+        // ドロップ
+        this.taskDrop = (e) => {
+            e.preventDefault();
+        };
+
+        stockList.addEventListener('dragstart', this.taskDragStart);
+        stockList.addEventListener('dragend', this.taskDragEnd);
+        stockList.addEventListener('dragover', this.taskDragOver);
+        stockList.addEventListener('drop', this.taskDrop);
+    }
+
+    async reorderTaskStock(fromIndex, toIndex) {
+        // 配列を並び替え
+        const movedTask = this.tempTaskStock.splice(fromIndex, 1)[0];
+        this.tempTaskStock.splice(toIndex, 0, movedTask);
+        
+        // 変更状態を更新
+        this.hasTaskStockChanges = true;
+        this.updateTaskStockSaveButton();
+        
+        // UI更新
+        this.updateTaskStockList();
+        
+        this.showToast('タスクの順序を変更しました（未保存）');
+    }
+
+    updateTaskStockSaveButton() {
+        const saveButton = document.getElementById('save-task-stock-btn');
+        if (saveButton) {
+            saveButton.disabled = !this.hasTaskStockChanges;
+            if (this.hasTaskStockChanges) {
+                saveButton.classList.remove('disabled');
+            } else {
+                saveButton.classList.add('disabled');
+            }
+        }
     }
 
     async executeClearTaskStock() {
