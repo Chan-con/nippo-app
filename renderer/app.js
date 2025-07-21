@@ -577,7 +577,7 @@ class NippoApp {
                 <div class="${itemClass}">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
-                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
+                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
                         ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
                         ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
                     </div>
@@ -647,7 +647,8 @@ class NippoApp {
             icon.textContent = 'coffee';
             if (text.nodeType === Node.TEXT_NODE) {
                 text.textContent = '休憩開始';
-            } else {
+            }
+            else {
                 breakBtn.innerHTML = '<span class="material-icons">coffee</span>休憩開始';
             }
             breakBtn.classList.remove('btn-secondary');
@@ -1141,7 +1142,8 @@ class NippoApp {
                     console.error('API成功だが結果がfalse:', result);
                     this.showToast('タスクの更新に失敗しました', 'error');
                 }
-            } else {
+            }
+            else {
                 console.error('API response not ok:', response.status);
                 this.showToast('タスクの更新に失敗しました', 'error');
             }
@@ -1998,207 +2000,47 @@ class NippoApp {
         if (!this.isCapturingHotkey || !this.currentHotkeyTarget) return;
         
         event.preventDefault();
-        event.stopPropagation();
-        
         const modifiers = [];
+        if (event.ctrlKey) modifiers.push('Control');
+        if (event.altKey) modifiers.push('Alt');
+        if (event.shiftKey) modifiers.push('Shift');
+        if (event.metaKey) modifiers.push('Super'); // Windowsキー or Commandキー
+
         let key = event.key;
         
-        // 修飾キーの処理
-        if (event.ctrlKey || event.metaKey) {
-            modifiers.push('CommandOrControl');
-        }
-        if (event.altKey) {
-            modifiers.push('Alt');
-        }
-        if (event.shiftKey) {
-            modifiers.push('Shift');
-        }
-        
-        // 修飾キーのみの場合は無視
-        if (['Control', 'Alt', 'Shift', 'Meta', 'Cmd', 'Command'].includes(key)) {
+        // 修飾キーのみの場合は何もしない
+        if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
             return;
         }
         
-        // キーの正規化処理
-        key = this.normalizeKey(key);
-        
-        // 有効なキーの組み合わせを作成
-        let hotkey = '';
-        if (modifiers.length > 0) {
-            hotkey = modifiers.join('+') + '+' + key;
-        } else {
-            // 修飾キーなしの場合は受け付けない
-            this.showToast('修飾キーと組み合わせてください', 'warning');
-            return;
+        // キー名をElectronのAccelerator形式に変換
+        if (key.length === 1) {
+            key = key.toUpperCase();
+        } else if (key.startsWith('Arrow')) {
+            key = key.replace('Arrow', '');
+        } else if (key === ' ') {
+            key = 'Space';
         }
         
-        // ホットキーを検証
-        if (this.validateHotkey(hotkey)) {
-            const input = document.getElementById(this.currentHotkeyTarget);
-            if (input) {
-                input.value = hotkey;
-                input.placeholder = 'クリックしてキーを設定';
-            }
-            
-            this.isCapturingHotkey = false;
-            this.currentHotkeyTarget = null;
-            
-            this.showToast('ホットキーを設定しました');
-        } else {
-            this.showToast('無効なキーの組み合わせです', 'error');
-        }
-    }
-    
-    normalizeKey(key) {
-        // 記号キーのマッピング（キーボードのキーイベントからElectronのglobalShortcut形式に変換）
-        const keyMap = {
-            // 記号キー
-            ',': 'Comma',
-            '.': 'Period',
-            ';': 'Semicolon',
-            ':': 'Colon',
-            '!': 'Exclamation',
-            '?': 'Question',
-            '/': 'Slash',
-            '\\': 'Backslash',
-            '-': 'Minus',
-            '_': 'Underscore',
-            '=': 'Equal',
-            '+': 'Plus',
-            '[': 'BracketLeft',
-            ']': 'BracketRight',
-            '{': 'BraceLeft',
-            '}': 'BraceRight',
-            '(': 'ParenLeft',
-            ')': 'ParenRight',
-            '<': 'Less',
-            '>': 'Greater',
-            '\'': 'Quote',
-            '"': 'DoubleQuote',
-            '`': 'Backtick',
-            '~': 'Tilde',
-            '@': 'At',
-            '#': 'Hash',
-            '$': 'Dollar',
-            '%': 'Percent',
-            '^': 'Caret',
-            '&': 'Ampersand',
-            '*': 'Asterisk',
-            '|': 'Pipe',
-            
-            // 特殊キー
-            ' ': 'Space',
-            'Enter': 'Return',
-            'Escape': 'Escape',
-            'Backspace': 'Backspace',
-            'Delete': 'Delete',
-            'Tab': 'Tab',
-            'ArrowUp': 'Up',
-            'ArrowDown': 'Down',
-            'ArrowLeft': 'Left',
-            'ArrowRight': 'Right',
-            'Home': 'Home',
-            'End': 'End',
-            'PageUp': 'PageUp',
-            'PageDown': 'PageDown',
-            'Insert': 'Insert',
-            'CapsLock': 'CapsLock',
-            'ScrollLock': 'ScrollLock',
-            'NumLock': 'NumLock',
-            'PrintScreen': 'PrintScreen',
-            'Pause': 'Pause',
-            'ContextMenu': 'ContextMenu',
-            
-            // ファンクションキー（F1-F24）
-            'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4', 'F5': 'F5', 'F6': 'F6',
-            'F7': 'F7', 'F8': 'F8', 'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12',
-            'F13': 'F13', 'F14': 'F14', 'F15': 'F15', 'F16': 'F16', 'F17': 'F17', 'F18': 'F18',
-            'F19': 'F19', 'F20': 'F20', 'F21': 'F21', 'F22': 'F22', 'F23': 'F23', 'F24': 'F24',
-            
-            // テンキー
-            'Numpad0': 'Num0', 'Numpad1': 'Num1', 'Numpad2': 'Num2', 'Numpad3': 'Num3',
-            'Numpad4': 'Num4', 'Numpad5': 'Num5', 'Numpad6': 'Num6', 'Numpad7': 'Num7',
-            'Numpad8': 'Num8', 'Numpad9': 'Num9',
-            'NumpadAdd': 'NumAdd',
-            'NumpadSubtract': 'NumSub',
-            'NumpadMultiply': 'NumMult',
-            'NumpadDivide': 'NumDiv',
-            'NumpadDecimal': 'NumDecimal',
-            'NumpadEnter': 'NumReturn',
-            
-            // メディアキー
-            'MediaPlayPause': 'MediaPlayPause',
-            'MediaStop': 'MediaStop',
-            'MediaTrackNext': 'MediaNextTrack',
-            'MediaTrackPrevious': 'MediaPreviousTrack',
-            'VolumeUp': 'VolumeUp',
-            'VolumeDown': 'VolumeDown',
-            'VolumeMute': 'VolumeMute'
-        };
+        const hotkeyString = [...modifiers, key].join('+');
         
-        // マッピングテーブルにある場合はそれを使用
-        if (keyMap[key]) {
-            return keyMap[key];
+        const input = document.getElementById(this.currentHotkeyTarget);
+        if (input) {
+            input.value = hotkeyString;
+            input.placeholder = '';
         }
         
-        // 英数字の場合は大文字に変換
-        if (key.length === 1 && /[a-zA-Z0-9]/.test(key)) {
-            return key.toUpperCase();
-        }
-        
-        // その他の場合はそのまま返す
-        return key;
-    }
-    
-    validateHotkey(hotkey) {
-        if (!hotkey || typeof hotkey !== 'string') {
-            return false;
-        }
-        
-        // 基本的な検証
-        const parts = hotkey.split('+');
-        if (parts.length < 2) {
-            return false;
-        }
-        
-        const validModifiers = ['CommandOrControl', 'Command', 'Control', 'Alt', 'Shift', 'Super'];
-        const key = parts[parts.length - 1];
-        const modifiers = parts.slice(0, -1);
-        
-        // 修飾キーの検証
-        for (const modifier of modifiers) {
-            if (!validModifiers.includes(modifier)) {
-                return false;
-            }
-        }
-        
-        // キーの検証（拡張版）
-        const validKeys = [
-            // 英数字
-            /^[A-Z0-9]$/,
-            // ファンクションキー
-            /^F([1-9]|1[0-9]|2[0-4])$/,
-            // 特殊キー
-            /^(Space|Return|Tab|Backspace|Delete|Escape|Up|Down|Left|Right|Home|End|PageUp|PageDown|Insert|CapsLock|ScrollLock|NumLock|PrintScreen|Pause|ContextMenu)$/,
-            // 記号キー
-            /^(Comma|Period|Semicolon|Colon|Exclamation|Question|Slash|Backslash|Minus|Underscore|Equal|Plus|BracketLeft|BracketRight|BraceLeft|BraceRight|ParenLeft|ParenRight|Less|Greater|Quote|DoubleQuote|Backtick|Tilde|At|Hash|Dollar|Percent|Caret|Ampersand|Asterisk|Pipe)$/,
-            // テンキー
-            /^(Num[0-9]|NumAdd|NumSub|NumMult|NumDiv|NumDecimal|NumReturn)$/,
-            // メディアキー
-            /^(MediaPlayPause|MediaStop|MediaNextTrack|MediaPreviousTrack|VolumeUp|VolumeDown|VolumeMute)$/
-        ];
-        
-        return validKeys.some(regex => regex.test(key));
+        this.isCapturingHotkey = false;
+        this.currentHotkeyTarget = null;
     }
     
     clearHotkey(targetId) {
         const input = document.getElementById(targetId);
+
         if (input) {
             input.value = '';
-            this.showToast('ホットキーをクリアしました');
         }
     }
-    
 
     async loadReportUrls() {
         const urlList = document.getElementById('url-list');
@@ -2207,52 +2049,39 @@ class NippoApp {
             const response = await fetch(`${this.apiBaseUrl}/api/report-urls`);
             if (response.ok) {
                 const result = await response.json();
-                if (result.success) {
-                    this.reportUrls = result.urls || [];
-                    
-                    if (this.reportUrls.length > 0) {
-                        const urlsHTML = this.reportUrls.map(url => `
-                            <div class="url-item">
-                                <div class="url-info">
-                                    <div class="url-name">${url.name}</div>
-                                    <div class="url-address">${url.url}</div>
-                                </div>
-                                <div class="url-actions">
-                                    <button onclick="app.deleteReportUrl(${url.id})" class="delete" title="削除">
-                                        <span class="material-icons">delete</span>
-                                    </button>
-                                </div>
-                            </div>
-                        `).join('');
-                        urlList.innerHTML = urlsHTML;
-                    } else {
-                        urlList.innerHTML = `
-                            <div class="url-list-empty">
-                                <span class="material-icons">link_off</span>
-                                <p>報告先URLが登録されていません</p>
-                            </div>
-                        `;
-                    }
+                if (result.success && result.urls) {
+                    const urlsHTML = result.urls.map(url => `
+                        <div class="url-item">
+                            <span class="url-name">${url.name}</span>
+                            <span class="url-address">${url.url}</span>
+                            <button class="delete-url-btn" onclick="app.confirmDeleteReportUrl('${url.id}')">
+                                <span class="material-icons">delete</span>
+                            </button>
+                        </div>
+                    `).join('');
+                    urlList.innerHTML = urlsHTML;
+                } else {
+                    urlList.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 16px;">報告先が設定されていません</p>';
                 }
             }
         } catch (error) {
-            console.error('報告先URL読み込みエラー:', error);
-            urlList.innerHTML = '<p style="color: var(--error); text-align: center; padding: 20px;">読み込みに失敗しました</p>';
+            console.error('報告先URL取得エラー:', error);
+            urlList.innerHTML = '<p style="color: var(--error); text-align: center; padding: 16px;">報告先の読み込みに失敗しました</p>';
         }
     }
 
     async addReportUrl() {
         const nameInput = document.getElementById('url-name-input');
-        const urlInput = document.getElementById('url-input');
+        const urlInput = document.getElementById('url-address-input');
         
         const name = nameInput.value.trim();
         const url = urlInput.value.trim();
-        
+
         if (!name || !url) {
             this.showToast('名前とURLを入力してください', 'warning');
             return;
         }
-        
+
         try {
             const response = await fetch(`${this.apiBaseUrl}/api/report-urls`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, url }) });
             if (response.ok) {
@@ -2261,28 +2090,24 @@ class NippoApp {
                     nameInput.value = '';
                     urlInput.value = '';
                     await this.loadReportUrls();
-                    this.showToast(`「${name}」を追加しました`);
+                    this.showToast('報告先を追加しました');
                 } else {
-                    this.showToast(result.error || '追加に失敗しました', 'error');
+                    this.showToast('報告先の追加に失敗しました', 'error');
                 }
             }
         } catch (error) {
-            console.error('報告先URL追加エラー:', error);
-            this.showToast('追加に失敗しました', 'error');
+            console.error('報告先追加エラー:', error);
+            this.showToast('報告先の追加に失敗しました', 'error');
         }
     }
 
-    async deleteReportUrl(urlId) {
-        // 確認ダイアログを表示
-        const url = this.reportUrls.find(u => u.id === urlId);
-        if (!url) return;
-
+    confirmDeleteReportUrl(urlId) {
         const dialog = document.getElementById('confirm-dialog');
         const title = document.getElementById('confirm-title');
         const message = document.getElementById('confirm-message');
         
         title.textContent = '報告先を削除';
-        message.textContent = `報告先「${url.name}」を削除しますか？\n関連する報告データも同時に削除されます。この操作は元に戻せません。`;
+        message.textContent = 'この報告先を削除しますか？';
         
         this.pendingAction = 'deleteReportUrl';
         this.pendingUrlId = urlId;
@@ -2296,1169 +2121,466 @@ class NippoApp {
                 const result = await response.json();
                 if (result.success) {
                     await this.loadReportUrls();
-                    this.showToast('報告先と関連データを削除しました');
+                    this.showToast('報告先を削除しました');
                 } else {
-                    this.showToast('削除に失敗しました', 'error');
+                    this.showToast('報告先の削除に失敗しました', 'error');
                 }
             }
         } catch (error) {
-            console.error('報告先URL削除エラー:', error);
-            this.showToast('削除に失敗しました', 'error');
+            console.error('報告先削除エラー:', error);
+            this.showToast('報告先の削除に失敗しました', 'error');
         } finally {
             this.pendingUrlId = null;
         }
     }
 
-    // 目標ストック管理機能
-    async showGoalStockDialog() {
-        // 目標ストックを読み込み
-        await this.loadGoalStock();
-        
-        // 一時的な配列にコピー
-        this.tempGoalStock = JSON.parse(JSON.stringify(this.goalStock));
-        
-        // 変更状態をリセット
-        this.hasGoalStockChanges = false;
-        this.updateGoalStockSaveButton();
-        
-        // UI更新
-        this.updateGoalStockList();
-        
-        // ダイアログを表示
+    showGoalStockDialog() {
         const dialog = document.getElementById('goal-stock-dialog');
         dialog.classList.add('show');
+        this.loadGoalStock();
     }
 
     hideGoalStockDialog() {
-        // 保存されていない変更を破棄
-        this.tempGoalStock = [];
-        this.hasGoalStockChanges = false;
+        if (this.hasGoalStockChanges) {
+            // 変更がある場合は確認ダイアログを表示
+            // ここでは簡易的に直接閉じる
+            console.log('未保存の変更がありますが、ダイアログを閉じます');
+        }
         
         const dialog = document.getElementById('goal-stock-dialog');
         dialog.classList.remove('show');
+        this.hasGoalStockChanges = false;
     }
 
     async loadGoalStock() {
-        // ローカルストレージから目標ストックを読み込み
         try {
-            const storedGoalStock = localStorage.getItem('goalStock');
-            this.goalStock = storedGoalStock ? JSON.parse(storedGoalStock) : [];
+            const response = await fetch(`${this.apiBaseUrl}/api/goals`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.goalStock = result.goals;
+                    this.tempGoalStock = JSON.parse(JSON.stringify(this.goalStock)); // ディープコピー
+                    this.renderGoalStock();
+                }
+            }
         } catch (error) {
             console.error('目標ストック読み込みエラー:', error);
-            this.goalStock = [];
         }
     }
 
-    async saveGoalStock() {
-        // ローカルストレージに目標ストックを保存
+    renderGoalStock() {
+        const list = document.getElementById('goal-stock-list');
+        list.innerHTML = '';
+        
+        this.tempGoalStock.forEach((goal, index) => {
+            const item = document.createElement('div');
+            item.className = 'goal-stock-item';
+            item.innerHTML = `
+                <input type="text" value="${goal.name}" onchange="app.updateTempGoal(${index}, this.value)">
+                <button onclick="app.removeTempGoal(${index})"><span class="material-icons">delete</span></button>
+            `;
+            list.appendChild(item);
+        });
+        
+        this.updateGoalStockSaveButton();
+    }
+
+    addGoalStock() {
+        const input = document.getElementById('goal-stock-input');
+        const name = input.value.trim();
+        if (name) {
+            this.tempGoalStock.push({ name });
+            input.value = '';
+            this.hasGoalStockChanges = true;
+            this.renderGoalStock();
+        }
+    }
+
+    updateTempGoal(index, newName) {
+        this.tempGoalStock[index].name = newName;
+        this.hasGoalStockChanges = true;
+        this.updateGoalStockSaveButton();
+    }
+
+    removeTempGoal(index) {
+        this.tempGoalStock.splice(index, 1);
+        this.hasGoalStockChanges = true;
+        this.renderGoalStock();
+    }
+
+    updateGoalStockSaveButton() {
+        const saveBtn = document.getElementById('save-goal-stock-btn');
+        saveBtn.disabled = !this.hasGoalStockChanges;
+    }
+
+    async saveGoalStockChanges() {
         try {
-            localStorage.setItem('goalStock', JSON.stringify(this.goalStock));
+            const response = await fetch(`${this.apiBaseUrl}/api/goals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goals: this.tempGoalStock }) });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.goalStock = this.tempGoalStock;
+                    this.hasGoalStockChanges = false;
+                    this.updateGoalStockSaveButton();
+                    this.showToast('目標ストックを保存しました');
+                }
+            }
         } catch (error) {
             console.error('目標ストック保存エラー:', error);
             this.showToast('目標ストックの保存に失敗しました', 'error');
         }
     }
 
-    updateGoalStockList() {
-        const stockList = document.getElementById('goal-stock-list');
-        
-        if (this.tempGoalStock.length === 0) {
-            stockList.innerHTML = `
-                <div class="task-stock-empty">
-                    <span class="material-icons">flag</span>
-                    <p>まだ目標が保存されていません</p>
-                    <p class="sub-text">新しい目標を追加してください</p>
-                </div>
-            `;
-            return;
-        }
-
-        const stockHTML = this.tempGoalStock.map((goal, index) => `
-            <div class="task-stock-item" draggable="true" data-index="${index}">
-                <div class="task-stock-item-drag-handle">
-                    <span class="material-icons">drag_handle</span>
-                </div>
-                <div class="task-stock-item-name">${goal.name}</div>
-                <div class="task-stock-item-actions">
-                    <button class="task-stock-item-delete" onclick="event.stopPropagation(); app.deleteGoalStock(${index})" title="削除">
-                        <span class="material-icons">delete</span>
-                    </button>
-                </div>
-            </div>
-        `).join('');
-
-        stockList.innerHTML = stockHTML;
-        
-        // ドラッグ&ドロップイベントを設定
-        this.setupGoalStockDragAndDrop();
-    }
-
-    async addGoalStock() {
-        const input = document.getElementById('goal-stock-input');
-        const goalName = input.value.trim();
-
-        if (!goalName) {
-            this.showToast('目標を入力してください', 'warning');
-            return;
-        }
-
-        // 重複チェック
-        if (this.tempGoalStock.some(goal => goal.name === goalName)) {
-            this.showToast('この目標は既に追加されています', 'warning');
-            return;
-        }
-
-        // 目標を一時的に追加
-        this.tempGoalStock.push({
-            id: Date.now(),
-            name: goalName,
-            createdAt: new Date().toISOString()
-        });
-
-        // 変更状態を更新
-        this.hasGoalStockChanges = true;
-        this.updateGoalStockSaveButton();
-        
-        // UI更新
-        this.updateGoalStockList();
-        input.value = '';
-        
-        this.showToast(`「${goalName}」を追加しました（未保存）`);
-    }
-
-    async deleteGoalStock(index) {
-        if (index < 0 || index >= this.tempGoalStock.length) return;
-        
-        const goalName = this.tempGoalStock[index].name;
-        this.tempGoalStock.splice(index, 1);
-        
-        // 変更状態を更新
-        this.hasGoalStockChanges = true;
-        this.updateGoalStockSaveButton();
-        
-        // UI更新
-        this.updateGoalStockList();
-        
-        this.showToast(`「${goalName}」を削除しました（未保存）`);
-    }
-
-    selectGoalStock(goalName) {
-        // 目標ストックから選択された目標を使用（現在は追加のみ）
-        this.hideGoalStockDialog();
-        this.showToast(`目標「${goalName}」を選択しました`);
-    }
-
-
-    async saveGoalStockChanges() {
-        // 一時的な変更を実際のデータに反映
-        this.goalStock = JSON.parse(JSON.stringify(this.tempGoalStock));
-        
-        // 保存
-        await this.saveGoalStock();
-        
-        // 変更状態をリセット
-        this.hasGoalStockChanges = false;
-        this.updateGoalStockSaveButton();
-        
-        this.showToast('目標ストックを保存しました');
-    }
-
-    setupGoalStockDragAndDrop() {
-        const stockList = document.getElementById('goal-stock-list');
-        let draggedElement = null;
-        let draggedIndex = null;
-        let dragStartIndex = null;
-
-        // 既存のリスナーをクリア
-        stockList.removeEventListener('dragstart', this.goalDragStart);
-        stockList.removeEventListener('dragend', this.goalDragEnd);
-        stockList.removeEventListener('dragover', this.goalDragOver);
-        stockList.removeEventListener('drop', this.goalDrop);
-
-        // ドラッグ開始
-        this.goalDragStart = (e) => {
-            if (e.target.classList.contains('task-stock-item')) {
-                draggedElement = e.target;
-                draggedIndex = parseInt(e.target.dataset.index);
-                dragStartIndex = draggedIndex;
-                e.target.style.opacity = '0.5';
-                e.target.classList.add('dragging');
-            }
-        };
-
-        // ドラッグ終了
-        this.goalDragEnd = (e) => {
-            if (e.target.classList.contains('task-stock-item')) {
-                e.target.style.opacity = '1';
-                e.target.classList.remove('dragging');
-                
-                // 最終位置を計算
-                const allItems = [...stockList.querySelectorAll('.task-stock-item')];
-                const finalIndex = allItems.indexOf(draggedElement);
-                
-                if (dragStartIndex !== null && dragStartIndex !== finalIndex) {
-                    this.reorderGoalStock(dragStartIndex, finalIndex);
-                }
-                
-                draggedElement = null;
-                draggedIndex = null;
-                dragStartIndex = null;
-            }
-        };
-
-        // ドラッグオーバー
-        this.goalDragOver = (e) => {
-            e.preventDefault();
-            if (draggedElement) {
-                const afterElement = this.getDragAfterElement(stockList, e.clientY);
-                if (afterElement == null) {
-                    stockList.appendChild(draggedElement);
-                } else {
-                    stockList.insertBefore(draggedElement, afterElement);
-                }
-            }
-        };
-
-        // ドロップ
-        this.goalDrop = (e) => {
-            e.preventDefault();
-        };
-
-        stockList.addEventListener('dragstart', this.goalDragStart);
-        stockList.addEventListener('dragend', this.goalDragEnd);
-        stockList.addEventListener('dragover', this.goalDragOver);
-        stockList.addEventListener('drop', this.goalDrop);
-    }
-
-    getDragAfterElement(container, y) {
-        const draggableElements = [...container.querySelectorAll('.task-stock-item:not(.dragging)')];
-        
-        return draggableElements.reduce((closest, child) => {
-            const box = child.getBoundingClientRect();
-            const offset = y - box.top - box.height / 2;
-            
-            if (offset < 0 && offset > closest.offset) {
-                return { offset: offset, element: child };
-            } else {
-                return closest;
-            }
-        }, { offset: Number.NEGATIVE_INFINITY }).element;
-    }
-
-    async reorderGoalStock(fromIndex, toIndex) {
-        // 配列を並び替え
-        const movedGoal = this.tempGoalStock.splice(fromIndex, 1)[0];
-        this.tempGoalStock.splice(toIndex, 0, movedGoal);
-        
-        // 変更状態を更新
-        this.hasGoalStockChanges = true;
-        this.updateGoalStockSaveButton();
-        
-        // UI更新
-        this.updateGoalStockList();
-        
-        this.showToast('目標の順序を変更しました（未保存）');
-    }
-
-    updateGoalStockSaveButton() {
-        const saveButton = document.getElementById('save-goal-stock-btn');
-        if (saveButton) {
-            saveButton.disabled = !this.hasGoalStockChanges;
-            if (this.hasGoalStockChanges) {
-                saveButton.classList.remove('disabled');
-            } else {
-                saveButton.classList.add('disabled');
-            }
-        }
-    }
-
-    // タスクストック管理機能
-    async showTaskStockDialog() {
-        // タスクストックを読み込み
-        await this.loadTaskStock();
-        
-        // 一時的な配列にコピー
-        this.tempTaskStock = JSON.parse(JSON.stringify(this.taskStock));
-        
-        // 変更状態をリセット
-        this.hasTaskStockChanges = false;
-        this.updateTaskStockSaveButton();
-        
-        // UI更新
-        this.updateTaskStockList();
-        
-        // ダイアログを表示
+    showTaskStockDialog() {
         const dialog = document.getElementById('task-stock-dialog');
         dialog.classList.add('show');
+        this.loadTaskStock();
     }
 
     hideTaskStockDialog() {
-        // 保存されていない変更を破棄
-        this.tempTaskStock = [];
-        this.hasTaskStockChanges = false;
+        if (this.hasTaskStockChanges) {
+            // 変更がある場合は確認ダイアログを表示
+            // ここでは簡易的に直接閉じる
+            console.log('未保存の変更がありますが、ダイアログを閉じます');
+        }
         
         const dialog = document.getElementById('task-stock-dialog');
         dialog.classList.remove('show');
+        this.hasTaskStockChanges = false;
     }
 
     async loadTaskStock() {
-        // ローカルストレージからタスクストックを読み込み
         try {
-            const storedTaskStock = localStorage.getItem('taskStock');
-            this.taskStock = storedTaskStock ? JSON.parse(storedTaskStock) : [];
+            const response = await fetch(`${this.apiBaseUrl}/api/task-stock`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.taskStock = result.tasks;
+                    this.tempTaskStock = JSON.parse(JSON.stringify(this.taskStock)); // ディープコピー
+                    this.renderTaskStock();
+                }
+            }
         } catch (error) {
             console.error('タスクストック読み込みエラー:', error);
-            this.taskStock = [];
         }
     }
 
-    async saveTaskStock() {
-        // ローカルストレージにタスクストックを保存
+    renderTaskStock() {
+        const list = document.getElementById('task-stock-list');
+        list.innerHTML = '';
+        
+        this.tempTaskStock.forEach((task, index) => {
+            const item = document.createElement('div');
+            item.className = 'task-stock-item';
+            item.innerHTML = `
+                <input type="text" value="${task.name}" onchange="app.updateTempTask(${index}, this.value)">
+                <button onclick="app.removeTempTask(${index})"><span class="material-icons">delete</span></button>
+            `;
+            list.appendChild(item);
+        });
+        
+        this.updateTaskStockSaveButton();
+    }
+
+    addTaskStock() {
+        const input = document.getElementById('task-stock-input');
+        const name = input.value.trim();
+        if (name) {
+            this.tempTaskStock.push({ name });
+            input.value = '';
+            this.hasTaskStockChanges = true;
+            this.renderTaskStock();
+        }
+    }
+
+    updateTempTask(index, newName) {
+        this.tempTaskStock[index].name = newName;
+        this.hasTaskStockChanges = true;
+        this.updateTaskStockSaveButton();
+    }
+
+    removeTempTask(index) {
+        this.tempTaskStock.splice(index, 1);
+        this.hasTaskStockChanges = true;
+        this.renderTaskStock();
+    }
+
+    updateTaskStockSaveButton() {
+        const saveBtn = document.getElementById('save-task-stock-btn');
+        saveBtn.disabled = !this.hasTaskStockChanges;
+    }
+
+    async saveTaskStockChanges() {
         try {
-            localStorage.setItem('taskStock', JSON.stringify(this.taskStock));
+            const response = await fetch(`${this.apiBaseUrl}/api/task-stock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: this.tempTaskStock }) });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.taskStock = this.tempTaskStock;
+                    this.hasTaskStockChanges = false;
+                    this.updateTaskStockSaveButton();
+                    this.showToast('タスクストックを保存しました');
+                }
+            }
         } catch (error) {
             console.error('タスクストック保存エラー:', error);
             this.showToast('タスクストックの保存に失敗しました', 'error');
         }
     }
-
-    updateTaskStockList() {
-        const stockList = document.getElementById('task-stock-list');
+    
+    // 履歴機能
+    switchToTodayMode() {
+        this.currentMode = 'today';
+        this.currentDate = null; // 今日の日付を示す
         
-        if (this.tempTaskStock.length === 0) {
-            stockList.innerHTML = `
-                <div class="task-stock-empty">
-                    <span class="material-icons">bookmark_border</span>
-                    <p>まだタスクが保存されていません</p>
-                    <p class="sub-text">新しいタスクを追加してください</p>
-                </div>
-            `;
-            return;
-        }
-
-        const stockHTML = this.tempTaskStock.map((task, index) => `
-            <div class="task-stock-item" draggable="true" data-index="${index}" onclick="app.selectTaskStock('${task.name.replace(/'/g, "\\'")}')">
-                <div class="task-stock-item-drag-handle">
-                    <span class="material-icons">drag_handle</span>
-                </div>
-                <div class="task-stock-item-name">${task.name}</div>
-                <div class="task-stock-item-actions">
-                    <button class="task-stock-item-delete" onclick="event.stopPropagation(); app.deleteTaskStock(${index})" title="削除">
-                        <span class="material-icons">delete</span>
-                    </button>
-                </div>
+        // UI更新
+        document.getElementById('today-btn').classList.add('active');
+        document.getElementById('history-btn').classList.remove('active');
+        document.getElementById('date-selector').style.display = 'none';
+        document.getElementById('current-time').style.display = 'block';
+        document.getElementById('create-report-btn').style.display = 'flex';
+        document.getElementById('goal-stock-btn').style.display = 'flex';
+        document.getElementById('break-btn').style.display = 'flex';
+        
+        // 今日のタスクを再読み込み
+        this.loadTasks();
+        
+        // 日付表示を更新
+        this.updateDateTime();
+    }
+    
+    switchToHistoryMode() {
+        this.currentMode = 'history';
+        
+        // UI更新
+        document.getElementById('today-btn').classList.remove('active');
+        document.getElementById('history-btn').classList.add('active');
+        document.getElementById('date-selector').style.display = 'flex';
+        document.getElementById('current-time').style.display = 'none';
+        document.getElementById('create-report-btn').style.display = 'none';
+        document.getElementById('goal-stock-btn').style.display = 'none';
+        document.getElementById('break-btn').style.display = 'none';
+        
+        // 履歴日付を読み込み
+        this.loadHistoryDates();
+        
+        // 履歴が選択されていない状態のUI
+        this.clearHistoryView();
+    }
+    
+    clearHistoryView() {
+        const container = document.getElementById('timeline-container');
+        container.innerHTML = `
+            <div class="timeline-empty">
+                <span class="material-icons">history</span>
+                <p>日付を選択してください</p>
+                <p class="sub-text">カレンダーから閲覧したい日付を選びます</p>
             </div>
-        `).join('');
-
-        stockList.innerHTML = stockHTML;
+        `;
         
-        // ドラッグ&ドロップイベントを設定
-        this.setupTaskStockDragAndDrop();
+        // 統計情報もクリア
+        document.getElementById('completed-tasks').textContent = '-';
+        document.getElementById('work-time').textContent = '-';
+        document.getElementById('productivity').textContent = '-';
+        
+        // 履歴日付表示をリセット
+        document.getElementById('history-date-display').textContent = '日付を選択';
     }
-
-    async addTaskStock() {
-        const input = document.getElementById('task-stock-input');
-        const taskName = input.value.trim();
-
-        if (!taskName) {
-            this.showToast('タスク名を入力してください', 'warning');
-            return;
-        }
-
-        // 重複チェック
-        if (this.tempTaskStock.some(task => task.name === taskName)) {
-            this.showToast('このタスクは既に追加されています', 'warning');
-            return;
-        }
-
-        // タスクを一時的に追加
-        this.tempTaskStock.push({
-            id: Date.now(),
-            name: taskName,
-            createdAt: new Date().toISOString()
-        });
-
-        // 変更状態を更新
-        this.hasTaskStockChanges = true;
-        this.updateTaskStockSaveButton();
-        
-        // UI更新
-        this.updateTaskStockList();
-        input.value = '';
-        
-        this.showToast(`「${taskName}」を追加しました（未保存）`);
-    }
-
-    async deleteTaskStock(index) {
-        if (index < 0 || index >= this.tempTaskStock.length) return;
-        
-        const taskName = this.tempTaskStock[index].name;
-        this.tempTaskStock.splice(index, 1);
-        
-        // 変更状態を更新
-        this.hasTaskStockChanges = true;
-        this.updateTaskStockSaveButton();
-        
-        // UI更新
-        this.updateTaskStockList();
-        
-        this.showToast(`「${taskName}」を削除しました（未保存）`);
-    }
-
-    selectTaskStock(taskName) {
-        // タスク入力フィールドに選択されたタスクをセット
-        const taskInput = document.getElementById('task-input');
-        // 既存の入力内容をクリアしてから新しいタスク名をセット
-        taskInput.value = '';
-        taskInput.value = taskName;
-        taskInput.focus();
-        taskInput.select();
-        
-        // ダイアログを閉じる
-        this.hideTaskStockDialog();
-        
-        this.showToast(`「${taskName}」を入力フィールドにセットしました`);
-    }
-
-
-    async saveTaskStockChanges() {
-        // 一時的な変更を実際のデータに反映
-        this.taskStock = JSON.parse(JSON.stringify(this.tempTaskStock));
-        
-        // 保存
-        await this.saveTaskStock();
-        
-        // 変更状態をリセット
-        this.hasTaskStockChanges = false;
-        this.updateTaskStockSaveButton();
-        
-        this.showToast('タスクストックを保存しました');
-    }
-
-    setupTaskStockDragAndDrop() {
-        const stockList = document.getElementById('task-stock-list');
-        let draggedElement = null;
-        let draggedIndex = null;
-        let dragStartIndex = null;
-
-        // 既存のリスナーをクリア
-        stockList.removeEventListener('dragstart', this.taskDragStart);
-        stockList.removeEventListener('dragend', this.taskDragEnd);
-        stockList.removeEventListener('dragover', this.taskDragOver);
-        stockList.removeEventListener('drop', this.taskDrop);
-
-        // ドラッグ開始
-        this.taskDragStart = (e) => {
-            if (e.target.classList.contains('task-stock-item')) {
-                draggedElement = e.target;
-                draggedIndex = parseInt(e.target.dataset.index);
-                dragStartIndex = draggedIndex;
-                e.target.style.opacity = '0.5';
-                e.target.classList.add('dragging');
-            }
-        };
-
-        // ドラッグ終了
-        this.taskDragEnd = (e) => {
-            if (e.target.classList.contains('task-stock-item')) {
-                e.target.style.opacity = '1';
-                e.target.classList.remove('dragging');
-                
-                // 最終位置を計算
-                const allItems = [...stockList.querySelectorAll('.task-stock-item')];
-                const finalIndex = allItems.indexOf(draggedElement);
-                
-                if (dragStartIndex !== null && dragStartIndex !== finalIndex) {
-                    this.reorderTaskStock(dragStartIndex, finalIndex);
-                }
-                
-                draggedElement = null;
-                draggedIndex = null;
-                dragStartIndex = null;
-            }
-        };
-
-        // ドラッグオーバー
-        this.taskDragOver = (e) => {
-            e.preventDefault();
-            if (draggedElement) {
-                const afterElement = this.getDragAfterElement(stockList, e.clientY);
-                if (afterElement == null) {
-                    stockList.appendChild(draggedElement);
-                } else {
-                    stockList.insertBefore(draggedElement, afterElement);
-                }
-            }
-        };
-
-        // ドロップ
-        this.taskDrop = (e) => {
-            e.preventDefault();
-        };
-
-        stockList.addEventListener('dragstart', this.taskDragStart);
-        stockList.addEventListener('dragend', this.taskDragEnd);
-        stockList.addEventListener('dragover', this.taskDragOver);
-        stockList.addEventListener('drop', this.taskDrop);
-    }
-
-    async reorderTaskStock(fromIndex, toIndex) {
-        // 配列を並び替え
-        const movedTask = this.tempTaskStock.splice(fromIndex, 1)[0];
-        this.tempTaskStock.splice(toIndex, 0, movedTask);
-        
-        // 変更状態を更新
-        this.hasTaskStockChanges = true;
-        this.updateTaskStockSaveButton();
-        
-        // UI更新
-        this.updateTaskStockList();
-        
-        this.showToast('タスクの順序を変更しました（未保存）');
-    }
-
-    updateTaskStockSaveButton() {
-        const saveButton = document.getElementById('save-task-stock-btn');
-        if (saveButton) {
-            saveButton.disabled = !this.hasTaskStockChanges;
-            if (this.hasTaskStockChanges) {
-                saveButton.classList.remove('disabled');
-            } else {
-                saveButton.classList.add('disabled');
-            }
-        }
-    }
-
-    async executeClearTaskStock() {
-        this.taskStock = [];
-        await this.saveTaskStock();
-        this.updateTaskStockList();
-        this.showToast('タスクストックをクリアしました');
-    }
-
-    handleWindowRestored() {
-        console.log('ウィンドウ復元処理を実行中...');
-        
-        // 最優先で全てのオーバーレイダイアログを強制的に非表示にする
-        const dialogs = document.querySelectorAll('.edit-dialog, .report-dialog, .confirm-dialog, .task-stock-dialog');
-        dialogs.forEach(dialog => {
-            if (dialog) {
-                dialog.classList.remove('show');
-                dialog.style.display = 'none';
-                dialog.style.pointerEvents = 'none';
-                dialog.style.zIndex = '-1';
-                console.log('ダイアログを強制的に非表示にしました:', dialog.className);
-            }
-        });
-        
-        // 背景オーバーレイがある場合は削除
-        const overlays = document.querySelectorAll('[style*="background: rgba(0, 0, 0"]');
-        overlays.forEach(overlay => {
-            if (overlay.style.position === 'fixed') {
-                overlay.style.display = 'none';
-                overlay.style.pointerEvents = 'none';
-                console.log('背景オーバーレイを無効化しました');
-            }
-        });
-        
-        // DOM要素の状態を確認
-        const taskInput = document.getElementById('task-input');
-        const reportContent = document.getElementById('single-report-content');
-        
-        if (taskInput) {
-            console.log('タスク入力フィールドが見つかりました');
-            // フォーカス可能な状態に復元
-            taskInput.disabled = false;
-            taskInput.style.pointerEvents = 'auto';
-            taskInput.style.opacity = '1';
-            taskInput.style.zIndex = 'auto';
-        } else {
-            console.warn('タスク入力フィールドが見つかりません');
-        }
-        
-        if (reportContent) {
-            console.log('レポートコンテンツが見つかりました');
-            // レポートエリアも操作可能に復元
-            reportContent.disabled = false;
-            reportContent.style.pointerEvents = 'auto';
-            reportContent.style.opacity = '1';
-            reportContent.style.zIndex = 'auto';
-        }
-        
-        // 全てのボタンを操作可能に復元
-        const buttons = document.querySelectorAll('button');
-        buttons.forEach(button => {
-            button.disabled = false;
-            button.style.pointerEvents = 'auto';
-            button.style.opacity = '1';
-            button.style.cursor = 'pointer';
-            button.style.zIndex = 'auto';
-        });
-        
-        // 全てのinput要素を操作可能に復元
-        const inputs = document.querySelectorAll('input');
-        inputs.forEach(input => {
-            input.disabled = false;
-            input.style.pointerEvents = 'auto';
-            input.style.opacity = '1';
-            input.style.zIndex = 'auto';
-        });
-        
-        // 全てのtextarea要素を操作可能に復元
-        const textareas = document.querySelectorAll('textarea');
-        textareas.forEach(textarea => {
-            textarea.disabled = false;
-            textarea.style.pointerEvents = 'auto';
-            textarea.style.opacity = '1';
-            textarea.style.zIndex = 'auto';
-        });
-        
-        // body要素のスタイルも復元
-        document.body.style.pointerEvents = 'auto !important';
-        document.body.style.userSelect = 'auto';
-        document.body.style.zIndex = 'auto';
-        
-        // メインコンテナを確実に操作可能にする
-        const mainContent = document.querySelector('.main-content, .container, main');
-        if (mainContent) {
-            mainContent.style.pointerEvents = 'auto';
-            mainContent.style.zIndex = '1';
-        }
-        
-        console.log('ウィンドウ復元処理が完了しました');
-    }
-
-    // 履歴関連のメソッド
+    
     async loadHistoryDates() {
         try {
-            console.log('履歴日付読み込み開始');
             const response = await fetch(`${this.apiBaseUrl}/api/history/dates`);
-            console.log('履歴日付API response status:', response.status);
-            
             if (response.ok) {
                 const result = await response.json();
-                console.log('履歴日付API結果:', result);
-                
                 if (result.success) {
                     this.historyDates = result.dates;
-                    console.log('historyDates設定完了:', this.historyDates);
-                    this.updateHistorySelector();
-                } else {
-                    console.error('履歴日付取得失敗:', result.message);
+                    console.log('履歴日付を読み込みました:', this.historyDates);
+                    
+                    // カレンダーにマークを付けるなどの処理をここに追加できる
                 }
-            } else {
-                console.error('履歴日付API失敗:', response.status, response.statusText);
             }
         } catch (error) {
             console.error('履歴日付の読み込みエラー:', error);
         }
     }
-
-    updateHistorySelector() {
-        // カレンダー表示では特別な処理は不要
-        // 日付入力フィールドをデフォルトで今日に設定
-        const calendarInput = document.getElementById('calendar-date-input');
-        if (calendarInput) {
-            const today = new Date();
-            const todayString = today.toISOString().split('T')[0];
-            
-            // 未来の日付を選択できないように制限
-            calendarInput.max = todayString;
-            
-            if (!calendarInput.value) {
-                calendarInput.value = todayString;
-            }
+    
+    onDateSelected(dateString) {
+        console.log('onDateSelected - 選択された日付:', dateString);
+        
+        if (!dateString) {
+            console.log('日付が空のため処理を中断');
+            return;
         }
+        
+        // 選択された日付を内部状態に保存
+        this.currentDate = dateString;
+        this.selectedDate = dateString;
+        
+        // 履歴データを読み込み
+        this.loadHistoryData(dateString);
+        
+        // 履歴日付表示を更新
+        const date = new Date(dateString);
+        const displayDate = date.toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            weekday: 'long'
+        });
+        document.getElementById('current-date').textContent = displayDate;
     }
-
-    formatDateForDisplay(dateString) {
-        try {
-            const date = new Date(dateString + 'T00:00:00'); // タイムゾーンの問題を回避
-            const year = date.getFullYear();
-            const month = date.getMonth() + 1;
-            const day = date.getDate();
-            const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-            const weekday = weekdays[date.getDay()];
-            return `${year}年${month}月${day}日 (${weekday})`;
-        } catch (error) {
-            console.error('日付フォーマットエラー:', error);
-            return dateString;
-        }
-    }
-
-    async switchToHistoryMode() {
-        console.log('=== 履歴モードに切り替え中 ===');
-        this.currentMode = 'history';
-        // 履歴モードでは currentDate は後で設定される（初期値は null のまま）
-        this.currentDate = null;
-        console.log('履歴モードに切り替え - currentDate を初期化');
-        
-        // ボタンの状態を更新
-        document.getElementById('today-btn').classList.remove('active');
-        document.getElementById('history-btn').classList.add('active');
-        
-        // 日付選択を表示
-        const dateSelector = document.getElementById('date-selector');
-        if (dateSelector) {
-            dateSelector.style.display = 'block';
-            console.log('日付選択を表示しました');
-        } else {
-            console.error('date-selector要素が見つかりません');
-        }
-        
-        // カレンダーで今日の日付を選択できないように制限（昨日まで）
-        const calendarInput = document.getElementById('calendar-date-input');
-        if (calendarInput) {
-            const today = new Date();
-            const yesterday = new Date(today);
-            yesterday.setDate(yesterday.getDate() - 1);
-            calendarInput.max = yesterday.toISOString().split('T')[0];
-            console.log('カレンダーの最大日付を昨日に設定しました:', calendarInput.max);
-        }
-        
-        // 休憩ボタンとタスク終了ボタンを非表示
-        const breakButton = document.getElementById('break-btn');
-        const endTaskButton = document.getElementById('end-task-btn');
-        if (breakButton) {
-            breakButton.style.display = 'none';
-            console.log('休憩ボタンを非表示にしました');
-        }
-        if (endTaskButton) {
-            endTaskButton.style.display = 'none';
-            console.log('タスク終了ボタンを非表示にしました');
-        }
-        
-        // 現在時刻表示を非表示
-        const currentTimeElement = document.getElementById('current-time');
-        if (currentTimeElement) {
-            currentTimeElement.style.display = 'none';
-            console.log('現在時刻表示を非表示にしました');
-        }
-        
-        // タイムラインセクションに履歴モードクラスを追加
-        const timelineSection = document.querySelector('.timeline-section');
-        if (timelineSection) {
-            timelineSection.classList.add('history-mode');
-            console.log('タイムラインセクションに履歴モードクラスを追加しました');
-        } else {
-            console.error('timeline-section要素が見つかりません');
-        }
-        
-        // タイムラインのタイトルを更新
-        const timelineTitle = document.querySelector('.timeline-section h3');
-        if (timelineTitle) {
-            timelineTitle.textContent = '📋 履歴タイムライン';
-            console.log('タイムラインのタイトルを更新しました');
-        } else {
-            console.error('timeline-section h3要素が見つかりません');
-        }
-        
-        // 日付入力フィールドにフォーカスを当てる
-        setTimeout(() => {
-            const calendarInput = document.getElementById('calendar-date-input');
-            if (calendarInput) {
-                calendarInput.focus();
-                console.log('日付入力フィールドにフォーカスを当てました');
-                
-                // イベントリスナーが設定されているか確認
-                const hasEventListener = calendarInput.onchange || calendarInput.getAttribute('data-has-listener');
-                console.log('イベントリスナーの状態:', hasEventListener);
-            } else {
-                console.error('calendar-date-input要素が見つかりません');
-            }
-        }, 100);
-        
-        // 最新の履歴データを自動的に読み込む
-        console.log('履歴モード切り替え時の historyDates:', this.historyDates);
-        console.log('historyDates の長さ:', this.historyDates ? this.historyDates.length : 'undefined');
-        
-        if (this.historyDates && this.historyDates.length > 0) {
-            // 日付を降順（新しい順）にソートして最新日付を取得
-            const sortedDates = [...this.historyDates].sort((a, b) => new Date(b) - new Date(a));
-            const latestDate = sortedDates[0];
-            
-            console.log('利用可能な履歴日付:', this.historyDates);
-            console.log('最新の履歴日付を自動読み込み:', latestDate);
-            
-            // カレンダーの値を設定
-            const calendarInput = document.getElementById('calendar-date-input');
-            if (calendarInput) {
-                calendarInput.value = latestDate;
-            }
-            
-            // 最新の履歴データを読み込み
-            await this.loadHistoryData(latestDate);
-        } else {
-            console.log('履歴データが見つかりません。履歴データを再読み込みします。');
-            // 履歴データがない場合は再読み込みを試行
-            await this.loadHistoryDates();
-            
-            // 再読み込み後に再度確認
-            if (this.historyDates && this.historyDates.length > 0) {
-                console.log('再読み込み後の履歴データ:', this.historyDates);
-                const sortedDates = [...this.historyDates].sort((a, b) => new Date(b) - new Date(a));
-                const latestDate = sortedDates[0];
-                
-                // カレンダーの値を設定
-                const calendarInput = document.getElementById('calendar-date-input');
-                if (calendarInput) {
-                    calendarInput.value = latestDate;
-                }
-                
-                // 最新の履歴データを読み込み
-                await this.loadHistoryData(latestDate);
-            } else {
-                // それでも履歴データがない場合
-                const container = document.getElementById('timeline-container');
-                if (container) {
-                    container.innerHTML = '<p class="no-data-message">履歴データがありません。日付を選択してください。</p>';
-                }
-            }
-        }
-        
-        console.log('=== 履歴モードの切り替え完了 ===');
-    }
-
-    switchToTodayMode() {
-        this.currentMode = 'today';
-        this.selectedDate = null;
-        this.currentDate = null; // 今日はnull
-        
-        // ボタンの状態を更新
-        document.getElementById('history-btn').classList.remove('active');
-        document.getElementById('today-btn').classList.add('active');
-        
-        // 日付選択を非表示
-        document.getElementById('date-selector').style.display = 'none';
-        
-        // カレンダーの最大日付を今日に戻す
-        const calendarInput = document.getElementById('calendar-date-input');
-        if (calendarInput) {
-            const today = new Date();
-            calendarInput.max = today.toISOString().split('T')[0];
-            console.log('カレンダーの最大日付を今日に戻しました:', calendarInput.max);
-        }
-        
-        
-        // 休憩ボタンの表示状態を更新
-        this.updateBreakButtonVisibility();
-        
-        // タスク終了ボタンの表示状態を更新
-        this.updateEndTaskButtonVisibility();
-        
-        // 現在時刻表示を再表示
-        const currentTimeElement = document.getElementById('current-time');
-        if (currentTimeElement) {
-            currentTimeElement.style.display = 'block';
-            console.log('現在時刻表示を再表示しました');
-        }
-        
-        // タイムラインセクションから履歴モードクラスを削除
-        const timelineSection = document.querySelector('.timeline-section');
-        timelineSection.classList.remove('history-mode');
-        
-        // タイムラインのタイトルを更新
-        const timelineTitle = document.querySelector('.timeline-section h3');
-        timelineTitle.textContent = '📈 タイムライン';
-        
-        // 日付表示を今日に戻す
-        this.updateDateTime();
-        
-        // 今日のタスクデータを再読み込みしてタイムラインを更新
-        this.loadTasks();
-    }
-
+    
     async loadHistoryData(dateString) {
         try {
+            console.log(`履歴データ読み込み開始: ${dateString}`);
             const response = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
             if (response.ok) {
                 const result = await response.json();
-                if (result.success) {
-                    this.selectedDate = dateString;
-                    this.currentDate = dateString; // 統一された日付管理
+                if (result.success && result.data) {
+                    console.log('履歴データ:', result.data);
+                    
+                    // 履歴データをタイムラインに表示
                     this.renderHistoryTimeline(result.data);
                     
-                    // 日付表示を更新
-                    const dateDisplay = document.getElementById('current-date');
-                    dateDisplay.textContent = this.formatDateForDisplay(dateString);
+                    // 統計情報を更新
+                    this.updateHistoryStats(result.data.tasks);
                 } else {
-                    this.showToast('履歴データの読み込みに失敗しました', 'error');
+                    // データがない場合は空の表示
+                    this.renderEmptyHistory(dateString);
                 }
             }
         } catch (error) {
-            console.error('履歴データの読み込みエラー:', error);
-            this.showToast('履歴データの読み込みに失敗しました', 'error');
+            console.error('履歴データ読み込みエラー:', error);
         }
     }
-
-    async onDateSelected(selectedDate) {
-        if (!selectedDate) {
-            console.log('日付が選択されていません');
-            return;
-        }
-        
-        console.log(`=== 日付選択処理開始: ${selectedDate} ===`);
-        
-        // 未来の日付を選択した場合は処理を停止
-        const today = new Date();
-        const todayString = today.toISOString().split('T')[0];
-        if (selectedDate > todayString) {
-            console.log('未来の日付が選択されました:', selectedDate);
-            this.showToast('未来の日付は選択できません', 'error');
-            
-            // カレンダー入力を今日の日付に戻す
-            const calendarInput = document.getElementById('calendar-date-input');
-            if (calendarInput) {
-                calendarInput.value = todayString;
-            }
-            return;
-        }
-        
-        // APIが初期化されていない場合は処理を停止
-        if (!this.apiBaseUrl) {
-            console.error('APIベースURLが設定されていません');
-            this.showToast('APIが初期化されていません', 'error');
-            return;
-        }
-        
-        try {
-            // まず既存のデータを読み込み試行
-            const historyUrl = `${this.apiBaseUrl}/api/history/${selectedDate}`;
-            const response = await fetch(historyUrl);
-            
-            if (response.ok) {
-                const result = await response.json();
-                
-                if (result.success) {
-                    // データが存在する場合、読み込み
-                    console.log('既存データを読み込み中...');
-                    this.selectedDate = selectedDate;
-                    this.currentDate = selectedDate; // 統一された日付管理
-                    this.renderHistoryTimeline(result.data);
-                    this.updateBreakButtonVisibility(); // 休憩ボタン表示制御
-                    
-                    // 日付表示を更新
-                    const dateDisplay = document.getElementById('current-date');
-                    if (dateDisplay) {
-                        dateDisplay.textContent = this.formatDateForDisplay(selectedDate);
-                    }
-                    
-                    console.log('=== 既存データの読み込み完了 ===');
-                    return;
-                }
-            }
-            
-            // データが存在しない場合、空のタイムラインを表示
-            console.log('データが存在しません - 空のタイムラインを表示');
-            this.selectedDate = selectedDate;
-            this.currentDate = selectedDate; // 統一された日付管理
-            this.renderEmptyTimeline();
-            this.updateBreakButtonVisibility(); // 休憩ボタン表示制御
-            
-            // 日付表示を更新
-            const dateDisplay = document.getElementById('current-date');
-            if (dateDisplay) {
-                dateDisplay.textContent = this.formatDateForDisplay(selectedDate);
-            }
-            
-            console.log('=== 日付選択処理完了（データなし） ===');
-        } catch (error) {
-            console.error('日付選択エラー:', error);
-            this.showToast('データの読み込みに失敗しました', 'error');
-        }
-    }
-
+    
     renderHistoryTimeline(historyData) {
-        console.log('=== renderHistoryTimeline開始 ===');
-        console.log('履歴データ:', historyData);
-        
-        // 履歴データを保存（deleteCurrentTaskで参照できるように）
-        // データの一貫性を確保するため、name/titleフィールドを統一
-        this.tasks = historyData && historyData.tasks ? historyData.tasks.map(task => ({
-            ...task,
-            name: task.name || task.title || '',
-            title: task.title || task.name || ''
-        })) : [];
-        this.currentHistoryData = historyData;
-        
         const container = document.getElementById('timeline-container');
-        if (!container) {
-            console.error('timeline-container要素が見つかりません');
-            return;
-        }
-
-        if (!historyData || !historyData.tasks || historyData.tasks.length === 0) {
-            console.log('タスクデータが空です');
-            container.innerHTML = `
-                <div class="timeline-empty">
-                    <span class="material-icons">schedule</span>
-                    <p>この日のタスクはありません</p>
-                    <p class="sub-text">タスクを追加してください</p>
-                </div>
-            `;
-            return;
-        }
-
-        console.log(`${historyData.tasks.length}個のタスクを表示します`);
+        const tasks = historyData.tasks || [];
         
-        const timelineHTML = historyData.tasks.map((task, index) => {
-            console.log(`タスク${index}の詳細:`, task);
-            console.log(`task.id: ${task.id}, typeof task.id: ${typeof task.id}`);
-            
-            // タスクIDをそのまま保持（文字列も数値もそのまま）
-            let taskId = task.id !== undefined && task.id !== null ? task.id : index;
-            
-            const dateForButton = this.currentDate || this.selectedDate || '';
-            console.log(`最終的なタスクID: ${taskId}, currentDate: ${this.currentDate}, selectedDate: ${this.selectedDate}, dateForButton: ${dateForButton}`);
-            
-            // データ属性の値をログ出力
-            console.log(`ボタンに設定する値 - taskId: "${taskId}" (${typeof taskId}), dateForButton: "${dateForButton}" (${typeof dateForButton})`);
-            
+        if (tasks.length === 0) {
+            this.renderEmptyHistory(historyData.date);
+            return;
+        }
+        
+        const timelineHTML = tasks.map(task => {
             const startTime = this.formatTime(task.startTime);
-            const endTime = task.endTime ? this.formatTime(task.endTime) : '実行中';
+            const endTime = task.endTime ? this.formatTime(task.endTime) : '未完了';
             const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '';
-            const isRunning = !task.endTime;
             const isBreak = task.isBreak || false;
             
-            // クラスを動的に設定
-            let itemClass = 'timeline-item';
-            if (isRunning && isBreak) {
-                itemClass += ' running break';
-            } else if (isRunning) {
-                itemClass += ' running';
-            }
-            
-            // タスク名を表示用に整形（休憩の場合は適切に表示）
-            let displayName = task.name || task.title || '';
+            // タスク名を表示用に整形
+            let displayName = task.name || task.title || '名称未設定';
             if (isBreak) {
-                if (displayName === '[BREAK] 休憩' || displayName === '🔴 休憩' || displayName === '') {
-                    displayName = '休憩';
-                } else if (displayName.startsWith('[BREAK] ')) {
-                    displayName = displayName.replace('[BREAK] ', '');
-                } else if (displayName.startsWith('🔴 休憩: ')) {
-                    displayName = displayName.replace('🔴 休憩: ', '');
-                } else if (displayName.startsWith('🔴 休憩')) {
-                    displayName = displayName.replace('🔴 休憩', '').trim();
-                    if (!displayName) displayName = '休憩';
-                }
+                displayName = '休憩';
             }
-            
-            const buttonHtml = `<button class="timeline-edit history-edit-btn" data-task-id="${taskId}" data-date="${dateForButton}" title="編集">
-                        <span class="material-icons">edit</span>
-                    </button>`;
-            
-            console.log(`生成されるボタンHTML: ${buttonHtml}`);
             
             return `
-                <div class="${itemClass}">
+                <div class="timeline-item">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
-                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
+                        <div class="timeline-task">${displayName}</div>
                         ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
-                        ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
                     </div>
-                    ${buttonHtml}
+                    <button class="timeline-edit" onclick="app.editHistoryTask('${historyData.date}', '${task.id}')" title="編集">
+                        <span class="material-icons">edit</span>
+                    </button>
                 </div>
             `;
         }).join('');
-
+        
         container.innerHTML = timelineHTML;
-        
-        // 履歴編集ボタンのイベントリスナーを追加
-        this.setupHistoryEditListeners();
-        
-        console.log('=== renderHistoryTimeline完了 ===');
     }
-
-    setupHistoryEditListeners() {
-        // 履歴編集ボタンのイベントリスナーを設定（イベント委譲を使用）
+    
+    renderEmptyHistory(dateString) {
         const container = document.getElementById('timeline-container');
-        if (!container) return;
+        const date = new Date(dateString);
+        const displayDate = date.toLocaleDateString('ja-JP', {
+            month: 'long',
+            day: 'numeric'
+        });
         
-        // 既存のリスナーを削除（重複防止）
-        container.removeEventListener('click', this.historyEditHandler);
+        container.innerHTML = `
+            <div class="timeline-empty">
+                <span class="material-icons">calendar_today</span>
+                <p>${displayDate}のデータはありません</p>
+            </div>
+        `;
         
-        // 新しいリスナーを追加
-        this.historyEditHandler = (event) => {
-            const editBtn = event.target.closest('.history-edit-btn');
-            if (editBtn) {
-                event.preventDefault();
-                event.stopPropagation();
+        // 統計情報もクリア
+        document.getElementById('completed-tasks').textContent = '0';
+        document.getElementById('work-time').textContent = '0:00';
+        document.getElementById('productivity').textContent = '-';
+    }
+    
+    updateHistoryStats(tasks) {
+        const completedWorkTasks = tasks.filter(task => task.endTime && !task.isBreak).length;
+        
+        const totalMinutes = tasks.reduce((total, task) => {
+            if (task.endTime && task.startTime && !task.isBreak) {
+                const duration = this.calculateDuration(task.startTime, task.endTime);
+                if (!duration) return total;
                 
-                const taskIdStr = editBtn.dataset.taskId;
-                const dateString = editBtn.dataset.date;
-                // IDは文字列の場合もあるのでそのまま使用
-                const taskId = isNaN(parseInt(taskIdStr)) ? taskIdStr : parseInt(taskIdStr);
+                const hours = duration.match(/(\d+)時間/);
+                const minutes = duration.match(/(\d+)分/);
                 
-                console.log('履歴編集ボタンがクリックされました:');
-                console.log('- taskIdStr:', taskIdStr);
-                console.log('- taskId:', taskId);
-                console.log('- dateString:', dateString);
-                console.log('- isValidTaskId:', (typeof taskId === 'string' || (!isNaN(taskId) && taskId >= 0)));
-                console.log('- isValidDate:', !!dateString);
-                console.log('- editBtn element:', editBtn);
-                console.log('- editBtn.dataset:', editBtn.dataset);
-                console.log('- editBtn outerHTML:', editBtn.outerHTML);
+                let taskMinutes = 0;
+                if (hours) taskMinutes += parseInt(hours[1], 10) * 60;
+                if (minutes) taskMinutes += parseInt(minutes[1], 10);
                 
-                if ((typeof taskId === 'string' || (!isNaN(taskId) && taskId >= 0)) && dateString && dateString.trim() !== '') {
-                    this.editHistoryTask(dateString, taskId);
-                } else {
-                    console.error('タスクIDまたは日付が見つかりません:', { 
-                        taskIdStr, 
-                        taskId, 
-                        dateString,
-                        editBtnDataset: editBtn.dataset
-                    });
-                    this.showToast('編集に必要な情報が見つかりません', 'error');
-                }
+                return total + taskMinutes;
             }
-        };
+            return total;
+        }, 0);
         
-        container.addEventListener('click', this.historyEditHandler);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        const totalWorkTime = `${hours}:${minutes.toString().padStart(2, '0')}`;
+        
+        const workTasks = tasks.filter(task => !task.isBreak);
+        const productivity = workTasks.length > 0 ? `${Math.round(completedWorkTasks / workTasks.length * 100)}%` : '-';
+        
+        document.getElementById('completed-tasks').textContent = completedWorkTasks;
+        document.getElementById('work-time').textContent = totalWorkTime;
+        document.getElementById('productivity').textContent = productivity;
     }
-
-    renderEmptyTimeline() {
-        console.log('=== renderEmptyTimeline開始 ===');
-        
-        const timeline = document.getElementById('timeline-container');
-        if (!timeline) {
-            console.error('timeline-container要素が見つかりません');
-            return;
+    
+    handleWindowRestored() {
+        // 1. タイムラインを再読み込み
+        if (this.currentMode === 'today') {
+            this.loadTasks();
+        } else if (this.currentMode === 'history' && this.currentDate) {
+            this.loadHistoryData(this.currentDate);
         }
         
-        timeline.innerHTML = '<p class="empty-message">この日のデータはまだ作成されていません</p>';
-        console.log('=== renderEmptyTimeline完了 ===');
-    }
-
-
-    updateBreakButtonVisibility() {
-        /**休憩ボタンの表示/非表示を制御 */
-        const breakButton = document.getElementById('break-btn');
-        if (!breakButton) return;
-        
-        // 過去日付の場合は非表示
-        if (this.currentDate) {
-            breakButton.style.display = 'none';
-            console.log('過去日付のため休憩ボタンを非表示にしました');
-        } else {
-            // 今日の場合は表示
-            breakButton.style.display = 'flex';
-            console.log('今日のため休憩ボタンを表示しました');
+        // 2. 報告書ダイアログが開いている場合は内容を再読み込み
+        if (document.getElementById('report-dialog').classList.contains('show')) {
+            this.showReportDialog();
         }
+        
+        // 3. 設定ダイアログが開いている場合は内容を再読み込み
+        if (document.getElementById('settings-dialog').classList.contains('show')) {
+            this.openSettingsDialog();
+        }
+        
+        // 4. タスク入力欄にフォーカス
+        const taskInput = document.getElementById('task-input');
+        if (taskInput) {
+            taskInput.focus();
+        }
+        
+        console.log('ウィンドウ復元後の再描画処理が完了しました');
     }
-
-
 }
 
-// グローバルにアクセスできるようにする
-let app;
+const app = new NippoApp();
+window.app = app; // グローバルスコープにappを公開
 
-// アプリケーション開始
-document.addEventListener('DOMContentLoaded', async () => {
-    console.log('DOM読み込み完了 - アプリ初期化を開始');
-    
-    
-    
-    console.log('アプリケーションを初期化中...');
-    app = new NippoApp();
+// グローバルなエラーハンドリング
+window.addEventListener('error', (event) => {
+    console.error('レンダラープロセスで未捕捉のエラー:', event.error);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('レンダラープロセスで未処理のPromise rejection:', event.reason);
 });
