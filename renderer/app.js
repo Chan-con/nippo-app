@@ -2444,7 +2444,10 @@ class NippoApp {
             item.className = 'task-stock-item';
             item.innerHTML = `
                 <div class="stock-item-content">
-                    <div class="task-stock-item-name" title="タスク名">${task.name}</div>
+                    <div class="task-stock-item-name clickable" title="クリックして新しいタスクに追加" onclick="app.addTaskFromStock('${task.name.replace(/'/g, "\\'")}')">
+                        <span class="material-icons" style="font-size: 14px; margin-right: 6px; opacity: 0.6; color: var(--accent);">add_circle_outline</span>
+                        ${task.name}
+                    </div>
                     <input type="text" value="${task.name}" class="task-stock-edit-input" oninput="app.onTaskInputChange(${index}, this)" style="display: none;">
                     <button class="task-stock-edit-btn" onclick="app.editTaskStockItem(${index})" title="編集">
                         <span class="material-icons">edit</span>
@@ -2570,6 +2573,31 @@ class NippoApp {
         } catch (error) {
             console.error('タスクストック保存エラー:', error);
             this.showToast('タスクストックの保存に失敗しました', 'error');
+        }
+    }
+
+    // タスクストックからタスクを追加する機能
+    addTaskFromStock(taskName) {
+        console.log(`タスクストックからタスクを追加: "${taskName}"`);
+        
+        // メインのタスク入力欄にタスク名を設定
+        const taskInput = document.getElementById('task-input');
+        if (taskInput) {
+            taskInput.value = taskName;
+            
+            // タスクストックダイアログを閉じる
+            this.hideTaskStockDialog();
+            
+            // タスク入力欄にフォーカスを移す
+            taskInput.focus();
+            
+            // カーソルを末尾に移動
+            taskInput.setSelectionRange(taskInput.value.length, taskInput.value.length);
+            
+            this.showToast(`タスク「${taskName}」を入力欄に設定しました`);
+        } else {
+            console.error('タスク入力欄が見つかりません');
+            this.showToast('タスクの追加に失敗しました', 'error');
         }
     }
     

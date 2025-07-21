@@ -1997,12 +1997,36 @@ body {
   color: var(--text-primary);
   font-weight: 500;
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
   user-select: none; /* テキスト選択を無効化 */
 }
 
 .task-stock-item-name:hover {
-  /* ホバー時の視覚変化なし - 完全にテキスト表示を維持 */
+  color: var(--accent);
+}
+
+.task-stock-item-name.clickable {
+  display: flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+  margin: 2px 0;
+  border-radius: var(--radius-small);
+  transition: all 0.15s ease;
+}
+
+.task-stock-item-name.clickable:hover {
+  color: var(--accent);
+  transform: none;
+}
+
+/* タスクストックのヘルプテキスト */
+.task-stock-help-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 12px;
+  padding: 0 4px;
 }
 
 /* 編集中の入力フィールド */
