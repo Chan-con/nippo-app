@@ -3589,7 +3589,13 @@ app.generateTagSummary = async function() {
 
             contentHTML += `
                     </div>
-                    <div class="tag-total">合計: ${tagTotalTime}</div>
+                    <div class="tag-total">
+                        <span>合計: ${tagTotalTime}</span>
+                        <button class="tag-copy-btn" onclick="app.copyTagSummary('${tagName}', '${tagTotalTime}')">
+                            <span class="material-icons">content_copy</span>
+                            コピー
+                        </button>
+                    </div>
                 </div>
             `;
         });
@@ -3601,6 +3607,35 @@ app.generateTagSummary = async function() {
     } catch (error) {
         console.error('タグサマリー生成エラー:', error);
         summaryContainer.innerHTML = '<p style="color: var(--error); text-align: center; padding: 20px;">タグサマリーの生成に失敗しました</p>';
+    }
+};
+
+app.copyTagSummary = function(tagName, totalTime) {
+    const copyText = `${tagName} - ${totalTime}`;
+    
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(copyText).then(() => {
+            this.showToast(`「${copyText}」をコピーしました`);
+        }).catch(err => {
+            console.error('クリップボードのコピーに失敗しました:', err);
+            this.showToast('コピーに失敗しました', 'error');
+        });
+    } else {
+        // フォールバック：古いブラウザ向け
+        const textArea = document.createElement('textarea');
+        textArea.value = copyText;
+        document.body.appendChild(textArea);
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            this.showToast(`「${copyText}」をコピーしました`);
+        } catch (err) {
+            console.error('クリップボードのコピーに失敗しました:', err);
+            this.showToast('コピーに失敗しました', 'error');
+        }
+        
+        document.body.removeChild(textArea);
     }
 };
 
