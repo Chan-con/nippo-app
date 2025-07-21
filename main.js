@@ -93,6 +93,13 @@ function createWindow() {
 
   mainWindow.loadFile('renderer/index.html');
 
+  // レンダラープロセスからのコンソールログをメインプロセスに転送
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const timestamp = new Date().toISOString();
+    const logLevel = level === 1 ? 'ERROR' : level === 2 ? 'WARN' : 'INFO';
+    console.log(`[RENDERER-${logLevel}] ${message}`);
+  });
+
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();

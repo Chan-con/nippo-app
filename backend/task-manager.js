@@ -12,6 +12,7 @@ class TaskManager {
         this.reportFile = path.join(this.dataDir, 'report.txt');
         this.reportTabsFile = path.join(this.dataDir, 'report_tabs.json');
         this.urlsFile = path.join(this.dataDir, 'report_urls.json');
+        this.historyDir = path.join(this.dataDir, 'history');
         
         this.initialized = false;
     }
@@ -31,6 +32,7 @@ class TaskManager {
             
             // recursive: true なので、親ディレクトリが存在しない場合も自動で作成されるはず
             await fs.mkdir(this.dataDir, { recursive: true });
+            await fs.mkdir(this.historyDir, { recursive: true });
             
             console.log('データディレクトリの準備が完了しました。');
             
@@ -72,147 +74,140 @@ class TaskManager {
         return `${amOrPm} ${hour12}:${minute.toString().padStart(2, '0')}`;
     }
 
-    async loadSchedule() {
-        /**スケジュールデータを読み込む */
+    getTodayDateString() {
+        /**今日の日付文字列を取得 (YYYY-MM-DD形式) */
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    getTodayDataFile() {
+        /**今日のデータファイルパスを取得 */
+        const dateString = this.getTodayDateString();
+        return path.join(this.historyDir, `data_${dateString}.json`);
+    }
+
+    getHistoryDataFile(dateString) {
+        /**指定日のデータファイルパスを取得 */
+        return path.join(this.historyDir, `data_${dateString}.json`);
+    }
+
+    getDataFileForDate(dateString = null) {
+        /**指定日のデータファイルパス取得（JSON形式統一） */
+        if (!dateString) {
+            // 今日の場合は特別なファイル名
+            return path.join(this.dataDir, 'data_today.json');
+        }
+        // 過去日付の場合は従来の履歴ファイル形式
+        return path.join(this.historyDir, `data_${dateString}.json`);
+    }
+
+    async loadSchedule(dateString = null) {
+        /**スケジュールデータを読み込む（JSON形式統一） */
         await this.initialize();
-        const tasks = [];
-        console.log(`データファイルのパス: ${this.dataFile}`);
+        
+        // 日付が指定されている場合は履歴から読み込み
+        if (dateString) {
+            return await this.loadHistoryTasks(dateString);
+        }
+        
+        // 今日のデータを読み込み
+        const jsonFile = this.getDataFileForDate();
+        console.log(`JSONデータファイルのパス: ${jsonFile}`);
         
         try {
-            const exists = await fs.access(this.dataFile).then(() => true).catch(() => false);
-            console.log(`データファイルの存在: ${exists}`);
+            const exists = await fs.access(jsonFile).then(() => true).catch(() => false);
+            console.log(`JSONデータファイルの存在: ${exists}`);
             
             if (exists) {
-                const content = await fs.readFile(this.dataFile, 'utf-8');
-                const lines = content.split('\n');
+                const content = await fs.readFile(jsonFile, 'utf-8');
+                const data = JSON.parse(content);
+                const tasks = data.tasks || [];
                 
-                console.log(`読み込んだ行数: ${lines.length}`);
-                if (lines.length > 0) {
-                    console.log("ファイル内容:");
-                    lines.forEach((line, i) => {
-                        try {
-                            console.log(`  ${i+1}: ${JSON.stringify(line)}`);
-                        } catch (error) {
-                            console.log(`  ${i+1}: [絵文字を含む行]`);
-                        }
-                    });
-                }
-
-                let taskData = [];
-                for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    if (trimmedLine.includes("~")) {
-                        // 時間範囲の行
-                        try {
-                            const [startTime, endTime] = trimmedLine.split("~", 2);
-                            taskData.push(startTime.trim(), endTime.trim());
-                        } catch (error) {
-                            console.error(`時間行の解析エラー: ${trimmedLine}, エラー: ${error}`);
-                            continue;
-                        }
-                    } else {
-                        // タスク名の行
-                        if (trimmedLine) {
-                            taskData.push(trimmedLine);
-                            if (taskData.length >= 3) {
-                                try {
-                                    // 終了時刻の処理：空文字列、"None"、"none"をnullとして扱う
-                                    let endTime = taskData.length > 1 && taskData[1] ? taskData[1].trim() : "";
-                                    if (!endTime || endTime.toLowerCase() === "none") {
-                                        endTime = null;
-                                    }
-                                    
-                                    // タスク名を処理
-                                    let taskName = taskData.length > 2 ? taskData[2] : "";
-                                    let isBreak = false;
-                                    
-                                    // 休憩タスクの判定と名前の正規化
-                                    if (taskName.startsWith('[BREAK]')) {
-                                        isBreak = true;
-                                        taskName = taskName.replace('[BREAK]', '').trim();
-                                    } else if (taskName.startsWith('🔴 休憩:')) {
-                                        isBreak = true;
-                                        taskName = taskName.replace('🔴 休憩:', '').trim();
-                                    } else if (taskName.startsWith('🔴 休憩')) {
-                                        isBreak = true;
-                                        taskName = taskName.replace('🔴 休憩', '').trim();
-                                    } else if (taskName === '休憩') {
-                                        isBreak = true;
-                                    }
-                                    
-                                    // 空の場合は休憩として設定
-                                    if (!taskName && isBreak) {
-                                        taskName = '休憩';
-                                    }
-                                    
-                                    const task = {
-                                        id: tasks.length,
-                                        startTime: taskData.length > 0 ? taskData[0] : "",
-                                        endTime: endTime,
-                                        name: taskName,
-                                        isBreak: isBreak
-                                    };
-                                    tasks.push(task);
-                                    try {
-                                        console.log(`パースしたタスク: ${JSON.stringify(task)}`);
-                                    } catch (error) {
-                                        console.log(`パースしたタスク: [絵文字を含むタスク] ID=${task.id}`);
-                                    }
-                                    taskData = [];
-                                } catch (error) {
-                                    console.error(`タスクデータの解析エラー: ${JSON.stringify(taskData)}, エラー: ${error}`);
-                                    taskData = [];
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                }
+                // レガシー形式との互換性のため、IDとnameフィールドを調整
+                const compatibleTasks = tasks.map((task, index) => ({
+                    id: task.id || `task-${index + 1}`, // 既存IDを保持、なければ生成
+                    startTime: task.startTime,
+                    endTime: task.endTime,
+                    name: task.title || task.name,
+                    isBreak: task.isBreak || false
+                }));
+                
+                console.log(`JSON読み込み完了 - タスク数: ${compatibleTasks.length}`);
+                return compatibleTasks;
             } else {
-                console.log("データファイルが存在しません");
+                // JSONファイルが存在しない場合、レガシーTXTファイルからの移行を試行
+                return await this.migrateFromLegacyFormat();
+            }
+        } catch (error) {
+            console.error(`JSON読み込みエラー: ${error}`);
+            // JSONパースエラーの場合もレガシー移行を試行
+            return await this.migrateFromLegacyFormat();
+        }
+    }
+
+    async loadHistoryTasks(dateString) {
+        /**履歴タスクを読み込み */
+        const historyFile = this.getHistoryDataFile(dateString);
+        
+        try {
+            const exists = await fs.access(historyFile).then(() => true).catch(() => false);
+            if (!exists) {
+                return [];
             }
             
-            console.log(`読み込み完了 - タスク数: ${tasks.length}`);
-            return tasks;
+            const content = await fs.readFile(historyFile, 'utf-8');
+            const data = JSON.parse(content);
+            const tasks = data.tasks || [];
+            
+            // レガシー形式との互換性のため、IDとnameフィールドを調整
+            const compatibleTasks = tasks.map((task, index) => ({
+                id: task.id || `task-${index + 1}`, // 既存IDを保持、なければ生成
+                startTime: task.startTime,
+                endTime: task.endTime,
+                name: task.title || task.name,
+                isBreak: task.isBreak || false
+            }));
+            
+            console.log(`履歴読み込み完了 - 日付: ${dateString}, タスク数: ${compatibleTasks.length}`);
+            return compatibleTasks;
         } catch (error) {
-            console.error(`load_schedule全体のエラー: ${error}`);
-            console.error(error.stack);
+            console.error(`履歴読み込みエラー: ${error}`);
             return [];
         }
     }
 
-    async saveSchedule(tasks) {
-        /**スケジュールデータを保存 */
+    async saveSchedule(tasks, dateString = null) {
+        /**スケジュールデータを保存（JSON形式統一） */
         await this.initialize();
+        
         try {
-            console.log(`saveSchedule開始 - ファイルパス: ${this.dataFile}`);
-            let content = '';
-            for (const task of tasks) {
-                const startTime = task.startTime || '';
-                let endTime = task.endTime;
-                if (endTime === null || endTime === undefined) {
-                    endTime = '';
-                }
-                let name = task.name || '';
-                // 休憩タスクの場合は識別子を追加
-                if (task.isBreak) {
-                    if (name === '休憩' || name === '') {
-                        name = "[BREAK] 休憩";
-                    } else {
-                        name = `[BREAK] ${name}`;
-                    }
-                }
-                content += `${startTime} ~ ${endTime}\n${name}\n`;
-            }
-            console.log(`保存する内容長: ${content.length}文字`);
+            const dataFile = this.getDataFileForDate(dateString);
+            console.log(`saveSchedule開始 - ファイルパス: ${dataFile}`);
+            
+            // JSON形式でデータを構築
+            const jsonData = {
+                date: dateString || this.getTodayDateString(),
+                tasks: tasks.map((task, index) => ({
+                    id: task.id !== undefined ? task.id : `task-${index + 1}`, // 既存IDを保持
+                    startTime: task.startTime || '',
+                    endTime: task.endTime || null,
+                    title: task.name || task.title || '',
+                    isBreak: task.isBreak || false,
+                    createdAt: task.createdAt || new Date().toISOString(), // 既存作成日時を保持
+                    updatedAt: new Date().toISOString() // 更新日時のみ新しく設定
+                })),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            
             console.log(`保存するタスク数: ${tasks.length}`);
             
-            await fs.writeFile(this.dataFile, content, 'utf-8');
+            await fs.writeFile(dataFile, JSON.stringify(jsonData, null, 2), 'utf-8');
             console.log(`スケジュール保存完了: ${tasks.length}件`);
             
-            // 保存後に確認
-            const savedContent = await fs.readFile(this.dataFile, 'utf-8');
-            console.log(`保存後確認 - ファイルサイズ: ${savedContent.length}文字`);
         } catch (error) {
             console.error(`save_scheduleエラー: ${error}`);
             console.error(`エラータイプ: ${error.constructor.name}`);
@@ -222,19 +217,66 @@ class TaskManager {
         }
     }
 
-    async addTask(taskName, isBreak = false) {
+    async migrateFromLegacyFormat() {
+        /**レガシーTXTファイルからJSONに移行 */
+        try {
+            console.log('レガシーTXTファイルからの移行を開始...');
+            const exists = await fs.access(this.dataFile).then(() => true).catch(() => false);
+            
+            if (!exists) {
+                console.log('レガシーファイルが存在しません - 空のタスクリストを返します');
+                return [];
+            }
+            
+            const content = await fs.readFile(this.dataFile, 'utf-8');
+            if (!content.trim()) {
+                console.log('レガシーファイルが空です');
+                return [];
+            }
+            
+            // 既存のconvertTextToJsonメソッドを使用
+            const jsonData = await this.convertTextToJson(content);
+            
+            // JSON形式で今日のファイルとして保存
+            const jsonFile = this.getDataFileForDate();
+            await fs.writeFile(jsonFile, JSON.stringify(jsonData, null, 2), 'utf-8');
+            console.log(`レガシーデータをJSONに移行完了: ${jsonFile}`);
+            
+            // レガシーファイルをバックアップとして残す
+            const backupFile = this.dataFile + '.backup';
+            await fs.rename(this.dataFile, backupFile);
+            console.log(`レガシーファイルをバックアップ: ${backupFile}`);
+            
+            // レガシー形式との互換性のため、IDとnameフィールドを調整
+            const tasks = jsonData.tasks || [];
+            const compatibleTasks = tasks.map((task, index) => ({
+                id: index,
+                startTime: task.startTime,
+                endTime: task.endTime,
+                name: task.title || task.name,
+                isBreak: task.isBreak || false
+            }));
+            
+            console.log(`移行完了 - タスク数: ${compatibleTasks.length}`);
+            return compatibleTasks;
+            
+        } catch (error) {
+            console.error(`レガシー移行エラー: ${error}`);
+            return [];
+        }
+    }
+
+    async addTask(taskName, isBreak = false, dateString = null) {
         /**タスクを追加 */
         await this.initialize();
         try {
-            console.log(`add_task開始: name='${taskName}', isBreak=${isBreak}`);
-            console.log(`データディレクトリ: ${this.dataDir}`);
-            console.log(`データファイル: ${this.dataFile}`);
+            console.log(`add_task開始: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}`);
             
-            const tasks = await this.loadSchedule();
+            const tasks = await this.loadSchedule(dateString);
             console.log(`既存タスク数: ${tasks.length}`);
             
-            const addTime = this.getTime();
-            console.log(`現在時刻: ${addTime}`);
+            const addTime = this.getTimeForDate(dateString);
+            console.log(`追加時刻: ${addTime}`);
             
             // 未終了のタスクがあれば終了時刻を設定
             for (const task of tasks) {
@@ -250,11 +292,12 @@ class TaskManager {
             
             // 新しいタスクを追加
             const newTask = {
-                id: tasks.length,
+                id: `task-${tasks.length + 1}`, // 一貫した文字列ID形式
                 startTime: addTime,
                 endTime: null,
                 name: taskName,
-                isBreak: isBreak
+                isBreak: isBreak,
+                createdAt: new Date().toISOString()
             };
             tasks.push(newTask);
             try {
@@ -264,7 +307,7 @@ class TaskManager {
             }
             
             console.log(`saveSchedule開始 - タスク数: ${tasks.length}`);
-            await this.saveSchedule(tasks);
+            await this.saveSchedule(tasks, dateString);
             console.log("add_task完了");
             return newTask;
         } catch (error) {
@@ -286,12 +329,38 @@ class TaskManager {
         }
     }
 
-    async endCurrentTask() {
-        /**現在のタスクを終了 */
-        const tasks = await this.loadSchedule();
-        const addTime = this.getTime();
+    getTimeForDate(dateString = null) {
+        /**指定日付の現在時刻を取得（日付は指定、時刻は現在時刻） */
+        const now = new Date();
+        console.log(`getTimeForDate呼び出し - dateString: ${dateString}, 現在時刻: ${now.toISOString()}`);
         
-        console.log(`終了処理開始 - 現在時刻: ${addTime}`);
+        const amOrPm = now.getHours() < 12 ? "午前" : "午後";
+        
+        // 11時の50分以降は次の時間にする
+        if (now.getHours() === 11 && now.getMinutes() >= 50 && now.getMinutes() <= 59) {
+            now.setMinutes(now.getMinutes() + 10);
+            now.setMinutes(0);
+        }
+        
+        // 12時間形式に変換
+        let hour12 = now.getHours() % 12;
+        if (hour12 === 0) {
+            hour12 = 12;
+        }
+        
+        const minute = now.getMinutes();
+        const formattedTime = `${amOrPm} ${hour12}:${minute.toString().padStart(2, '0')}`;
+        
+        console.log(`生成された時刻: ${formattedTime}`);
+        return formattedTime;
+    }
+
+    async endCurrentTask(dateString = null) {
+        /**現在のタスクを終了 */
+        const tasks = await this.loadSchedule(dateString);
+        const addTime = this.getTimeForDate(dateString);
+        
+        console.log(`終了処理開始 - 時刻: ${addTime}, 日付: ${dateString || '今日'}`);
         console.log(`読み込んだタスク数: ${tasks.length}`);
         
         // 未終了のタスクを探して終了時刻を設定
@@ -301,7 +370,7 @@ class TaskManager {
             if (!task.endTime) {
                 console.log(`未終了タスクを発見: ${task.name}`);
                 task.endTime = addTime;
-                await this.saveSchedule(tasks);
+                await this.saveSchedule(tasks, dateString);
                 console.log(`タスクを終了しました: ${JSON.stringify(task)}`);
                 return task;
             }
@@ -341,17 +410,315 @@ class TaskManager {
         }
     }
 
-    async clearAllTasks() {
-        /**すべてのタスクをクリア */
+    async convertTextToJson(textContent) {
+        /**テキストファイルの内容をJSONに変換 */
+        const lines = textContent.split('\n').filter(line => line.trim());
+        const tasks = [];
+        let currentTask = null;
+        let taskId = 1;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            // 行番号を削除
+            const content = line.replace(/^\d+→/, '');
+            
+            // 時間範囲の行かチェック
+            if (content.includes('~')) {
+                if (currentTask) {
+                    tasks.push(currentTask);
+                }
+                
+                const timeRange = content.trim();
+                const [startTimeStr, endTimeStr] = timeRange.split('~').map(s => s.trim());
+                
+                currentTask = {
+                    id: `task-${taskId++}`,
+                    startTime: startTimeStr,
+                    endTime: endTimeStr || null,
+                    title: '',
+                    isBreak: false,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+            } else if (currentTask) {
+                // タスク名の行
+                const isBreak = content.includes('[BREAK]');
+                currentTask.title = isBreak ? content.replace('[BREAK]', '').trim() : content;
+                currentTask.isBreak = isBreak;
+            }
+        }
+
+        if (currentTask) {
+            tasks.push(currentTask);
+        }
+
+        return {
+            date: this.getTodayDateString(),
+            tasks: tasks,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    async archiveCurrentTasks() {
+        /**現在のタスクを履歴として保存 */
         try {
+            const exists = await fs.access(this.dataFile).then(() => true).catch(() => false);
+            if (!exists) {
+                return { success: true, message: '保存するタスクがありません' };
+            }
+
+            const textContent = await fs.readFile(this.dataFile, 'utf-8');
+            if (!textContent.trim()) {
+                return { success: true, message: '保存するタスクがありません' };
+            }
+
+            const jsonData = await this.convertTextToJson(textContent);
+            const todayFile = this.getTodayDataFile();
+            
+            await fs.writeFile(todayFile, JSON.stringify(jsonData, null, 2), 'utf-8');
+            console.log(`タスクを履歴に保存しました: ${todayFile}`);
+            
+            return { success: true, message: 'タスクを履歴に保存しました' };
+        } catch (error) {
+            console.error(`タスク履歴保存エラー: ${error}`);
+            return { success: false, message: 'タスクの履歴保存に失敗しました' };
+        }
+    }
+
+    async clearAllTasks() {
+        /**すべてのタスクをクリア（履歴保存付き） */
+        try {
+            // 現在のタスクを履歴に保存
+            const archiveResult = await this.archiveCurrentTasks();
+            if (!archiveResult.success) {
+                return false;
+            }
+
+            // 現在のデータファイルを削除
             const exists = await fs.access(this.dataFile).then(() => true).catch(() => false);
             if (exists) {
                 await fs.unlink(this.dataFile);
             }
+            
             return true;
         } catch (error) {
             console.error(`タスククリアエラー: ${error}`);
             return false;
+        }
+    }
+
+    async clearAllTimelineData() {
+        /**すべてのタイムラインデータを完全削除（履歴含む） */
+        try {
+            console.log('すべてのタイムラインデータを削除中...');
+            
+            // レガシーTXTファイルを削除
+            const legacyExists = await fs.access(this.dataFile).then(() => true).catch(() => false);
+            if (legacyExists) {
+                await fs.unlink(this.dataFile);
+                console.log('レガシーTXTファイルを削除しました:', this.dataFile);
+            }
+            
+            // レガシーバックアップファイルも削除
+            const backupFile = this.dataFile + '.backup';
+            const backupExists = await fs.access(backupFile).then(() => true).catch(() => false);
+            if (backupExists) {
+                await fs.unlink(backupFile);
+                console.log('レガシーバックアップファイルを削除しました:', backupFile);
+            }
+            
+            // 今日のJSONファイルを削除
+            const todayJsonFile = this.getDataFileForDate();
+            const todayExists = await fs.access(todayJsonFile).then(() => true).catch(() => false);
+            if (todayExists) {
+                await fs.unlink(todayJsonFile);
+                console.log('今日のJSONファイルを削除しました:', todayJsonFile);
+            }
+
+            // 履歴ディレクトリ内のすべてのファイルを削除
+            const historyExists = await fs.access(this.historyDir).then(() => true).catch(() => false);
+            if (historyExists) {
+                const files = await fs.readdir(this.historyDir);
+                const jsonFiles = files.filter(file => file.endsWith('.json'));
+                
+                for (const file of jsonFiles) {
+                    const filePath = path.join(this.historyDir, file);
+                    await fs.unlink(filePath);
+                    console.log(`履歴ファイルを削除しました: ${file}`);
+                }
+                
+                console.log(`${jsonFiles.length}個の履歴ファイルを削除しました`);
+            }
+            
+            console.log('すべてのタイムラインデータの削除が完了しました');
+            return true;
+        } catch (error) {
+            console.error(`全タイムラインデータ削除エラー: ${error}`);
+            return false;
+        }
+    }
+
+    async getAllHistoryDates() {
+        /**履歴の日付一覧を取得 */
+        try {
+            console.log('getAllHistoryDates開始');
+            await this.initialize();
+            console.log('initialize完了 - historyDir:', this.historyDir);
+            
+            const files = await fs.readdir(this.historyDir);
+            console.log('読み込んだファイル一覧:', files);
+            
+            const dates = files
+                .filter(file => file.startsWith('data_') && file.endsWith('.json'))
+                .map(file => file.replace('data_', '').replace('.json', ''))
+                .sort()
+                .reverse(); // 新しい日付から並べる
+            
+            console.log('抽出した日付一覧:', dates);
+            const result = { success: true, dates: dates };
+            console.log('getAllHistoryDates結果:', result);
+            return result;
+        } catch (error) {
+            console.error(`履歴日付取得エラー: ${error}`);
+            return { success: false, dates: [] };
+        }
+    }
+
+    async loadHistoryByDate(dateString) {
+        /**指定日の履歴を読み込み */
+        try {
+            await this.initialize();
+            const historyFile = this.getHistoryDataFile(dateString);
+            const exists = await fs.access(historyFile).then(() => true).catch(() => false);
+            
+            if (!exists) {
+                return { success: false, message: '指定された日付の履歴が見つかりません' };
+            }
+
+            const content = await fs.readFile(historyFile, 'utf-8');
+            const data = JSON.parse(content);
+            
+            return { success: true, data: data };
+        } catch (error) {
+            console.error(`履歴読み込みエラー: ${error}`);
+            return { success: false, message: '履歴の読み込みに失敗しました' };
+        }
+    }
+
+    async updateHistoryByDate(dateString, data) {
+        /**指定日の履歴を更新 */
+        try {
+            await this.initialize();
+            const historyFile = this.getHistoryDataFile(dateString);
+            
+            // 更新日時を追加
+            data.updatedAt = new Date().toISOString();
+            
+            await fs.writeFile(historyFile, JSON.stringify(data, null, 2), 'utf-8');
+            console.log(`履歴を更新しました: ${historyFile}`);
+            
+            return { success: true, message: '履歴を更新しました' };
+        } catch (error) {
+            console.error(`履歴更新エラー: ${error}`);
+            return { success: false, message: '履歴の更新に失敗しました' };
+        }
+    }
+
+    async addTaskToHistory(dateString, taskData) {
+        /**指定日の履歴にタスクを追加 */
+        try {
+            console.log(`addTaskToHistory開始: dateString=${dateString}, taskData=`, taskData);
+            await this.initialize();
+            
+            // 日付形式の検証
+            if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+                console.error('無効な日付形式:', dateString);
+                return { success: false, message: '無効な日付形式です' };
+            }
+            
+            // タスクデータの検証
+            if (!taskData.title || !taskData.startTime) {
+                console.error('必須フィールドが不足:', taskData);
+                return { success: false, message: 'タスク名と開始時刻は必須です' };
+            }
+            
+            const historyFile = this.getHistoryDataFile(dateString);
+            console.log(`履歴ファイルパス: ${historyFile}`);
+            
+            // 履歴データを読み込み
+            const exists = await fs.access(historyFile).then(() => true).catch(() => false);
+            let historyData;
+            
+            if (exists) {
+                console.log('既存の履歴ファイルを読み込み中...');
+                const content = await fs.readFile(historyFile, 'utf-8');
+                historyData = JSON.parse(content);
+            } else {
+                console.log('新しい履歴ファイルを作成中...');
+                // 履歴データが存在しない場合は新規作成
+                historyData = {
+                    date: dateString,
+                    tasks: [],
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+            }
+            
+            // 新しいタスクを追加
+            const newTask = {
+                id: `task-${Date.now()}`,
+                startTime: taskData.startTime,
+                endTime: taskData.endTime || null,
+                title: taskData.title,
+                isBreak: taskData.isBreak || false,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            
+            console.log('追加するタスク:', newTask);
+            historyData.tasks.push(newTask);
+            historyData.updatedAt = new Date().toISOString();
+            
+            await fs.writeFile(historyFile, JSON.stringify(historyData, null, 2), 'utf-8');
+            console.log(`履歴にタスクを追加しました: ${historyFile}`);
+            
+            return { success: true, message: 'タスクを追加しました', data: historyData };
+        } catch (error) {
+            console.error(`履歴タスク追加エラー: ${error.message}`, error);
+            return { success: false, message: `タスクの追加に失敗しました: ${error.message}` };
+        }
+    }
+
+    async createNewHistoryForDate(dateString) {
+        /**指定日の新しい履歴ファイルを作成 */
+        try {
+            await this.initialize();
+            const historyFile = this.getHistoryDataFile(dateString);
+            
+            // 既にファイルが存在する場合は何もしない
+            const exists = await fs.access(historyFile).then(() => true).catch(() => false);
+            if (exists) {
+                return { success: false, message: 'この日付のデータは既に存在します' };
+            }
+            
+            // 新しい履歴データを作成
+            const newHistoryData = {
+                date: dateString,
+                tasks: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            
+            await fs.writeFile(historyFile, JSON.stringify(newHistoryData, null, 2), 'utf-8');
+            console.log(`新しい履歴を作成しました: ${historyFile}`);
+            
+            return { success: true, message: '新しい履歴を作成しました', data: newHistoryData };
+        } catch (error) {
+            console.error(`履歴作成エラー: ${error}`);
+            return { success: false, message: '履歴の作成に失敗しました' };
         }
     }
 
@@ -470,28 +837,32 @@ class TaskManager {
         /**タスクを更新 */
         try {
             const tasks = await this.loadSchedule();
-            if (taskId >= 0 && taskId < tasks.length) {
+            
+            const taskIndex = tasks.findIndex(task => task.id == taskId);
+
+            if (taskIndex !== -1) {
                 // 既存の休憩フラグを保持
-                const isBreak = tasks[taskId].isBreak || false;
+                const isBreak = tasks[taskIndex].isBreak || false;
                 
                 // 時間矛盾を調整
                 const { tasks: adjustedTasks, adjustments } = this.adjustConflictingTasks(
-                    tasks, taskId, startTime, endTime
+                    tasks, taskIndex, startTime, endTime
                 );
                 
                 // 編集対象のタスクを更新
-                adjustedTasks[taskId].name = taskName;
-                adjustedTasks[taskId].startTime = startTime;
-                adjustedTasks[taskId].endTime = endTime && endTime.trim() ? endTime : null;
-                adjustedTasks[taskId].isBreak = isBreak;
+                adjustedTasks[taskIndex].name = taskName;
+                adjustedTasks[taskIndex].startTime = startTime;
+                adjustedTasks[taskIndex].endTime = endTime && endTime.trim() ? endTime : null;
+                adjustedTasks[taskIndex].isBreak = isBreak;
                 
                 await this.saveSchedule(adjustedTasks);
                 
                 return {
-                    task: adjustedTasks[taskId],
+                    task: adjustedTasks[taskIndex],
                     adjustments: adjustments
                 };
             }
+            console.log(`更新対象のタスクが見つかりません - ID: ${taskId}`);
             return null;
         } catch (error) {
             console.error(`タスク更新エラー: ${error}`);
@@ -500,23 +871,203 @@ class TaskManager {
         }
     }
 
+    async updateHistoryTask(dateString, taskId, taskName, startTime, endTime) {
+        /**履歴タスクを更新 */
+        try {
+            console.log(`履歴タスク更新: ${dateString}, taskId: ${taskId}`);
+            
+            // 履歴ファイルパスを取得
+            const historyFile = this.getDataFileForDate(dateString);
+            
+            // 履歴データを読み込み
+            const historyData = await this.loadHistoryByDate(dateString);
+            if (!historyData.success || !historyData.data || !historyData.data.tasks) {
+                return { success: false, message: '履歴データが見つかりません' };
+            }
+            
+            const tasks = historyData.data.tasks;
+            console.log('履歴タスク一覧:', tasks.map(t => ({ id: t.id, name: t.name || t.title })));
+            console.log('探しているタスクID:', taskId, typeof taskId);
+            
+            // タスクIDの比較を柔軟に行う（文字列/数値の違いを考慮）
+            const taskIndex = tasks.findIndex(task => {
+                console.log(`比較中: task.id="${task.id}" (${typeof task.id}) vs taskId="${taskId}" (${typeof taskId})`);
+                
+                // まず完全一致を試行
+                if (task.id === taskId) {
+                    return true;
+                }
+                
+                // 文字列と数値の混在パターンを処理
+                if (typeof task.id === 'string' && typeof taskId === 'number') {
+                    const match = task.id.match(/\d+/);
+                    const taskIdNum = match ? parseInt(match[0]) : null;
+                    console.log(`文字列→数値比較: taskIdNum=${taskIdNum} vs taskId=${taskId}`);
+                    return taskIdNum === taskId;
+                }
+                
+                if (typeof task.id === 'number' && typeof taskId === 'string') {
+                    const match = taskId.match(/\d+/);
+                    const searchIdNum = match ? parseInt(match[0]) : null;
+                    console.log(`数値→文字列比較: task.id=${task.id} vs searchIdNum=${searchIdNum}`);
+                    return task.id === searchIdNum;
+                }
+                
+                return false;
+            });
+            
+            console.log('見つかったタスクのインデックス:', taskIndex);
+            
+            if (taskIndex === -1) {
+                return { success: false, message: '指定されたタスクが見つかりません' };
+            }
+            
+            // 既存の休憩フラグとIDを保持
+            const isBreak = tasks[taskIndex].isBreak || false;
+            const originalId = tasks[taskIndex].id;
+            
+            // タスクを更新
+            tasks[taskIndex] = {
+                id: originalId,
+                name: taskName,
+                startTime: startTime,
+                endTime: endTime && endTime.trim() ? endTime : null,
+                isBreak: isBreak
+            };
+            
+            // 履歴データを保存
+            const updatedData = {
+                ...historyData.data,
+                tasks: tasks
+            };
+            
+            await this.saveSchedule(tasks, dateString);
+            
+            console.log(`履歴タスク更新完了: ${dateString}, taskId: ${taskId}`);
+            
+            return {
+                success: true,
+                task: tasks[taskIndex],
+                data: updatedData
+            };
+        } catch (error) {
+            console.error(`履歴タスク更新エラー: ${error}`);
+            console.error(error.stack);
+            return { success: false, message: '履歴タスクの更新に失敗しました', error: error.message };
+        }
+    }
+
     async deleteTask(taskId) {
         /**タスクを削除 */
         try {
+            console.log(`deleteTask開始 - taskId: ${taskId} (${typeof taskId})`);
             const tasks = await this.loadSchedule();
-            if (taskId >= 0 && taskId < tasks.length) {
-                const deletedTask = tasks.splice(taskId, 1)[0];
-                // IDを再振り
-                tasks.forEach((task, i) => {
-                    task.id = i;
-                });
+            console.log(`削除前のタスク一覧:`, tasks.map(t => ({ id: t.id, name: t.name })));
+            
+            // タスクIDの比較を柔軟に行う（文字列/数値の違いを考慮）
+            const taskIndex = tasks.findIndex(task => {
+                // まず完全一致を試行
+                if (task.id === taskId) {
+                    return true;
+                }
+                
+                // 文字列と数値の混在パターンを処理
+                if (typeof task.id === 'string' && typeof taskId === 'number') {
+                    const match = task.id.match(/\d+/);
+                    const taskIdNum = match ? parseInt(match[0]) : null;
+                    return taskIdNum === taskId;
+                }
+                
+                if (typeof task.id === 'number' && typeof taskId === 'string') {
+                    const match = taskId.match(/\d+/);
+                    const searchIdNum = match ? parseInt(match[0]) : null;
+                    return task.id === searchIdNum;
+                }
+                
+                return false;
+            });
+            
+            console.log(`見つかったタスクのインデックス: ${taskIndex}`);
+            
+            if (taskIndex !== -1) {
+                const deletedTask = tasks.splice(taskIndex, 1)[0];
+                console.log(`削除されたタスク:`, deletedTask);
+                
+                // 削除後にJSONファイルに保存（IDの再振りは行わない）
                 await this.saveSchedule(tasks);
+                console.log(`タスク削除完了`);
                 return deletedTask;
             }
+            
+            console.log(`タスクが見つかりませんでした - ID: ${taskId}`);
             return null;
         } catch (error) {
             console.error(`タスク削除エラー: ${error}`);
             return null;
+        }
+    }
+
+    async deleteHistoryTask(dateString, taskId) {
+        /**履歴タスクを削除 */
+        try {
+            console.log(`deleteHistoryTask開始 - dateString: ${dateString}, taskId: ${taskId} (${typeof taskId})`);
+            
+            // 履歴データを読み込み
+            const historyData = await this.loadHistoryByDate(dateString);
+            if (!historyData.success || !historyData.data || !historyData.data.tasks) {
+                return { success: false, message: '履歴データが見つかりません' };
+            }
+            
+            const tasks = historyData.data.tasks;
+            console.log('削除前の履歴タスク一覧:', tasks.map(t => ({ id: t.id, name: t.name || t.title })));
+            
+            // タスクIDの比較を柔軟に行う（文字列/数値の違いを考慮）
+            const taskIndex = tasks.findIndex(task => {
+                // まず完全一致を試行
+                if (task.id === taskId) {
+                    return true;
+                }
+                
+                // 文字列と数値の混在パターンを処理
+                if (typeof task.id === 'string' && typeof taskId === 'number') {
+                    const match = task.id.match(/\d+/);
+                    const taskIdNum = match ? parseInt(match[0]) : null;
+                    return taskIdNum === taskId;
+                }
+                
+                if (typeof task.id === 'number' && typeof taskId === 'string') {
+                    const match = taskId.match(/\d+/);
+                    const searchIdNum = match ? parseInt(match[0]) : null;
+                    return task.id === searchIdNum;
+                }
+                
+                return false;
+            });
+            
+            console.log(`見つかった履歴タスクのインデックス: ${taskIndex}`);
+            
+            if (taskIndex !== -1) {
+                const deletedTask = tasks.splice(taskIndex, 1)[0];
+                console.log(`削除された履歴タスク:`, deletedTask);
+                
+                // 履歴ファイルに保存
+                const historyFile = this.getDataFileForDate(dateString);
+                const updatedData = {
+                    ...historyData.data,
+                    tasks: tasks,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                await this.saveSchedule(tasks, dateString);
+                console.log(`履歴タスク削除完了`);
+                return { success: true, task: deletedTask };
+            }
+            
+            console.log(`履歴タスクが見つかりませんでした - ID: ${taskId}`);
+            return { success: false, message: '指定されたタスクが見つかりません' };
+        } catch (error) {
+            console.error(`履歴タスク削除エラー: ${error}`);
+            return { success: false, message: '履歴タスクの削除に失敗しました', error: error.message };
         }
     }
 
@@ -731,8 +1282,9 @@ function createApp(taskManagerInstance) {
     // API endpoints
     app.get('/api/tasks', async (req, res) => {
         try {
-            const tasks = await taskManager.loadSchedule();
-            console.log(`API - 取得したタスク数: ${tasks.length}`);
+            const dateString = req.query.dateString || null; // クエリパラメータから日付取得
+            const tasks = await taskManager.loadSchedule(dateString);
+            console.log(`API - 取得したタスク数: ${tasks.length}, 日付: ${dateString || '今日'}`);
             tasks.forEach(task => {
                 try {
                     console.log(`API - タスク: ${JSON.stringify(task)}`);
@@ -752,14 +1304,15 @@ function createApp(taskManagerInstance) {
             const data = req.body;
             const taskName = (data.name || '').trim();
             const isBreak = data.isBreak || false;
+            const dateString = data.dateString || null; // 日付パラメータ追加
             
-            console.log(`API - タスク追加リクエスト: name='${taskName}', isBreak=${isBreak}`);
+            console.log(`API - タスク追加リクエスト: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}`);
             
             if (!taskName) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
             }
             
-            const newTask = await taskManager.addTask(taskName, isBreak);
+            const newTask = await taskManager.addTask(taskName, isBreak, dateString);
             try {
                 console.log(`API - 追加されたタスク: ${JSON.stringify(newTask)}`);
             } catch (error) {
@@ -816,9 +1369,153 @@ function createApp(taskManagerInstance) {
         }
     });
 
+    app.post('/api/timeline/clear-all', async (req, res) => {
+        try {
+            const success = await taskManager.clearAllTimelineData();
+            if (success) {
+                res.json({ success: true, message: 'すべてのタイムラインデータを削除しました' });
+            } else {
+                res.status(500).json({ success: false, error: 'タイムラインデータの削除に失敗しました' });
+            }
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // 履歴関連のAPIエンドポイント
+    app.get('/api/history/dates', async (req, res) => {
+        try {
+            console.log('履歴日付一覧取得リクエストを受信');
+            const result = await taskManager.getAllHistoryDates();
+            res.json(result);
+        } catch (error) {
+            console.error('履歴日付取得エラー:', error);
+            res.status(500).json({ success: false, message: '履歴日付の取得に失敗しました' });
+        }
+    });
+
+    app.get('/api/history/:date', async (req, res) => {
+        try {
+            const dateString = req.params.date;
+            console.log(`履歴取得リクエストを受信: ${dateString}`);
+            const result = await taskManager.loadHistoryByDate(dateString);
+            
+            if (result.success) {
+                res.json(result);
+            } else {
+                res.status(404).json(result);
+            }
+        } catch (error) {
+            console.error('履歴取得エラー:', error);
+            res.status(500).json({ success: false, message: '履歴の取得に失敗しました' });
+        }
+    });
+
+    app.post('/api/history/:date', async (req, res) => {
+        try {
+            const dateString = req.params.date;
+            const data = req.body;
+            console.log(`履歴更新リクエストを受信: ${dateString}`);
+            
+            const result = await taskManager.updateHistoryByDate(dateString, data);
+            
+            if (result.success) {
+                res.json(result);
+            } else {
+                res.status(500).json(result);
+            }
+        } catch (error) {
+            console.error('履歴更新エラー:', error);
+            res.status(500).json({ success: false, message: '履歴の更新に失敗しました' });
+        }
+    });
+
+    app.post('/api/history/:date/create', async (req, res) => {
+        try {
+            const dateString = req.params.date;
+            console.log(`新しい履歴作成リクエストを受信: ${dateString}`);
+            
+            const result = await taskManager.createNewHistoryForDate(dateString);
+            
+            if (result.success) {
+                res.json(result);
+            } else {
+                res.status(400).json(result);
+            }
+        } catch (error) {
+            console.error('履歴作成エラー:', error);
+            res.status(500).json({ success: false, message: '履歴の作成に失敗しました' });
+        }
+    });
+
+    app.post('/api/history/:date/tasks', async (req, res) => {
+        try {
+            const dateString = req.params.date;
+            const taskData = req.body;
+            console.log(`履歴タスク追加リクエストを受信: ${dateString}`, taskData);
+            
+            // 日付形式の検証
+            if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+                console.error('無効な日付形式:', dateString);
+                return res.status(400).json({ 
+                    success: false, 
+                    message: '無効な日付形式です。YYYY-MM-DD形式で指定してください。' 
+                });
+            }
+            
+            const result = await taskManager.addTaskToHistory(dateString, taskData);
+            
+            if (result.success) {
+                res.json(result);
+            } else {
+                console.error('履歴タスク追加失敗:', result);
+                res.status(400).json(result);
+            }
+        } catch (error) {
+            console.error('履歴タスク追加エラー:', error);
+            res.status(500).json({ success: false, message: '履歴タスクの追加に失敗しました', error: error.message });
+        }
+    });
+
+    app.put('/api/history/:date/tasks/:taskId', async (req, res) => {
+        try {
+            const dateString = req.params.date;
+            const taskId = req.params.taskId; // 文字列IDも受け入れる
+            const data = req.body;
+            const taskName = (data.name || '').trim();
+            const startTime = (data.startTime || '').trim();
+            const endTime = (data.endTime || '').trim();
+            
+            console.log(`履歴タスク更新リクエストを受信: ${dateString}, taskId: ${taskId}`, data);
+            
+            // 日付形式の検証
+            if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+                console.error('無効な日付形式:', dateString);
+                return res.status(400).json({ 
+                    success: false, 
+                    message: '無効な日付形式です。YYYY-MM-DD形式で指定してください。' 
+                });
+            }
+            
+            if (!taskName || !startTime) {
+                return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
+            }
+            
+            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime);
+            if (result.success) {
+                res.json(result);
+            } else {
+                res.status(400).json(result);
+            }
+        } catch (error) {
+            console.error('履歴タスク更新エラー:', error);
+            res.status(500).json({ success: false, message: '履歴タスクの更新に失敗しました', error: error.message });
+        }
+    });
+
     app.put('/api/tasks/:taskId', async (req, res) => {
         try {
-            const taskId = parseInt(req.params.taskId);
+            const taskId = req.params.taskId; // Keep as string
             const data = req.body;
             const taskName = (data.name || '').trim();
             const startTime = (data.startTime || '').trim();
@@ -845,8 +1542,8 @@ function createApp(taskManagerInstance) {
 
     app.delete('/api/tasks/:taskId', async (req, res) => {
         try {
-            const taskId = parseInt(req.params.taskId);
-            console.log(`タスク削除リクエスト - ID: ${taskId}`);
+            const taskId = req.params.taskId; // 文字列IDも受け入れる
+            console.log(`タスク削除リクエスト - ID: ${taskId} (${typeof taskId})`);
             const deletedTask = await taskManager.deleteTask(taskId);
             if (deletedTask) {
                 console.log(`タスク削除成功: ${JSON.stringify(deletedTask)}`);
@@ -857,6 +1554,27 @@ function createApp(taskManagerInstance) {
             }
         } catch (error) {
             console.error(`タスク削除エラー: ${error}`);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+    
+    // 履歴タスク削除のAPIエンドポイント
+    app.delete('/api/history/:date/tasks/:taskId', async (req, res) => {
+        try {
+            const dateString = req.params.date;
+            const taskId = req.params.taskId;
+            console.log(`履歴タスク削除リクエスト - Date: ${dateString}, ID: ${taskId}`);
+            
+            const result = await taskManager.deleteHistoryTask(dateString, taskId);
+            if (result.success) {
+                console.log(`履歴タスク削除成功: ${JSON.stringify(result.task)}`);
+                res.json(result);
+            } else {
+                console.log(`履歴タスクが見つかりません - Date: ${dateString}, ID: ${taskId}`);
+                res.status(404).json(result);
+            }
+        } catch (error) {
+            console.error(`履歴タスク削除エラー: ${error}`);
             res.status(500).json({ success: false, error: error.message });
         }
     });

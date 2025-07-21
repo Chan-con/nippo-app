@@ -69,10 +69,6 @@
                         <span class="material-icons" style="font-size: 18px;">settings</span>
                         設定
                     </button>
-                    <button id="clear-all-btn" class="btn-danger">
-                        <span class="material-icons">clear_all</span>
-                        すべてクリア
-                    </button>
                 </div>
             </div>
         </aside>
@@ -83,6 +79,15 @@
                 <div class="date-display">
                     <h1 id="current-date">2024年6月30日</h1>
                     <p id="current-time">15:30</p>
+                </div>
+                <div class="history-controls">
+                    <div class="view-mode-toggle">
+                        <button id="today-btn" class="mode-btn active">今日</button>
+                        <button id="history-btn" class="mode-btn">履歴</button>
+                    </div>
+                    <div class="date-selector" id="date-selector" style="display: none;">
+                        <input type="date" id="calendar-date-input" />
+                    </div>
                 </div>
                 <div class="status-indicators">
                     <div class="status-card">
@@ -97,7 +102,7 @@
 
             <!-- タイムライン表示 -->
             <div class="timeline-section">
-                <h3>📈 今日のタイムライン</h3>
+                <h3>📈 タイムライン</h3>
                 <div class="timeline-container" id="timeline-container">
                     <!-- タイムラインアイテムが動的に追加される -->
                     <div class="timeline-empty">
@@ -289,6 +294,18 @@
                                 <span class="material-icons">add</span>
                             </button>
                         </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>🗑️ データ管理</h4>
+                    <div class="data-management-section">
+                        <div class="warning-text" style="color: var(--danger); margin-bottom: 12px; font-size: 14px;">
+                            ⚠️ この操作は元に戻せません
+                        </div>
+                        <button id="clear-all-btn" class="btn-danger">
+                            <span class="material-icons">delete_forever</span>
+                            すべてのタイムラインデータを削除
+                        </button>
                     </div>
                 </div>
             </div>

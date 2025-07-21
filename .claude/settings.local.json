@@ -23,7 +23,12 @@
       "Bash(npm run dev:*)",
       "Bash(rg:*)",
       "Bash(ls:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(tasklist)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(find:*)",
+      "Bash(cp:*)"
     ],
     "deny": []
   }

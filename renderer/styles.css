@@ -1804,3 +1804,114 @@ body {
   background: #e74c3c;
   transform: translateY(-1px);
 }
+
+/* 履歴コントロール */
+.history-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 0;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-small);
+  padding: 4px;
+  border: 1px solid var(--border);
+}
+
+.mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mode-btn:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.date-selector {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.date-selector input[type="date"] {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.date-selector input[type="date"]:hover {
+  border-color: var(--accent);
+}
+
+.date-selector input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.date-selector button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: var(--radius-small);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid var(--border);
+}
+
+.date-selector .btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.date-selector .btn-secondary:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.date-selector .material-icons {
+  font-size: 16px;
+}
+
+/* タイムライン表示モード */
+.timeline-section.history-mode {
+  opacity: 0.9;
+}
+
+.timeline-section.history-mode h3 {
+  color: var(--purple);
+}
+
+.timeline-section.history-mode .timeline-item {
+  border-left-color: var(--purple);
+}
+
+.timeline-section.history-mode .timeline-item.break {
+  border-left-color: var(--warning);
+}

@@ -18,6 +18,10 @@ class NippoApp {
         this.currentHotkeyTarget = null;
         this.isCapturingHotkey = false;
         this.settings = {};
+        this.currentMode = 'today';
+        this.selectedDate = null;
+        this.currentDate = null; // 統一された日付管理（null = 今日）
+        this.historyDates = [];
         this.init();
     }
 
@@ -60,6 +64,9 @@ class NippoApp {
                 // 起動時に既存データを読み込み
                 console.log('アプリ起動時のデータ読み込み開始...');
                 await this.loadTasks();
+                
+                // 履歴データを読み込み
+                await this.loadHistoryDates();
                 
                 // 目標ストックを読み込み
                 await this.loadGoalStock();
@@ -121,8 +128,37 @@ class NippoApp {
         // タイムラインコピー
         document.getElementById('copy-timeline-btn').addEventListener('click', () => this.copyTimeline());
 
-        // すべてクリア
-        document.getElementById('clear-all-btn').addEventListener('click', () => this.showClearConfirmation());
+        // すべてクリア（設定画面で初期化される）
+
+        // 履歴機能
+        document.getElementById('today-btn').addEventListener('click', () => this.switchToTodayMode());
+        document.getElementById('history-btn').addEventListener('click', () => this.switchToHistoryMode());
+        
+        // 日付入力イベントリスナーを遅延追加（DOM確実に存在する状態で）
+        setTimeout(() => {
+            const calendarInput = document.getElementById('calendar-date-input');
+            if (calendarInput) {
+                // 未来の日付を選択できないように制限
+                const today = new Date();
+                calendarInput.max = today.toISOString().split('T')[0];
+                
+                calendarInput.addEventListener('change', (e) => {
+                    console.log('日付変更イベントが発生しました:', e.target.value);
+                    this.onDateSelected(e.target.value);
+                });
+                calendarInput.setAttribute('data-has-listener', 'true');
+                console.log('日付入力イベントリスナーを追加しました');
+                
+                // テスト用のグローバル関数を追加
+                window.testDateSelection = (dateString) => {
+                    console.log('テスト用日付選択:', dateString);
+                    this.onDateSelected(dateString);
+                };
+            } else {
+                console.error('calendar-date-inputが見つかりません');
+            }
+            
+        }, 100);
 
         // 報告書作成
         document.getElementById('create-report-btn').addEventListener('click', () => this.showReportDialog());
@@ -167,6 +203,7 @@ class NippoApp {
         document.getElementById('settings-cancel').addEventListener('click', () => this.closeSettingsDialog());
         document.getElementById('settings-save').addEventListener('click', () => this.saveSettings());
         document.getElementById('add-url-btn').addEventListener('click', () => this.addReportUrl());
+        document.getElementById('clear-all-btn').addEventListener('click', () => this.showClearConfirmation());
         
         // ホットキー入力フィールドのイベントリスナー
         document.getElementById('hotkey-toggle').addEventListener('click', () => this.startHotkeyCapture('hotkey-toggle'));
@@ -215,20 +252,43 @@ class NippoApp {
         const dateElement = document.getElementById('current-date');
         const timeElement = document.getElementById('current-time');
 
-        const dateStr = now.toLocaleDateString('ja-JP', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            weekday: 'long'
-        });
-
+        // 時刻は常に更新（履歴モードでは非表示になるため問題なし）
         const timeStr = now.toLocaleTimeString('ja-JP', {
             hour: '2-digit',
             minute: '2-digit'
         });
-
-        dateElement.textContent = dateStr;
         timeElement.textContent = timeStr;
+
+        // 日付は今日モードの時のみ更新（履歴モードでは履歴日付を保持）
+        if (this.currentMode !== 'history') {
+            const dateStr = now.toLocaleDateString('ja-JP', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long'
+            });
+            dateElement.textContent = dateStr;
+        }
+    }
+
+    getTime() {
+        const now = new Date();
+        const hour = now.getHours();
+        const minute = now.getMinutes();
+        
+        let period = '午前';
+        let displayHour = hour;
+        
+        if (hour === 0) {
+            displayHour = 12;
+        } else if (hour === 12) {
+            period = '午後';
+        } else if (hour > 12) {
+            displayHour = hour - 12;
+            period = '午後';
+        }
+        
+        return `${period} ${displayHour}:${minute.toString().padStart(2, '0')}`;
     }
 
     async addTask() {
@@ -240,16 +300,49 @@ class NippoApp {
             return;
         }
 
+        console.log('=== addTask 開始 ===');
+        console.log('currentMode:', this.currentMode);
+        console.log('currentDate:', this.currentDate);
+        console.log('selectedDate:', this.selectedDate);
+
+        // 履歴モードで日付が未選択の場合は追加を阻止
+        if (this.currentMode === 'history' && !this.currentDate) {
+            console.log('履歴モードで日付未選択のため、タスク追加を阻止');
+            this.showToast('履歴モードでは先に日付を選択してください', 'warning');
+            return;
+        }
+
         // 現在実行中のタスクがあるかチェック
         const currentRunningTask = this.tasks.find(task => !task.endTime);
         
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: taskName, isBreak: false }) });
+            // 統一されたAPI呼び出し（日付パラメータ付き）
+            const requestData = { 
+                name: taskName, 
+                isBreak: false,
+                dateString: this.currentDate // null = 今日、文字列 = 指定日
+            };
+            
+            console.log('API リクエストデータ:', requestData);
+            
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(requestData) 
+            });
             if (response.ok) {
                 const result = await response.json();
                 if (result.success) {
                     taskInput.value = '';
-                    await this.loadTasks();
+                    
+                    // 統一されたタスク読み込み
+                    if (this.currentDate) {
+                        // 履歴データの場合 - 自動でデータを読み込み、作成されている
+                        await this.loadHistoryData(this.currentDate);
+                    } else {
+                        // 今日のデータの場合
+                        await this.loadTasks();
+                    }
                     
                     // 前のタスクが自動終了された場合の通知
                     if (currentRunningTask) {
@@ -258,9 +351,11 @@ class NippoApp {
                         this.showToast(`タスク「${taskName}」を開始しました`);
                     }
                     
-                    // 現在のタスクを更新
-                    this.currentTaskId = result.taskId;
-                    this.updateCurrentTask(taskName);
+                    // 今日のタスクの場合のみ現在タスクを更新
+                    if (!this.currentDate) {
+                        this.currentTaskId = result.taskId;
+                        this.updateCurrentTask(taskName);
+                    }
                 }
             }
         } catch (error) {
@@ -268,6 +363,7 @@ class NippoApp {
             this.showToast('タスクの追加に失敗しました', 'error');
         }
     }
+
 
     async toggleBreak() {
         // 現在実行中のタスクがあるかチェック
@@ -324,6 +420,12 @@ class NippoApp {
     }
 
     async endTask() {
+        // 過去日付では今日のタスク操作を無効化
+        if (this.currentDate) {
+            this.showToast('過去日付ではタスクを終了できません', 'warning');
+            return;
+        }
+        
         // 実行中のタスクがあるかチェック
         const runningTask = this.tasks.find(task => !task.endTime);
         
@@ -365,7 +467,11 @@ class NippoApp {
 
     async loadTasks() {
         try {
-            console.log('タスクデータの読み込みを開始...');
+            console.log('今日のタスクデータの読み込みを開始...');
+            // 今日のタスクを読み込む際は currentDate を null に設定
+            this.currentDate = null;
+            console.log('currentDate を null に設定しました (今日モード)');
+            
             const response = await fetch(`${this.apiBaseUrl}/api/tasks`);
             if (response.ok) {
                 const result = await response.json();
@@ -475,7 +581,7 @@ class NippoApp {
                         ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
                         ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
                     </div>
-                    <button class="timeline-edit" onclick="app.editTask(${task.id})" title="編集">
+                    <button class="timeline-edit" onclick="app.editTask('${task.id}')" title="編集">
                         <span class="material-icons">edit</span>
                     </button>
                 </div>
@@ -775,17 +881,12 @@ class NippoApp {
     }
 
     showClearConfirmation() {
-        if (this.tasks.length === 0) {
-            this.showToast('クリアするタスクがありません', 'warning');
-            return;
-        }
-
         const dialog = document.getElementById('confirm-dialog');
         const title = document.getElementById('confirm-title');
         const message = document.getElementById('confirm-message');
         
-        title.textContent = 'すべてのタスクをクリア';
-        message.textContent = 'すべてのタスクデータが削除されます。この操作は元に戻せません。本当に実行しますか？';
+        title.textContent = 'すべてのタイムラインデータを削除';
+        message.textContent = 'すべてのタイムラインデータ（今日・履歴を含む）が完全に削除されます。この操作は元に戻せません。本当に実行しますか？';
         
         this.pendingAction = 'clearAll';
         dialog.classList.add('show');
@@ -796,12 +897,13 @@ class NippoApp {
         dialog.classList.remove('show');
         this.pendingAction = null;
         this.pendingTaskId = null; // クリーンアップ
+        this.pendingDate = null; // クリーンアップ
     }
 
 
     async clearAllTasks() {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/tasks/clear`, { method: 'POST' });
+            const response = await fetch(`${this.apiBaseUrl}/api/timeline/clear-all`, { method: 'POST' });
             if (response.ok) {
                 const result = await response.json();
                 if (result.success) {
@@ -811,20 +913,50 @@ class NippoApp {
                     this.updateStats();
                     this.updateTaskCounter();
                     this.updateCurrentTask('タスクなし');
-                    this.showToast('すべてのタスクをクリアしました');
+                    this.showToast('すべてのタイムラインデータを削除しました');
+                    
+                    // 履歴データを再読み込み
+                    await this.loadHistoryDates();
                 } else {
-                    this.showToast('タスクのクリアに失敗しました', 'error');
+                    this.showToast('タイムラインデータの削除に失敗しました', 'error');
                 }
             }
         } catch (error) {
-            console.error('タスククリアエラー:', error);
-            this.showToast('タスクのクリアに失敗しました', 'error');
+            console.error('タイムラインデータ削除エラー:', error);
+            this.showToast('タイムラインデータの削除に失敗しました', 'error');
         }
     }
 
     editTask(taskId) {
-        const task = this.tasks.find(t => t.id === taskId);
+        // タスクIDの比較を柔軟に行う
+        const task = this.tasks.find(t => {
+            // まず完全一致を試行
+            if (t.id === taskId) {
+                return true;
+            }
+            
+            // 文字列と数値の混在パターンを処理
+            if (typeof t.id === 'string' && typeof taskId === 'number') {
+                const match = t.id.match(/\d+/);
+                const tIdNum = match ? parseInt(match[0]) : null;
+                return tIdNum === taskId;
+            }
+            
+            if (typeof t.id === 'number' && typeof taskId === 'string') {
+                const match = taskId.match(/\d+/);
+                const taskIdNum = match ? parseInt(match[0]) : null;
+                return t.id === taskIdNum;
+            }
+            
+            return false;
+        });
+        
         if (!task) {
+            console.error('今日のタスクが見つかりません:', {
+                searchingTaskId: taskId,
+                searchingTaskIdType: typeof taskId,
+                availableTasks: this.tasks.map(t => ({ id: t.id, type: typeof t.id, name: t.name }))
+            });
             this.showToast('タスクが見つかりません', 'error');
             return;
         }
@@ -835,7 +967,95 @@ class NippoApp {
         document.getElementById('edit-end-time').value = task.endTime ? this.convertTo24Hour(task.endTime) : '';
 
         this.editingTaskId = taskId;
+        this.editingDate = null; // 今日のタスクを編集中
         this.showEditDialog();
+    }
+
+    async editHistoryTask(dateString, taskId) {
+        try {
+            // 履歴データを取得
+            const response = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
+            if (!response.ok) {
+                this.showToast('履歴データの取得に失敗しました', 'error');
+                return;
+            }
+            
+            const result = await response.json();
+            if (!result.success || !result.data || !result.data.tasks) {
+                this.showToast('履歴データが見つかりません', 'error');
+                return;
+            }
+            
+            console.log('履歴データのタスク一覧:', result.data.tasks);
+            console.log('探しているタスクID:', taskId, typeof taskId);
+            
+            // タスクIDの比較を柔軟に行う
+            const task = result.data.tasks.find(t => {
+                console.log(`比較中: t.id="${t.id}" (${typeof t.id}) vs taskId="${taskId}" (${typeof taskId})`);
+                
+                // まず完全一致を試行
+                if (t.id === taskId) {
+                    return true;
+                }
+                
+                // 文字列と数値の混在パターンを処理
+                if (typeof t.id === 'string' && typeof taskId === 'number') {
+                    const match = t.id.match(/\d+/);
+                    const tIdNum = match ? parseInt(match[0]) : null;
+                    console.log(`文字列→数値比較: tIdNum=${tIdNum} vs taskId=${taskId}`);
+                    return tIdNum === taskId;
+                }
+                
+                if (typeof t.id === 'number' && typeof taskId === 'string') {
+                    const match = taskId.match(/\d+/);
+                    const taskIdNum = match ? parseInt(match[0]) : null;
+                    console.log(`数値→文字列比較: t.id=${t.id} vs taskIdNum=${taskIdNum}`);
+                    return t.id === taskIdNum;
+                }
+                
+                return false;
+            });
+            
+            console.log('見つかったタスク:', task);
+            
+            if (!task) {
+                this.showToast('指定されたタスクが見つかりません', 'error');
+                return;
+            }
+
+            console.log('編集ダイアログに設定する値:');
+            console.log('- task.name:', task.name);
+            console.log('- task.title:', task.title);
+            console.log('- task.startTime:', task.startTime);
+            console.log('- task.endTime:', task.endTime);
+
+            // 編集ダイアログに値を設定
+            const taskName = task.name || task.title || '';
+            const startTime24 = this.convertTo24Hour(task.startTime);
+            const endTime24 = task.endTime ? this.convertTo24Hour(task.endTime) : '';
+            
+            console.log('変換後の値:');
+            console.log('- taskName:', taskName);
+            console.log('- startTime24:', startTime24);
+            console.log('- endTime24:', endTime24);
+            
+            document.getElementById('edit-task-name').value = taskName;
+            document.getElementById('edit-start-time').value = startTime24;
+            document.getElementById('edit-end-time').value = endTime24;
+
+            this.editingTaskId = taskId;
+            this.editingDate = dateString; // 履歴のタスクを編集中
+            
+            console.log('編集状態を設定:');
+            console.log('- this.editingTaskId:', this.editingTaskId);
+            console.log('- this.editingDate:', this.editingDate);
+            
+            this.showEditDialog();
+            console.log('編集ダイアログを表示しました');
+        } catch (error) {
+            console.error('履歴タスク編集エラー:', error);
+            this.showToast('履歴タスクの編集に失敗しました', 'error');
+        }
     }
 
     showEditDialog() {
@@ -870,11 +1090,45 @@ class NippoApp {
                 endTime: endTime
             };
 
-            const response = await fetch(`${this.apiBaseUrl}/api/tasks/${this.editingTaskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskData) });
+            let apiUrl, reloadFunction;
+            
+            console.log('saveTask - 編集状態確認:');
+            console.log('- this.editingDate:', this.editingDate);
+            console.log('- this.editingTaskId:', this.editingTaskId);
+            
+            if (this.editingDate) {
+                // 履歴タスクの編集
+                apiUrl = `${this.apiBaseUrl}/api/history/${this.editingDate}/tasks/${this.editingTaskId}`;
+                reloadFunction = () => this.loadHistoryData(this.editingDate);
+                console.log('履歴タスクの編集モード - API URL:', apiUrl);
+            } else {
+                // 今日のタスクの編集
+                apiUrl = `${this.apiBaseUrl}/api/tasks/${this.editingTaskId}`;
+                reloadFunction = () => this.loadTasks();
+                console.log('今日のタスクの編集モード - API URL:', apiUrl);
+            }
+
+            console.log('API request - URL:', apiUrl);
+            console.log('API request - データ:', taskData);
+            
+            const response = await fetch(apiUrl, { 
+                method: 'PUT', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(taskData) 
+            });
+            
+            console.log('API response status:', response.status);
+            console.log('API response ok:', response.ok);
+            
             if (response.ok) {
                 const result = await response.json();
+                console.log('API response data:', result);
+                
                 if (result.success) {
-                    await this.loadTasks();
+                    console.log('タスク更新成功 - リロード実行中...');
+                    await reloadFunction();
+                    console.log('リロード完了');
+                    
                     this.hideEditDialog();
                     
                     // 調整があった場合は通知
@@ -884,8 +1138,12 @@ class NippoApp {
                         this.showToast('タスクを更新しました');
                     }
                 } else {
+                    console.error('API成功だが結果がfalse:', result);
                     this.showToast('タスクの更新に失敗しました', 'error');
                 }
+            } else {
+                console.error('API response not ok:', response.status);
+                this.showToast('タスクの更新に失敗しました', 'error');
             }
         } catch (error) {
             console.error('タスク更新エラー:', error);
@@ -931,18 +1189,54 @@ class NippoApp {
     }
 
     deleteCurrentTask() {
-        const task = this.tasks.find(t => t.id === this.editingTaskId);
-        if (!task) return;
+        // タスクIDの比較を柔軟に行う
+        const task = this.tasks.find(t => {
+            // まず完全一致を試行
+            if (t.id === this.editingTaskId) {
+                return true;
+            }
+            
+            // 文字列と数値の混在パターンを処理
+            if (typeof t.id === 'string' && typeof this.editingTaskId === 'number') {
+                const match = t.id.match(/\d+/);
+                const taskIdNum = match ? parseInt(match[0]) : null;
+                return taskIdNum === this.editingTaskId;
+            }
+            
+            if (typeof t.id === 'number' && typeof this.editingTaskId === 'string') {
+                const match = this.editingTaskId.match(/\d+/);
+                const editingIdNum = match ? parseInt(match[0]) : null;
+                return t.id === editingIdNum;
+            }
+            
+            return false;
+        });
+        
+        if (!task) {
+            console.error('削除対象のタスクが見つかりません:', {
+                editingTaskId: this.editingTaskId,
+                editingTaskIdType: typeof this.editingTaskId,
+                availableTasks: this.tasks.map(t => ({ id: t.id, type: typeof t.id, name: t.name }))
+            });
+            return;
+        }
 
         const dialog = document.getElementById('confirm-dialog');
         const title = document.getElementById('confirm-title');
         const message = document.getElementById('confirm-message');
         
         title.textContent = 'タスクを削除';
-        message.textContent = `タスク「${task.name}」を削除しますか？この操作は元に戻せません。`;
+        const taskName = task.name || task.title || 'タスク';
+        message.textContent = `タスク「${taskName}」を削除しますか？この操作は元に戻せません。`;
         
-        this.pendingAction = 'deleteTask';
+        // 履歴タスクか今日のタスクかで処理を分ける
+        if (this.editingDate) {
+            this.pendingAction = 'deleteHistoryTask';
+        } else {
+            this.pendingAction = 'deleteTask';
+        }
         this.pendingTaskId = this.editingTaskId; // IDを保存
+        this.pendingDate = this.editingDate; // 日付を保存（履歴タスクの場合）
         this.hideEditDialog();
         dialog.classList.add('show');
     }
@@ -952,6 +1246,8 @@ class NippoApp {
             await this.clearAllTasks();
         } else if (this.pendingAction === 'deleteTask') {
             await this.deleteTask();
+        } else if (this.pendingAction === 'deleteHistoryTask') {
+            await this.deleteHistoryTask();
         } else if (this.pendingAction === 'deleteReportUrl') {
             await this.executeDeleteReportUrl();
         } else if (this.pendingAction === 'closeReportDialog') {
@@ -987,6 +1283,37 @@ class NippoApp {
             this.showToast('タスクの削除に失敗しました', 'error');
         } finally {
             this.pendingTaskId = null; // クリーンアップ
+        }
+    }
+    
+    async deleteHistoryTask() {
+        try {
+            const taskId = this.pendingTaskId;
+            const dateString = this.pendingDate;
+            console.log('履歴タスク削除開始:', { taskId, dateString });
+            
+            if (taskId === null || taskId === undefined || !dateString) {
+                this.showToast('削除対象のタスクまたは日付が特定できません', 'error');
+                return;
+            }
+            
+            const response = await fetch(`${this.apiBaseUrl}/api/history/${dateString}/tasks/${taskId}`, { method: 'DELETE' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    // 履歴データを再読み込み
+                    await this.loadHistoryData(dateString);
+                    this.showToast('履歴タスクを削除しました');
+                } else {
+                    this.showToast('履歴タスクの削除に失敗しました', 'error');
+                }
+            }
+        } catch (error) {
+            console.error('履歴タスク削除エラー:', error);
+            this.showToast('履歴タスクの削除に失敗しました', 'error');
+        } finally {
+            this.pendingTaskId = null; // クリーンアップ
+            this.pendingDate = null; // クリーンアップ
         }
     }
 
@@ -2600,6 +2927,526 @@ class NippoApp {
         
         console.log('ウィンドウ復元処理が完了しました');
     }
+
+    // 履歴関連のメソッド
+    async loadHistoryDates() {
+        try {
+            console.log('履歴日付読み込み開始');
+            const response = await fetch(`${this.apiBaseUrl}/api/history/dates`);
+            console.log('履歴日付API response status:', response.status);
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('履歴日付API結果:', result);
+                
+                if (result.success) {
+                    this.historyDates = result.dates;
+                    console.log('historyDates設定完了:', this.historyDates);
+                    this.updateHistorySelector();
+                } else {
+                    console.error('履歴日付取得失敗:', result.message);
+                }
+            } else {
+                console.error('履歴日付API失敗:', response.status, response.statusText);
+            }
+        } catch (error) {
+            console.error('履歴日付の読み込みエラー:', error);
+        }
+    }
+
+    updateHistorySelector() {
+        // カレンダー表示では特別な処理は不要
+        // 日付入力フィールドをデフォルトで今日に設定
+        const calendarInput = document.getElementById('calendar-date-input');
+        if (calendarInput) {
+            const today = new Date();
+            const todayString = today.toISOString().split('T')[0];
+            
+            // 未来の日付を選択できないように制限
+            calendarInput.max = todayString;
+            
+            if (!calendarInput.value) {
+                calendarInput.value = todayString;
+            }
+        }
+    }
+
+    formatDateForDisplay(dateString) {
+        try {
+            const date = new Date(dateString + 'T00:00:00'); // タイムゾーンの問題を回避
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+            const weekday = weekdays[date.getDay()];
+            return `${year}年${month}月${day}日 (${weekday})`;
+        } catch (error) {
+            console.error('日付フォーマットエラー:', error);
+            return dateString;
+        }
+    }
+
+    async switchToHistoryMode() {
+        console.log('=== 履歴モードに切り替え中 ===');
+        this.currentMode = 'history';
+        // 履歴モードでは currentDate は後で設定される（初期値は null のまま）
+        this.currentDate = null;
+        console.log('履歴モードに切り替え - currentDate を初期化');
+        
+        // ボタンの状態を更新
+        document.getElementById('today-btn').classList.remove('active');
+        document.getElementById('history-btn').classList.add('active');
+        
+        // 日付選択を表示
+        const dateSelector = document.getElementById('date-selector');
+        if (dateSelector) {
+            dateSelector.style.display = 'block';
+            console.log('日付選択を表示しました');
+        } else {
+            console.error('date-selector要素が見つかりません');
+        }
+        
+        // カレンダーで今日の日付を選択できないように制限（昨日まで）
+        const calendarInput = document.getElementById('calendar-date-input');
+        if (calendarInput) {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            calendarInput.max = yesterday.toISOString().split('T')[0];
+            console.log('カレンダーの最大日付を昨日に設定しました:', calendarInput.max);
+        }
+        
+        // 休憩ボタンとタスク終了ボタンを非表示
+        const breakButton = document.getElementById('break-btn');
+        const endTaskButton = document.getElementById('end-task-btn');
+        if (breakButton) {
+            breakButton.style.display = 'none';
+            console.log('休憩ボタンを非表示にしました');
+        }
+        if (endTaskButton) {
+            endTaskButton.style.display = 'none';
+            console.log('タスク終了ボタンを非表示にしました');
+        }
+        
+        // 現在時刻表示を非表示
+        const currentTimeElement = document.getElementById('current-time');
+        if (currentTimeElement) {
+            currentTimeElement.style.display = 'none';
+            console.log('現在時刻表示を非表示にしました');
+        }
+        
+        // タイムラインセクションに履歴モードクラスを追加
+        const timelineSection = document.querySelector('.timeline-section');
+        if (timelineSection) {
+            timelineSection.classList.add('history-mode');
+            console.log('タイムラインセクションに履歴モードクラスを追加しました');
+        } else {
+            console.error('timeline-section要素が見つかりません');
+        }
+        
+        // タイムラインのタイトルを更新
+        const timelineTitle = document.querySelector('.timeline-section h3');
+        if (timelineTitle) {
+            timelineTitle.textContent = '📋 履歴タイムライン';
+            console.log('タイムラインのタイトルを更新しました');
+        } else {
+            console.error('timeline-section h3要素が見つかりません');
+        }
+        
+        // 日付入力フィールドにフォーカスを当てる
+        setTimeout(() => {
+            const calendarInput = document.getElementById('calendar-date-input');
+            if (calendarInput) {
+                calendarInput.focus();
+                console.log('日付入力フィールドにフォーカスを当てました');
+                
+                // イベントリスナーが設定されているか確認
+                const hasEventListener = calendarInput.onchange || calendarInput.getAttribute('data-has-listener');
+                console.log('イベントリスナーの状態:', hasEventListener);
+            } else {
+                console.error('calendar-date-input要素が見つかりません');
+            }
+        }, 100);
+        
+        // 最新の履歴データを自動的に読み込む
+        console.log('履歴モード切り替え時の historyDates:', this.historyDates);
+        console.log('historyDates の長さ:', this.historyDates ? this.historyDates.length : 'undefined');
+        
+        if (this.historyDates && this.historyDates.length > 0) {
+            // 日付を降順（新しい順）にソートして最新日付を取得
+            const sortedDates = [...this.historyDates].sort((a, b) => new Date(b) - new Date(a));
+            const latestDate = sortedDates[0];
+            
+            console.log('利用可能な履歴日付:', this.historyDates);
+            console.log('最新の履歴日付を自動読み込み:', latestDate);
+            
+            // カレンダーの値を設定
+            const calendarInput = document.getElementById('calendar-date-input');
+            if (calendarInput) {
+                calendarInput.value = latestDate;
+            }
+            
+            // 最新の履歴データを読み込み
+            await this.loadHistoryData(latestDate);
+        } else {
+            console.log('履歴データが見つかりません。履歴データを再読み込みします。');
+            // 履歴データがない場合は再読み込みを試行
+            await this.loadHistoryDates();
+            
+            // 再読み込み後に再度確認
+            if (this.historyDates && this.historyDates.length > 0) {
+                console.log('再読み込み後の履歴データ:', this.historyDates);
+                const sortedDates = [...this.historyDates].sort((a, b) => new Date(b) - new Date(a));
+                const latestDate = sortedDates[0];
+                
+                // カレンダーの値を設定
+                const calendarInput = document.getElementById('calendar-date-input');
+                if (calendarInput) {
+                    calendarInput.value = latestDate;
+                }
+                
+                // 最新の履歴データを読み込み
+                await this.loadHistoryData(latestDate);
+            } else {
+                // それでも履歴データがない場合
+                const container = document.getElementById('timeline-container');
+                if (container) {
+                    container.innerHTML = '<p class="no-data-message">履歴データがありません。日付を選択してください。</p>';
+                }
+            }
+        }
+        
+        console.log('=== 履歴モードの切り替え完了 ===');
+    }
+
+    switchToTodayMode() {
+        this.currentMode = 'today';
+        this.selectedDate = null;
+        this.currentDate = null; // 今日はnull
+        
+        // ボタンの状態を更新
+        document.getElementById('history-btn').classList.remove('active');
+        document.getElementById('today-btn').classList.add('active');
+        
+        // 日付選択を非表示
+        document.getElementById('date-selector').style.display = 'none';
+        
+        // カレンダーの最大日付を今日に戻す
+        const calendarInput = document.getElementById('calendar-date-input');
+        if (calendarInput) {
+            const today = new Date();
+            calendarInput.max = today.toISOString().split('T')[0];
+            console.log('カレンダーの最大日付を今日に戻しました:', calendarInput.max);
+        }
+        
+        
+        // 休憩ボタンの表示状態を更新
+        this.updateBreakButtonVisibility();
+        
+        // タスク終了ボタンの表示状態を更新
+        this.updateEndTaskButtonVisibility();
+        
+        // 現在時刻表示を再表示
+        const currentTimeElement = document.getElementById('current-time');
+        if (currentTimeElement) {
+            currentTimeElement.style.display = 'block';
+            console.log('現在時刻表示を再表示しました');
+        }
+        
+        // タイムラインセクションから履歴モードクラスを削除
+        const timelineSection = document.querySelector('.timeline-section');
+        timelineSection.classList.remove('history-mode');
+        
+        // タイムラインのタイトルを更新
+        const timelineTitle = document.querySelector('.timeline-section h3');
+        timelineTitle.textContent = '📈 タイムライン';
+        
+        // 日付表示を今日に戻す
+        this.updateDateTime();
+        
+        // 今日のタスクデータを再読み込みしてタイムラインを更新
+        this.loadTasks();
+    }
+
+    async loadHistoryData(dateString) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.selectedDate = dateString;
+                    this.currentDate = dateString; // 統一された日付管理
+                    this.renderHistoryTimeline(result.data);
+                    
+                    // 日付表示を更新
+                    const dateDisplay = document.getElementById('current-date');
+                    dateDisplay.textContent = this.formatDateForDisplay(dateString);
+                } else {
+                    this.showToast('履歴データの読み込みに失敗しました', 'error');
+                }
+            }
+        } catch (error) {
+            console.error('履歴データの読み込みエラー:', error);
+            this.showToast('履歴データの読み込みに失敗しました', 'error');
+        }
+    }
+
+    async onDateSelected(selectedDate) {
+        if (!selectedDate) {
+            console.log('日付が選択されていません');
+            return;
+        }
+        
+        console.log(`=== 日付選択処理開始: ${selectedDate} ===`);
+        
+        // 未来の日付を選択した場合は処理を停止
+        const today = new Date();
+        const todayString = today.toISOString().split('T')[0];
+        if (selectedDate > todayString) {
+            console.log('未来の日付が選択されました:', selectedDate);
+            this.showToast('未来の日付は選択できません', 'error');
+            
+            // カレンダー入力を今日の日付に戻す
+            const calendarInput = document.getElementById('calendar-date-input');
+            if (calendarInput) {
+                calendarInput.value = todayString;
+            }
+            return;
+        }
+        
+        // APIが初期化されていない場合は処理を停止
+        if (!this.apiBaseUrl) {
+            console.error('APIベースURLが設定されていません');
+            this.showToast('APIが初期化されていません', 'error');
+            return;
+        }
+        
+        try {
+            // まず既存のデータを読み込み試行
+            const historyUrl = `${this.apiBaseUrl}/api/history/${selectedDate}`;
+            const response = await fetch(historyUrl);
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                if (result.success) {
+                    // データが存在する場合、読み込み
+                    console.log('既存データを読み込み中...');
+                    this.selectedDate = selectedDate;
+                    this.currentDate = selectedDate; // 統一された日付管理
+                    this.renderHistoryTimeline(result.data);
+                    this.updateBreakButtonVisibility(); // 休憩ボタン表示制御
+                    
+                    // 日付表示を更新
+                    const dateDisplay = document.getElementById('current-date');
+                    if (dateDisplay) {
+                        dateDisplay.textContent = this.formatDateForDisplay(selectedDate);
+                    }
+                    
+                    console.log('=== 既存データの読み込み完了 ===');
+                    return;
+                }
+            }
+            
+            // データが存在しない場合、空のタイムラインを表示
+            console.log('データが存在しません - 空のタイムラインを表示');
+            this.selectedDate = selectedDate;
+            this.currentDate = selectedDate; // 統一された日付管理
+            this.renderEmptyTimeline();
+            this.updateBreakButtonVisibility(); // 休憩ボタン表示制御
+            
+            // 日付表示を更新
+            const dateDisplay = document.getElementById('current-date');
+            if (dateDisplay) {
+                dateDisplay.textContent = this.formatDateForDisplay(selectedDate);
+            }
+            
+            console.log('=== 日付選択処理完了（データなし） ===');
+        } catch (error) {
+            console.error('日付選択エラー:', error);
+            this.showToast('データの読み込みに失敗しました', 'error');
+        }
+    }
+
+    renderHistoryTimeline(historyData) {
+        console.log('=== renderHistoryTimeline開始 ===');
+        console.log('履歴データ:', historyData);
+        
+        // 履歴データを保存（deleteCurrentTaskで参照できるように）
+        // データの一貫性を確保するため、name/titleフィールドを統一
+        this.tasks = historyData && historyData.tasks ? historyData.tasks.map(task => ({
+            ...task,
+            name: task.name || task.title || '',
+            title: task.title || task.name || ''
+        })) : [];
+        this.currentHistoryData = historyData;
+        
+        const container = document.getElementById('timeline-container');
+        if (!container) {
+            console.error('timeline-container要素が見つかりません');
+            return;
+        }
+
+        if (!historyData || !historyData.tasks || historyData.tasks.length === 0) {
+            console.log('タスクデータが空です');
+            container.innerHTML = `
+                <div class="timeline-empty">
+                    <span class="material-icons">schedule</span>
+                    <p>この日のタスクはありません</p>
+                    <p class="sub-text">タスクを追加してください</p>
+                </div>
+            `;
+            return;
+        }
+
+        console.log(`${historyData.tasks.length}個のタスクを表示します`);
+        
+        const timelineHTML = historyData.tasks.map((task, index) => {
+            console.log(`タスク${index}の詳細:`, task);
+            console.log(`task.id: ${task.id}, typeof task.id: ${typeof task.id}`);
+            
+            // タスクIDをそのまま保持（文字列も数値もそのまま）
+            let taskId = task.id !== undefined && task.id !== null ? task.id : index;
+            
+            const dateForButton = this.currentDate || this.selectedDate || '';
+            console.log(`最終的なタスクID: ${taskId}, currentDate: ${this.currentDate}, selectedDate: ${this.selectedDate}, dateForButton: ${dateForButton}`);
+            
+            // データ属性の値をログ出力
+            console.log(`ボタンに設定する値 - taskId: "${taskId}" (${typeof taskId}), dateForButton: "${dateForButton}" (${typeof dateForButton})`);
+            
+            const startTime = this.formatTime(task.startTime);
+            const endTime = task.endTime ? this.formatTime(task.endTime) : '実行中';
+            const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '';
+            const isRunning = !task.endTime;
+            const isBreak = task.isBreak || false;
+            
+            // クラスを動的に設定
+            let itemClass = 'timeline-item';
+            if (isRunning && isBreak) {
+                itemClass += ' running break';
+            } else if (isRunning) {
+                itemClass += ' running';
+            }
+            
+            // タスク名を表示用に整形（休憩の場合は適切に表示）
+            let displayName = task.name || task.title || '';
+            if (isBreak) {
+                if (displayName === '[BREAK] 休憩' || displayName === '🔴 休憩' || displayName === '') {
+                    displayName = '休憩';
+                } else if (displayName.startsWith('[BREAK] ')) {
+                    displayName = displayName.replace('[BREAK] ', '');
+                } else if (displayName.startsWith('🔴 休憩: ')) {
+                    displayName = displayName.replace('🔴 休憩: ', '');
+                } else if (displayName.startsWith('🔴 休憩')) {
+                    displayName = displayName.replace('🔴 休憩', '').trim();
+                    if (!displayName) displayName = '休憩';
+                }
+            }
+            
+            const buttonHtml = `<button class="timeline-edit history-edit-btn" data-task-id="${taskId}" data-date="${dateForButton}" title="編集">
+                        <span class="material-icons">edit</span>
+                    </button>`;
+            
+            console.log(`生成されるボタンHTML: ${buttonHtml}`);
+            
+            return `
+                <div class="${itemClass}">
+                    <div class="timeline-time">${startTime}</div>
+                    <div class="timeline-content">
+                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
+                        ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
+                        ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
+                    </div>
+                    ${buttonHtml}
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = timelineHTML;
+        
+        // 履歴編集ボタンのイベントリスナーを追加
+        this.setupHistoryEditListeners();
+        
+        console.log('=== renderHistoryTimeline完了 ===');
+    }
+
+    setupHistoryEditListeners() {
+        // 履歴編集ボタンのイベントリスナーを設定（イベント委譲を使用）
+        const container = document.getElementById('timeline-container');
+        if (!container) return;
+        
+        // 既存のリスナーを削除（重複防止）
+        container.removeEventListener('click', this.historyEditHandler);
+        
+        // 新しいリスナーを追加
+        this.historyEditHandler = (event) => {
+            const editBtn = event.target.closest('.history-edit-btn');
+            if (editBtn) {
+                event.preventDefault();
+                event.stopPropagation();
+                
+                const taskIdStr = editBtn.dataset.taskId;
+                const dateString = editBtn.dataset.date;
+                // IDは文字列の場合もあるのでそのまま使用
+                const taskId = isNaN(parseInt(taskIdStr)) ? taskIdStr : parseInt(taskIdStr);
+                
+                console.log('履歴編集ボタンがクリックされました:');
+                console.log('- taskIdStr:', taskIdStr);
+                console.log('- taskId:', taskId);
+                console.log('- dateString:', dateString);
+                console.log('- isValidTaskId:', (typeof taskId === 'string' || (!isNaN(taskId) && taskId >= 0)));
+                console.log('- isValidDate:', !!dateString);
+                console.log('- editBtn element:', editBtn);
+                console.log('- editBtn.dataset:', editBtn.dataset);
+                console.log('- editBtn outerHTML:', editBtn.outerHTML);
+                
+                if ((typeof taskId === 'string' || (!isNaN(taskId) && taskId >= 0)) && dateString && dateString.trim() !== '') {
+                    this.editHistoryTask(dateString, taskId);
+                } else {
+                    console.error('タスクIDまたは日付が見つかりません:', { 
+                        taskIdStr, 
+                        taskId, 
+                        dateString,
+                        editBtnDataset: editBtn.dataset
+                    });
+                    this.showToast('編集に必要な情報が見つかりません', 'error');
+                }
+            }
+        };
+        
+        container.addEventListener('click', this.historyEditHandler);
+    }
+
+    renderEmptyTimeline() {
+        console.log('=== renderEmptyTimeline開始 ===');
+        
+        const timeline = document.getElementById('timeline-container');
+        if (!timeline) {
+            console.error('timeline-container要素が見つかりません');
+            return;
+        }
+        
+        timeline.innerHTML = '<p class="empty-message">この日のデータはまだ作成されていません</p>';
+        console.log('=== renderEmptyTimeline完了 ===');
+    }
+
+
+    updateBreakButtonVisibility() {
+        /**休憩ボタンの表示/非表示を制御 */
+        const breakButton = document.getElementById('break-btn');
+        if (!breakButton) return;
+        
+        // 過去日付の場合は非表示
+        if (this.currentDate) {
+            breakButton.style.display = 'none';
+            console.log('過去日付のため休憩ボタンを非表示にしました');
+        } else {
+            // 今日の場合は表示
+            breakButton.style.display = 'flex';
+            console.log('今日のため休憩ボタンを表示しました');
+        }
+    }
+
 
 }
 
