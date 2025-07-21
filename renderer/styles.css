@@ -1562,48 +1562,83 @@ body {
   border-radius: var(--radius-small);
   padding: 16px;
   margin-bottom: 16px;
-  min-height: 100px;
+  min-height: 120px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .url-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
+  align-items: stretch;
+  padding: 0;
   border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  margin-bottom: 8px;
+  background: var(--bg-secondary);
+  transition: all 0.2s ease;
+  overflow: hidden;
 }
 
 .url-item:last-child {
   border-bottom: none;
+  margin-bottom: 0;
+}
+
+.url-item:hover {
+  background: var(--bg-tertiary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-small);
 }
 
 .url-info {
   flex: 1;
+  min-width: 0; /* flexboxでの文字切り詰めを有効にする */
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .url-name {
   color: var(--text-primary);
-  font-weight: 500;
-  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.url-name::before {
+  content: "🔗";
+  font-size: 14px;
 }
 
 .url-address {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
   word-break: break-all;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  background: var(--bg-primary);
+  padding: 4px 8px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border);
 }
 
 .url-actions {
   display: flex;
-  gap: 8px;
+  gap: 0;
+  flex-shrink: 0;
+  align-items: stretch;
 }
 
 .url-actions button {
   background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-  width: 32px;
-  height: 32px;
+  border: none;
+  border-left: 1px solid var(--border);
+  width: 48px;
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1620,25 +1655,62 @@ body {
 .url-actions button.delete:hover {
   background: var(--error);
   color: white;
-  border-color: var(--error);
 }
 
 .url-actions .material-icons {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .add-url-form {
   margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border);
+}
+
+.add-url-form h5 {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-url-form h5::before {
+  content: "➕";
+  font-size: 14px;
 }
 
 .input-row {
   display: flex;
   gap: 12px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .input-row input {
   flex: 1;
+  min-height: 48px;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.input-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.1);
+}
+
+.input-row input::placeholder {
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .input-row button {
@@ -1649,6 +1721,18 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.input-row button:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-small);
 }
 
 .settings-footer {

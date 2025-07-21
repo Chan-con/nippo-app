@@ -2649,24 +2649,40 @@ class NippoApp {
             const response = await fetch(`${this.apiBaseUrl}/api/report-urls`);
             if (response.ok) {
                 const result = await response.json();
-                if (result.success && result.urls) {
+                if (result.success && result.urls && result.urls.length > 0) {
                     const urlsHTML = result.urls.map(url => `
                         <div class="url-item">
-                            <span class="url-name">${url.name}</span>
-                            <span class="url-address">${url.url}</span>
-                            <button class="delete-url-btn" onclick="app.confirmDeleteReportUrl('${url.id}')">
-                                <span class="material-icons">delete</span>
-                            </button>
+                            <div class="url-info">
+                                <div class="url-name">${url.name}</div>
+                                <div class="url-address">${url.url}</div>
+                            </div>
+                            <div class="url-actions">
+                                <button class="delete" onclick="app.confirmDeleteReportUrl('${url.id}')" title="削除">
+                                    <span class="material-icons">delete</span>
+                                </button>
+                            </div>
                         </div>
                     `).join('');
                     urlList.innerHTML = urlsHTML;
                 } else {
-                    urlList.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 16px;">報告先が設定されていません</p>';
+                    urlList.innerHTML = `
+                        <div class="url-list-empty">
+                            <span class="material-icons">link_off</span>
+                            <div>報告先が設定されていません</div>
+                            <div style="font-size: 12px; opacity: 0.8;">新しい報告先を追加してください</div>
+                        </div>
+                    `;
                 }
             }
         } catch (error) {
             console.error('報告先URL取得エラー:', error);
-            urlList.innerHTML = '<p style="color: var(--error); text-align: center; padding: 16px;">報告先の読み込みに失敗しました</p>';
+            urlList.innerHTML = `
+                <div class="url-list-empty">
+                    <span class="material-icons">error_outline</span>
+                    <div style="color: var(--error);">報告先の読み込みに失敗しました</div>
+                    <div style="font-size: 12px; opacity: 0.8;">再度お試しください</div>
+                </div>
+            `;
         }
     }
 
