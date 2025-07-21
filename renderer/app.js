@@ -80,6 +80,9 @@ class NippoApp {
                 // タグストックを読み込み
                 await this.loadTagStock();
                 
+                // タグの整合性をチェックして自動修正
+                await this.checkAndFixTagIntegrity();
+                
                 // タグドロップダウンを初期化
                 this.updateTagDropdown();
                 
@@ -2224,14 +2227,19 @@ class NippoApp {
 
     hideGoalStockDialog() {
         if (this.hasGoalStockChanges) {
-            // 変更がある場合は確認ダイアログを表示
-            // ここでは簡易的に直接閉じる
-            console.log('未保存の変更がありますが、ダイアログを閉じます');
+            const result = confirm('保存されていない変更があります。変更を破棄して閉じますか？');
+            if (!result) {
+                return; // キャンセルされた場合は閉じない
+            }
         }
         
         const dialog = document.getElementById('goal-stock-dialog');
         dialog.classList.remove('show');
         this.hasGoalStockChanges = false;
+        
+        // 編集中のアイテムを元に戻す
+        this.tempGoalStock = JSON.parse(JSON.stringify(this.goalStock));
+        this.renderGoalStock();
     }
 
     async loadGoalStock() {
@@ -2258,13 +2266,65 @@ class NippoApp {
             const item = document.createElement('div');
             item.className = 'goal-stock-item';
             item.innerHTML = `
-                <input type="text" value="${goal.name}" onchange="app.updateTempGoal(${index}, this.value)">
-                <button onclick="app.removeTempGoal(${index})"><span class="material-icons">delete</span></button>
+                <div class="goal-stock-content">
+                    <div class="goal-stock-item-name" title="目標名">${goal.name}</div>
+                    <input type="text" value="${goal.name}" class="goal-stock-edit-input" oninput="app.onGoalInputChange(${index}, this)" style="display: none;">
+                    <button class="goal-stock-edit-btn" onclick="app.editGoalStockItem(${index})" title="編集">
+                        <span class="material-icons">edit</span>
+                    </button>
+                    <button onclick="app.removeTempGoal(${index})" title="削除">
+                        <span class="material-icons">delete</span>
+                    </button>
+                </div>
             `;
             list.appendChild(item);
         });
         
         this.updateGoalStockSaveButton();
+    }
+
+    onGoalInputChange(index, inputElement) {
+        const originalValue = inputElement.dataset.originalValue || this.tempGoalStock[index].name;
+        const currentValue = inputElement.value.trim();
+        
+        if (currentValue !== originalValue) {
+            this.tempGoalStock[index].name = currentValue;
+            this.hasGoalStockChanges = true;
+            this.updateGoalStockSaveButton();
+            
+            // 表示名も更新
+            const list = document.getElementById('goal-stock-list');
+            const item = list.querySelectorAll('.goal-stock-item')[index];
+            const nameDiv = item.querySelector('.goal-stock-item-name');
+            nameDiv.textContent = currentValue;
+        }
+    }
+
+    editGoalStockItem(index) {
+        const list = document.getElementById('goal-stock-list');
+        const item = list.querySelectorAll('.goal-stock-item')[index];
+        const nameDiv = item.querySelector('.goal-stock-item-name');
+        const input = item.querySelector('.goal-stock-edit-input');
+        const editBtn = item.querySelector('.goal-stock-edit-btn');
+        
+        if (input.style.display === 'none') {
+            // 編集モードに切り替え
+            nameDiv.style.display = 'none';
+            input.style.display = 'block';
+            input.focus();
+            input.select();
+            editBtn.innerHTML = '<span class="material-icons">check</span>';
+            editBtn.title = '入力終了';
+            
+            // 編集前の値を保存
+            input.dataset.originalValue = this.tempGoalStock[index].name;
+        } else {
+            // 入力終了：表示モードに戻る
+            nameDiv.style.display = 'block';
+            input.style.display = 'none';
+            editBtn.innerHTML = '<span class="material-icons">edit</span>';
+            editBtn.title = '編集';
+        }
     }
 
     addGoalStock() {
@@ -2295,6 +2355,25 @@ class NippoApp {
         saveBtn.disabled = !this.hasGoalStockChanges;
     }
 
+    finishAllGoalEditing() {
+        const list = document.getElementById('goal-stock-list');
+        const items = list.querySelectorAll('.goal-stock-item');
+        
+        items.forEach(item => {
+            const nameDiv = item.querySelector('.goal-stock-item-name');
+            const input = item.querySelector('.goal-stock-edit-input');
+            const editBtn = item.querySelector('.goal-stock-edit-btn');
+            
+            if (input && input.style.display !== 'none') {
+                // 編集モードを終了
+                nameDiv.style.display = 'block';
+                input.style.display = 'none';
+                editBtn.innerHTML = '<span class="material-icons">edit</span>';
+                editBtn.title = '編集';
+            }
+        });
+    }
+
     async saveGoalStockChanges() {
         try {
             const response = await fetch(`${this.apiBaseUrl}/api/goals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goals: this.tempGoalStock }) });
@@ -2304,6 +2383,10 @@ class NippoApp {
                     this.goalStock = this.tempGoalStock;
                     this.hasGoalStockChanges = false;
                     this.updateGoalStockSaveButton();
+                    
+                    // 編集モードを終了
+                    this.finishAllGoalEditing();
+                    
                     this.showToast('目標ストックを保存しました');
                 }
             }
@@ -2321,14 +2404,19 @@ class NippoApp {
 
     hideTaskStockDialog() {
         if (this.hasTaskStockChanges) {
-            // 変更がある場合は確認ダイアログを表示
-            // ここでは簡易的に直接閉じる
-            console.log('未保存の変更がありますが、ダイアログを閉じます');
+            const result = confirm('保存されていない変更があります。変更を破棄して閉じますか？');
+            if (!result) {
+                return; // キャンセルされた場合は閉じない
+            }
         }
         
         const dialog = document.getElementById('task-stock-dialog');
         dialog.classList.remove('show');
         this.hasTaskStockChanges = false;
+        
+        // 編集中のアイテムを元に戻す
+        this.tempTaskStock = JSON.parse(JSON.stringify(this.taskStock));
+        this.renderTaskStock();
     }
 
     async loadTaskStock() {
@@ -2355,13 +2443,65 @@ class NippoApp {
             const item = document.createElement('div');
             item.className = 'task-stock-item';
             item.innerHTML = `
-                <input type="text" value="${task.name}" onchange="app.updateTempTask(${index}, this.value)">
-                <button onclick="app.removeTempTask(${index})"><span class="material-icons">delete</span></button>
+                <div class="stock-item-content">
+                    <div class="task-stock-item-name" title="タスク名">${task.name}</div>
+                    <input type="text" value="${task.name}" class="task-stock-edit-input" oninput="app.onTaskInputChange(${index}, this)" style="display: none;">
+                    <button class="task-stock-edit-btn" onclick="app.editTaskStockItem(${index})" title="編集">
+                        <span class="material-icons">edit</span>
+                    </button>
+                    <button onclick="app.removeTempTask(${index})" title="削除">
+                        <span class="material-icons">delete</span>
+                    </button>
+                </div>
             `;
             list.appendChild(item);
         });
         
         this.updateTaskStockSaveButton();
+    }
+
+    onTaskInputChange(index, inputElement) {
+        const originalValue = inputElement.dataset.originalValue || this.tempTaskStock[index].name;
+        const currentValue = inputElement.value.trim();
+        
+        if (currentValue !== originalValue) {
+            this.tempTaskStock[index].name = currentValue;
+            this.hasTaskStockChanges = true;
+            this.updateTaskStockSaveButton();
+            
+            // 表示名も更新
+            const list = document.getElementById('task-stock-list');
+            const item = list.querySelectorAll('.task-stock-item')[index];
+            const nameDiv = item.querySelector('.task-stock-item-name');
+            nameDiv.textContent = currentValue;
+        }
+    }
+
+    editTaskStockItem(index) {
+        const list = document.getElementById('task-stock-list');
+        const item = list.querySelectorAll('.task-stock-item')[index];
+        const nameDiv = item.querySelector('.task-stock-item-name');
+        const input = item.querySelector('.task-stock-edit-input');
+        const editBtn = item.querySelector('.task-stock-edit-btn');
+        
+        if (input.style.display === 'none') {
+            // 編集モードに切り替え
+            nameDiv.style.display = 'none';
+            input.style.display = 'block';
+            input.focus();
+            input.select();
+            editBtn.innerHTML = '<span class="material-icons">check</span>';
+            editBtn.title = '入力終了';
+            
+            // 編集前の値を保存
+            input.dataset.originalValue = this.tempTaskStock[index].name;
+        } else {
+            // 入力終了：表示モードに戻る
+            nameDiv.style.display = 'block';
+            input.style.display = 'none';
+            editBtn.innerHTML = '<span class="material-icons">edit</span>';
+            editBtn.title = '編集';
+        }
     }
 
     addTaskStock() {
@@ -2392,6 +2532,25 @@ class NippoApp {
         saveBtn.disabled = !this.hasTaskStockChanges;
     }
 
+    finishAllTaskEditing() {
+        const list = document.getElementById('task-stock-list');
+        const items = list.querySelectorAll('.task-stock-item');
+        
+        items.forEach(item => {
+            const nameDiv = item.querySelector('.task-stock-item-name');
+            const input = item.querySelector('.task-stock-edit-input');
+            const editBtn = item.querySelector('.task-stock-edit-btn');
+            
+            if (input && input.style.display !== 'none') {
+                // 編集モードを終了
+                nameDiv.style.display = 'block';
+                input.style.display = 'none';
+                editBtn.innerHTML = '<span class="material-icons">edit</span>';
+                editBtn.title = '編集';
+            }
+        });
+    }
+
     async saveTaskStockChanges() {
         try {
             const response = await fetch(`${this.apiBaseUrl}/api/task-stock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: this.tempTaskStock }) });
@@ -2401,6 +2560,10 @@ class NippoApp {
                     this.taskStock = this.tempTaskStock;
                     this.hasTaskStockChanges = false;
                     this.updateTaskStockSaveButton();
+                    
+                    // 編集モードを終了
+                    this.finishAllTaskEditing();
+                    
                     this.showToast('タスクストックを保存しました');
                 }
             }
@@ -2751,19 +2914,38 @@ window.app = app; // グローバルスコープにappを公開
 
 // タグ管理機能を追加
 app.showTagStockDialog = function() {
+    console.log('=== タグストックダイアログ表示 ===');
+    console.log('現在のtagStock:', JSON.stringify(this.tagStock, null, 2));
+    
     const dialog = document.getElementById('tag-stock-dialog');
     dialog.classList.add('show');
-    this.loadTagStock();
+    
+    // 現在のタグストックからtempTagStockを作成（完全なコピー）
+    this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
+    this.hasTagStockChanges = false;
+    
+    console.log('初期化後のtempTagStock:', JSON.stringify(this.tempTagStock, null, 2));
+    console.log('変更フラグ初期状態:', this.hasTagStockChanges);
+    
+    this.renderTagStock();
+    this.updateTagStockSaveButton();
 };
 
 app.hideTagStockDialog = function() {
     if (this.hasTagStockChanges) {
-        console.log('未保存の変更がありますが、ダイアログを閉じます');
+        const result = confirm('保存されていない変更があります。変更を破棄して閉じますか？');
+        if (!result) {
+            return; // キャンセルされた場合は閉じない
+        }
     }
     
     const dialog = document.getElementById('tag-stock-dialog');
     dialog.classList.remove('show');
     this.hasTagStockChanges = false;
+    
+    // 編集中のアイテムを元に戻す
+    this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
+    this.renderTagStock();
 };
 
 app.loadTagStock = async function() {
@@ -2787,6 +2969,42 @@ app.loadTagStock = async function() {
     this.updateTagStockSaveButton();
 };
 
+app.checkAndFixTagIntegrity = async function() {
+    console.log('Checking tag integrity...');
+    const currentTagNames = this.tagStock.map(tag => tag.name);
+    let hasChanges = false;
+
+    // 今日のタスクをチェック
+    this.tasks.forEach(task => {
+        if (task.tag && !currentTagNames.includes(task.tag)) {
+            console.log(`Resetting invalid tag "${task.tag}" to null for today's task`);
+            task.tag = null;
+            hasChanges = true;
+        }
+    });
+
+    // 履歴データをチェック
+    for (const [dateKey, historyTasks] of Object.entries(this.historyData)) {
+        if (Array.isArray(historyTasks)) {
+            historyTasks.forEach(task => {
+                if (task.tag && !currentTagNames.includes(task.tag)) {
+                    console.log(`Resetting invalid tag "${task.tag}" to null for task on ${dateKey}`);
+                    task.tag = null;
+                    hasChanges = true;
+                }
+            });
+        }
+    }
+
+    // 変更があった場合は保存
+    if (hasChanges) {
+        console.log('Tag integrity issues found and fixed. Saving data...');
+        await this.saveData();
+    } else {
+        console.log('Tag integrity check passed - no issues found.');
+    }
+};
+
 app.renderTagStock = function() {
     const container = document.getElementById('tag-stock-list');
     container.innerHTML = '';
@@ -2797,7 +3015,7 @@ app.renderTagStock = function() {
         tagItem.innerHTML = `
             <div class="stock-item-content">
                 <div class="tag-stock-item-name" title="タグ名">${tag.name}</div>
-                <input type="text" value="${tag.name}" class="tag-stock-edit-input" onchange="app.updateTempTag(${index}, this.value)" style="display: none;">
+                <input type="text" value="${tag.name}" class="tag-stock-edit-input" oninput="app.onTagInputChange(${index}, this)" style="display: none;">
                 <button class="tag-stock-edit-btn" onclick="app.editTagStockItem(${index})" title="編集">
                     <span class="material-icons">edit</span>
                 </button>
@@ -2844,27 +3062,27 @@ app.updateTempTag = function(index, newName) {
 };
 
 app.previewTagNameChange = function(oldName, newName) {
-    console.log(`プレビュー更新: "${oldName}" → "${newName}"`);
+    // プレビュー機能を無効化 - 実際の保存時のみタグ変更を適用
+    console.log(`プレビューは無効化されています: "${oldName}" → "${newName}"`);
+    // this.tasks.forEach(task => {
+    //     if (task.tag === oldName) {
+    //         task.tag = newName;
+    //     }
+    // });
     
-    this.tasks.forEach(task => {
-        if (task.tag === oldName) {
-            task.tag = newName;
-        }
-    });
+    // this.updateTagDropdown();
+    // this.updateEditTagDropdown();
     
-    this.updateTagDropdown();
-    this.updateEditTagDropdown();
+    // if (this.currentMode === 'today') {
+    //     this.updateTimeline();
+    // }
     
-    if (this.currentMode === 'today') {
-        this.updateTimeline();
-    }
+    // this.updateStats();
     
-    this.updateStats();
-    
-    const reportDialog = document.getElementById('report-dialog');
-    if (reportDialog && reportDialog.classList.contains('show')) {
-        this.generateTagSummary();
-    }
+    // const reportDialog = document.getElementById('report-dialog');
+    // if (reportDialog && reportDialog.classList.contains('show')) {
+    //     this.generateTagSummary();
+    // }
 };
 
 app.removeTempTag = function(index) {
@@ -2918,36 +3136,110 @@ app.removeTempTag = function(index) {
     }
 };
 
+app.onTagInputChange = function(index, inputElement) {
+    console.log(`=== onTagInputChange 呼び出し - インデックス: ${index} ===`);
+    
+    const originalValue = inputElement.dataset.originalValue || this.tempTagStock[index].name;
+    const currentValue = inputElement.value.trim();
+    
+    console.log(`現在値: "${currentValue}"`);
+    console.log(`元の値: "${originalValue}"`);
+    
+    // 目標ストックと同じ動作：入力のたびに即座に更新
+    if (currentValue !== originalValue) {
+        // 一時的な表示更新（tempTagStockの実際の値は編集完了時に更新）
+        const container = document.getElementById('tag-stock-list');
+        const item = container.querySelectorAll('.stock-item')[index];
+        const nameDiv = item.querySelector('.tag-stock-item-name');
+        nameDiv.textContent = currentValue;
+        
+        console.log(`タグ名表示更新: インデックス ${index} -> "${currentValue}" (元: "${originalValue}")`);
+        console.log('表示のみ更新 - tempTagStockは編集完了時に更新');
+    } else {
+        console.log('入力変更なし');
+    }
+};
+
 app.editTagStockItem = function(index) {
+    console.log(`=== タグ編集ボタンクリック - インデックス: ${index} ===`);
+    
     const container = document.getElementById('tag-stock-list');
     const item = container.querySelectorAll('.stock-item')[index];
+    
+    if (!item) {
+        console.error(`タグアイテムが見つかりません - インデックス: ${index}`);
+        return;
+    }
+    
     const nameDiv = item.querySelector('.tag-stock-item-name');
     const input = item.querySelector('.tag-stock-edit-input');
     const editBtn = item.querySelector('.tag-stock-edit-btn');
     
+    if (!nameDiv || !input || !editBtn) {
+        console.error('必要なDOM要素が見つかりません');
+        return;
+    }
+    
     if (input.style.display === 'none') {
+        console.log(`編集モード開始 - インデックス: ${index}`);
+        // 編集モードに切り替え
         nameDiv.style.display = 'none';
         input.style.display = 'block';
         input.focus();
         input.select();
         editBtn.innerHTML = '<span class="material-icons">check</span>';
+        editBtn.title = '入力終了';
+        
+        // 編集前の値を保存
+        input.dataset.originalValue = this.tempTagStock[index].name;
     } else {
-        const newValue = input.value.trim();
-        if (newValue) {
-            if (newValue !== this.tempTagStock[index].name) {
-                const oldValue = this.tempTagStock[index].name;
-                this.updateTempTag(index, newValue);
+        console.log(`編集モード終了 - インデックス: ${index}`);
+        // 入力終了：表示モードに戻る
+        const currentValue = input.value.trim();
+        const originalValue = input.dataset.originalValue || this.tempTagStock[index].name;
+        
+        console.log(`値の確定: "${currentValue}" (元: "${originalValue}")`);
+        
+        // 空文字チェック
+        if (currentValue === '') {
+            input.value = originalValue;
+            this.showToast('タグ名を空にすることはできません', 'warning');
+        } else if (currentValue !== originalValue) {
+            // 重複チェック
+            const isDuplicate = this.tempTagStock.some((tag, idx) => 
+                idx !== index && tag.name === currentValue
+            );
+            
+            if (isDuplicate) {
+                input.value = originalValue;
+                this.showToast('同じ名前のタグが既に存在します', 'error');
+            } else {
+                // 値を確定
+                this.tempTagStock[index].name = currentValue;
+                this.hasTagStockChanges = true;
+                this.updateTagStockSaveButton();
+                console.log(`タグ名確定: インデックス ${index} -> "${currentValue}"`);
             }
-            nameDiv.textContent = newValue;
-        } else {
-            nameDiv.textContent = this.tempTagStock[index].name;
-            input.value = this.tempTagStock[index].name;
         }
         
+        // 表示モードに戻る
+        nameDiv.textContent = this.tempTagStock[index].name; // 確定された値を表示
         nameDiv.style.display = 'block';
         input.style.display = 'none';
         editBtn.innerHTML = '<span class="material-icons">edit</span>';
+        editBtn.title = '編集';
+        
+        // クリーンアップ
+        delete input.dataset.originalValue;
+        console.log(`編集完了 - 確定値: "${this.tempTagStock[index].name}"`);
     }
+};
+
+app.checkTagStockChanges = function() {
+    // オリジナルとtempを比較して変更があるかチェック
+    const hasChanges = JSON.stringify(this.tagStock) !== JSON.stringify(this.tempTagStock);
+    this.hasTagStockChanges = hasChanges;
+    this.updateTagStockSaveButton();
 };
 
 app.updateTagDropdown = function() {
@@ -2997,44 +3289,100 @@ app.updateEditTagDropdown = function() {
 
 app.updateTagStockSaveButton = function() {
     const saveBtn = document.getElementById('save-tag-stock-btn');
+    const wasDisabled = saveBtn.disabled;
     saveBtn.disabled = !this.hasTagStockChanges;
+    
+    if (wasDisabled !== saveBtn.disabled) {
+        console.log(`保存ボタン状態変更: ${wasDisabled ? '無効' : '有効'} → ${saveBtn.disabled ? '無効' : '有効'} (変更フラグ: ${this.hasTagStockChanges})`);
+    }
+};
+
+app.finishAllTagEditing = function() {
+    console.log('全タグ編集モード終了処理開始');
+    const container = document.getElementById('tag-stock-list');
+    const items = container.querySelectorAll('.stock-item');
+    
+    items.forEach((item, index) => {
+        const nameDiv = item.querySelector('.tag-stock-item-name');
+        const input = item.querySelector('.tag-stock-edit-input');
+        const editBtn = item.querySelector('.tag-stock-edit-btn');
+        
+        if (input && nameDiv && editBtn) {
+            // 入力が編集モードの場合のみ処理
+            if (input.style.display !== 'none') {
+                console.log(`タグ${index}の編集モードを終了`);
+                
+                // 現在の入力値でtempTagStockを更新（最終確定）
+                const currentValue = input.value.trim();
+                if (currentValue && this.tempTagStock[index]) {
+                    this.tempTagStock[index].name = currentValue;
+                    nameDiv.textContent = currentValue;
+                }
+                
+                // 編集モードを終了
+                nameDiv.style.display = 'block';
+                input.style.display = 'none';
+                editBtn.innerHTML = '<span class="material-icons">edit</span>';
+                editBtn.title = '編集';
+                
+                // originalValue属性をクリア
+                delete input.dataset.originalValue;
+            }
+        }
+    });
+    console.log('全タグ編集モード終了処理完了');
 };
 
 app.saveTagStockChanges = async function() {
+    console.log('=== シンプルなタグ保存処理開始 ===');
+    console.log('保存対象のタグ:', this.tempTagStock);
+    
+    if (!this.hasTagStockChanges) {
+        console.log('変更がないため保存処理をスキップ');
+        this.showToast('変更がありません', 'warning');
+        return;
+    }
+    
     try {
+        console.log('APIリクエスト送信 - URL:', `${this.apiBaseUrl}/api/tags`);
+        console.log('リクエストボディ:', JSON.stringify({ tags: this.tempTagStock }));
+        
         const response = await fetch(`${this.apiBaseUrl}/api/tags`, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ tags: this.tempTagStock }) 
         });
         
+        console.log('レスポンス - ステータス:', response.status);
+        console.log('レスポンス - OK:', response.ok);
+        
         if (response.ok) {
             const result = await response.json();
-            if (result.success) {
-                this.updateExistingTaskTags(this.tagStock, this.tempTagStock);
-                this.tagStock = [...this.tempTagStock];
-                this.hasTagStockChanges = false;
-                this.updateTagStockSaveButton();
-                
-                this.updateTagDropdown();
-                this.updateEditTagDropdown();
-                this.renderTagStock();
-                this.updateTimeline();
-                this.updateStats();
-                
-                const reportDialog = document.getElementById('report-dialog');
-                if (reportDialog && reportDialog.classList.contains('show')) {
-                    await this.generateTagSummary();
-                }
-                
-                this.showToast('タグを保存しました');
-            } else {
-                this.showToast('タグの保存に失敗しました', 'error');
-            }
+            console.log('レスポンス内容:', result);
+            
+            // 保存成功の処理
+            console.log('保存成功 - データ更新中');
+            this.tagStock = [...this.tempTagStock];
+            this.hasTagStockChanges = false;
+            this.updateTagStockSaveButton();
+            this.finishAllTagEditing();
+            
+            console.log('UI更新中');
+            this.renderTagStock();
+            this.updateTagDropdown();
+            this.updateEditTagDropdown();
+            
+            console.log('=== タグ保存処理完了 ===');
+            this.showToast('タグを保存しました');
+        } else {
+            console.error('保存失敗 - HTTPステータス:', response.status);
+            const errorText = await response.text();
+            console.error('エラー内容:', errorText);
+            this.showToast('保存に失敗しました', 'error');
         }
     } catch (error) {
-        console.error('タグ保存エラー:', error);
-        this.showToast('タグの保存に失敗しました', 'error');
+        console.error('保存エラー:', error);
+        this.showToast('保存中にエラーが発生しました', 'error');
     }
 };
 
