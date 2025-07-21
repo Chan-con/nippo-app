@@ -1141,6 +1141,40 @@ body {
   margin-top: 8px;
 }
 
+.tag-summary {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+.tag-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tag-item:last-child {
+  border-bottom: none;
+}
+
+.tag-item-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.tag-item-duration {
+  background: var(--accent);
+  color: white;
+  padding: 2px 8px;
+  border-radius: var(--radius-small);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .task-item {
   display: flex;
   justify-content: space-between;
@@ -1938,6 +1972,48 @@ body {
   cursor: grabbing;
 }
 
+/* 目標ストック用ドラッグハンドル */
+.goal-stock-item-drag-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  cursor: grab;
+  padding: 4px;
+  margin-right: 8px;
+  border-radius: var(--radius-small);
+  transition: all 0.2s ease;
+}
+
+.goal-stock-item-drag-handle:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent);
+}
+
+.goal-stock-item-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* タグストック用ドラッグハンドル */
+.tag-stock-item-drag-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  cursor: grab;
+  padding: 4px;
+  margin-right: 8px;
+  border-radius: var(--radius-small);
+  transition: all 0.2s ease;
+}
+
+.tag-stock-item-drag-handle:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent);
+}
+
+.tag-stock-item-drag-handle:active {
+  cursor: grabbing;
+}
+
 .task-stock-item-name {
   color: var(--text-primary);
   font-weight: 500;
@@ -2322,4 +2398,30 @@ body {
 
 .timeline-section.history-mode .timeline-item.break {
   border-left-color: var(--warning);
+}
+
+/* ドラッグ&ドロップの視覚的フィードバック */
+.goal-stock-item.drag-over,
+.task-stock-item.drag-over,
+.stock-item.drag-over {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-medium);
+  transition: all 0.2s ease;
+}
+
+/* ドラッグ中のアイテム */
+.goal-stock-item[draggable="true"]:active,
+.task-stock-item[draggable="true"]:active,
+.stock-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* ドラッグハンドルのホバー効果を強化 */
+.goal-stock-item-drag-handle:hover,
+.task-stock-item-drag-handle:hover,
+.stock-item-drag-handle:hover {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-small);
 }

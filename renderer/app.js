@@ -28,6 +28,311 @@ class NippoApp {
         this.init();
     }
 
+    // アプリ初期化部分の終わりにドラッグ&ドロップ機能を初期化
+    initDragAndDrop() {
+        this.initGoalStockDragDrop();
+        this.initTaskStockDragDrop();
+        this.initTagStockDragDrop();
+    }
+
+    // 目標ストックのドラッグ&ドロップ
+    initGoalStockDragDrop() {
+        const list = document.getElementById('goal-stock-list');
+        if (!list) return;
+
+        let draggedElement = null;
+        let draggedIndex = null;
+
+        list.addEventListener('dragstart', (e) => {
+            if (e.target.closest('.goal-stock-item')) {
+                draggedElement = e.target.closest('.goal-stock-item');
+                draggedIndex = parseInt(draggedElement.getAttribute('data-index'));
+                e.dataTransfer.effectAllowed = 'move';
+                draggedElement.style.opacity = '0.5';
+            }
+        });
+
+        list.addEventListener('dragend', (e) => {
+            if (draggedElement) {
+                draggedElement.style.opacity = '1';
+                // ドラッグオーバー効果をクリア
+                list.querySelectorAll('.goal-stock-item').forEach(item => {
+                    item.classList.remove('drag-over');
+                });
+                draggedElement = null;
+                draggedIndex = null;
+            }
+        });
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            // ドラッグオーバー時の視覚的フィードバック
+            if (draggedElement) {
+                const dropTarget = e.target.closest('.goal-stock-item');
+                // 既存のhover効果を削除
+                list.querySelectorAll('.goal-stock-item').forEach(item => {
+                    item.classList.remove('drag-over');
+                });
+                // 現在の要素にhover効果を追加（自分自身以外）
+                if (dropTarget && dropTarget !== draggedElement) {
+                    dropTarget.classList.add('drag-over');
+                }
+            }
+        });
+
+        list.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (!draggedElement || draggedIndex === null) return;
+            
+            // ドロップ位置を計算
+            const dropTarget = e.target.closest('.goal-stock-item');
+            let dropIndex;
+            
+            if (dropTarget) {
+                dropIndex = parseInt(dropTarget.getAttribute('data-index'));
+            } else {
+                // リスト内の他の場所にドロップされた場合、最も近い位置を計算
+                const rect = list.getBoundingClientRect();
+                const y = e.clientY - rect.top;
+                const items = Array.from(list.children);
+                
+                for (let i = 0; i < items.length; i++) {
+                    const itemRect = items[i].getBoundingClientRect();
+                    const itemY = itemRect.top - rect.top + itemRect.height / 2;
+                    if (y < itemY) {
+                        dropIndex = i;
+                        break;
+                    }
+                }
+                if (dropIndex === undefined) dropIndex = items.length - 1;
+            }
+            
+            // 同じ位置の場合は何もしない
+            if (dropIndex === draggedIndex) return;
+            
+            // 配列の要素を移動
+            const item = this.tempGoalStock.splice(draggedIndex, 1)[0];
+            this.tempGoalStock.splice(dropIndex, 0, item);
+            
+            // 変更を反映するフラグを設定（再描画より前に設定）
+            this.hasGoalStockChanges = true;
+            
+            // 再描画
+            this.renderGoalStock();
+            
+            // ドラッグ&ドロップを再初期化（要素が再作成されるため）
+            setTimeout(() => this.initGoalStockDragDrop(), 10);
+        });
+    }
+
+    // タスクストックのドラッグ&ドロップ
+    initTaskStockDragDrop() {
+        const list = document.getElementById('task-stock-list');
+        if (!list) return;
+
+        let draggedElement = null;
+        let draggedIndex = null;
+
+        list.addEventListener('dragstart', (e) => {
+            if (e.target.closest('.task-stock-item')) {
+                draggedElement = e.target.closest('.task-stock-item');
+                draggedIndex = parseInt(draggedElement.getAttribute('data-index'));
+                e.dataTransfer.effectAllowed = 'move';
+                draggedElement.style.opacity = '0.5';
+            }
+        });
+
+        list.addEventListener('dragend', (e) => {
+            if (draggedElement) {
+                draggedElement.style.opacity = '1';
+                // ドラッグオーバー効果をクリア
+                list.querySelectorAll('.task-stock-item').forEach(item => {
+                    item.classList.remove('drag-over');
+                });
+                draggedElement = null;
+                draggedIndex = null;
+            }
+        });
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            // ドラッグオーバー時の視覚的フィードバック
+            if (draggedElement) {
+                const dropTarget = e.target.closest('.task-stock-item');
+                // 既存のhover効果を削除
+                list.querySelectorAll('.task-stock-item').forEach(item => {
+                    item.classList.remove('drag-over');
+                });
+                // 現在の要素にhover効果を追加（自分自身以外）
+                if (dropTarget && dropTarget !== draggedElement) {
+                    dropTarget.classList.add('drag-over');
+                }
+            }
+        });
+
+        list.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (!draggedElement || draggedIndex === null) return;
+            
+            // ドロップ位置を計算
+            const dropTarget = e.target.closest('.task-stock-item');
+            let dropIndex;
+            
+            if (dropTarget) {
+                dropIndex = parseInt(dropTarget.getAttribute('data-index'));
+            } else {
+                // リスト内の他の場所にドロップされた場合、最も近い位置を計算
+                const rect = list.getBoundingClientRect();
+                const y = e.clientY - rect.top;
+                const items = Array.from(list.children);
+                
+                for (let i = 0; i < items.length; i++) {
+                    const itemRect = items[i].getBoundingClientRect();
+                    const itemY = itemRect.top - rect.top + itemRect.height / 2;
+                    if (y < itemY) {
+                        dropIndex = i;
+                        break;
+                    }
+                }
+                if (dropIndex === undefined) dropIndex = items.length - 1;
+            }
+            
+            // 同じ位置の場合は何もしない
+            if (dropIndex === draggedIndex) return;
+            
+            // 配列の要素を移動
+            const item = this.tempTaskStock.splice(draggedIndex, 1)[0];
+            this.tempTaskStock.splice(dropIndex, 0, item);
+            
+            // 変更を反映するフラグを設定（再描画より前に設定）
+            this.hasTaskStockChanges = true;
+            
+            // 再描画
+            this.renderTaskStock();
+            
+            // ドラッグ&ドロップを再初期化（要素が再作成されるため）
+            setTimeout(() => this.initTaskStockDragDrop(), 10);
+        });
+    }
+
+    // タグストックのドラッグ&ドロップ
+    initTagStockDragDrop() {
+        const container = document.getElementById('tag-stock-list');
+        if (!container) return;
+
+        let draggedElement = null;
+        let draggedIndex = null;
+
+        container.addEventListener('dragstart', (e) => {
+            if (e.target.closest('.stock-item')) {
+                draggedElement = e.target.closest('.stock-item');
+                draggedIndex = parseInt(draggedElement.getAttribute('data-index'));
+                e.dataTransfer.effectAllowed = 'move';
+                draggedElement.style.opacity = '0.5';
+            }
+        });
+
+        container.addEventListener('dragend', (e) => {
+            if (draggedElement) {
+                draggedElement.style.opacity = '1';
+                // ドラッグオーバー効果をクリア
+                container.querySelectorAll('.stock-item').forEach(item => {
+                    item.classList.remove('drag-over');
+                });
+                draggedElement = null;
+                draggedIndex = null;
+            }
+        });
+
+        container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            // ドラッグオーバー時の視覚的フィードバック
+            if (draggedElement) {
+                const dropTarget = e.target.closest('.stock-item');
+                // 既存のhover効果を削除
+                container.querySelectorAll('.stock-item').forEach(item => {
+                    item.classList.remove('drag-over');
+                });
+                // 現在の要素にhover効果を追加（自分自身以外）
+                if (dropTarget && dropTarget !== draggedElement) {
+                    dropTarget.classList.add('drag-over');
+                }
+            }
+        });
+
+        container.addEventListener('drop', (e) => {
+            e.preventDefault();
+            console.log('タグストック drop イベント発生');
+            console.log('draggedElement:', draggedElement);
+            console.log('draggedIndex:', draggedIndex);
+            
+            if (!draggedElement || draggedIndex === null) {
+                console.log('ドラッグ要素が無効のため処理をスキップ');
+                return;
+            }
+            
+            // ドロップ位置を計算
+            const dropTarget = e.target.closest('.stock-item');
+            let dropIndex;
+            
+            console.log('dropTarget:', dropTarget);
+            
+            if (dropTarget) {
+                dropIndex = parseInt(dropTarget.getAttribute('data-index'));
+                console.log('dropIndex (ターゲットから):', dropIndex);
+            } else {
+                // コンテナ内の他の場所にドロップされた場合、最も近い位置を計算
+                const rect = container.getBoundingClientRect();
+                const y = e.clientY - rect.top;
+                const items = Array.from(container.querySelectorAll('.stock-item'));
+                
+                console.log('アイテム数:', items.length);
+                console.log('ドロップY座標:', y);
+                
+                for (let i = 0; i < items.length; i++) {
+                    const itemRect = items[i].getBoundingClientRect();
+                    const itemY = itemRect.top - rect.top + itemRect.height / 2;
+                    if (y < itemY) {
+                        dropIndex = i;
+                        break;
+                    }
+                }
+                if (dropIndex === undefined) dropIndex = items.length - 1;
+                console.log('dropIndex (計算から):', dropIndex);
+            }
+            
+            // 同じ位置の場合は何もしない
+            if (dropIndex === draggedIndex) {
+                console.log('同じ位置のためスキップ');
+                return;
+            }
+            
+            console.log('配列移動開始: from', draggedIndex, 'to', dropIndex);
+            console.log('移動前の配列:', this.tempTagStock);
+            
+            // 配列の要素を移動
+            const item = this.tempTagStock.splice(draggedIndex, 1)[0];
+            this.tempTagStock.splice(dropIndex, 0, item);
+            
+            console.log('移動後の配列:', this.tempTagStock);
+            
+            // 変更を反映するフラグを設定（再描画より前に設定）
+            this.hasTagStockChanges = true;
+            console.log('hasTagStockChanges:', this.hasTagStockChanges);
+            
+            // 再描画
+            this.renderTagStock();
+            
+            // ドラッグ&ドロップを再初期化（要素が再作成されるため）
+            setTimeout(() => this.initTagStockDragDrop(), 10);
+        });
+    }
     async init() {
         this.setupEventListeners();
         this.updateDateTime();
@@ -825,6 +1130,60 @@ class NippoApp {
         } catch (error) {
             console.error('時間計算エラー:', error, { startTime, endTime });
             return '';
+        }
+    }
+
+    calculateDurationInMinutes(startTime, endTime) {
+        if (!startTime || !endTime) return 0;
+        
+        try {
+            // "午前 10:30" -> Date オブジェクトに変換
+            const parseTime = (timeStr) => {
+                const isAM = timeStr.includes('午前');
+                const timeOnly = timeStr.replace('午前 ', '').replace('午後 ', '').trim();
+                
+                if (!timeOnly.includes(':')) {
+                    return null;
+                }
+                
+                const timeParts = timeOnly.split(':');
+                if (timeParts.length !== 2) {
+                    return null;
+                }
+                
+                const hours = parseInt(timeParts[0], 10);
+                const minutes = parseInt(timeParts[1], 10);
+                
+                if (isNaN(hours) || isNaN(minutes)) {
+                    return null;
+                }
+                
+                let hour24 = hours;
+                if (!isAM && hours !== 12) hour24 += 12;
+                if (isAM && hours === 12) hour24 = 0;
+                
+                const date = new Date();
+                date.setHours(hour24, minutes, 0, 0);
+                return date;
+            };
+            
+            const start = parseTime(startTime);
+            const end = parseTime(endTime);
+            
+            if (!start || !end) {
+                return 0;
+            }
+            
+            const diffMs = end - start;
+            
+            if (diffMs < 0) {
+                return 0; // 不正な時間
+            }
+            
+            return Math.floor(diffMs / (1000 * 60)); // 分単位で返す
+        } catch (error) {
+            console.error('時間計算エラー:', error, { startTime, endTime });
+            return 0;
         }
     }
 
@@ -1693,6 +2052,162 @@ class NippoApp {
         summaryContainer.innerHTML = summaryHTML;
     }
 
+    async generateTagSummary() {
+        const summaryContainer = document.getElementById('tag-summary');
+        
+        if (this.tasks.length === 0) {
+            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">今日はまだタスクがありません</p>';
+            return;
+        }
+
+        // タグ別作業時間とタスクを計算
+        const tagData = new Map();
+        
+        // 完了したタスクのみを対象とする
+        const completedTasks = this.tasks.filter(task => task.endTime && !task.isBreak);
+        
+        completedTasks.forEach(task => {
+            if (task.tag) {
+                const duration = this.calculateDurationInMinutes(task.startTime, task.endTime);
+                if (!tagData.has(task.tag)) {
+                    tagData.set(task.tag, {
+                        totalMinutes: 0,
+                        tasks: []
+                    });
+                }
+                const data = tagData.get(task.tag);
+                data.totalMinutes += duration;
+                data.tasks.push({
+                    name: task.name,
+                    startTime: task.startTime,
+                    endTime: task.endTime,
+                    duration: this.calculateDuration(task.startTime, task.endTime)
+                });
+            }
+        });
+
+        // タグ別作業時間が空の場合
+        if (tagData.size === 0) {
+            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">タグが設定されたタスクがありません</p>';
+            return;
+        }
+
+        // タグストック順序に従って並び替え
+        const tagEntries = Array.from(tagData.entries());
+        const sortedTags = this.tagStock.length > 0 
+            ? this.tagStock
+                .filter(tagItem => tagData.has(tagItem.name))
+                .map(tagItem => [tagItem.name, tagData.get(tagItem.name)])
+                .concat(tagEntries.filter(([tag, data]) => !this.tagStock.some(tagItem => tagItem.name === tag)))
+                .sort((a, b) => {
+                    const aInStock = this.tagStock.some(tagItem => tagItem.name === a[0]);
+                    const bInStock = this.tagStock.some(tagItem => tagItem.name === b[0]);
+                    if (aInStock && bInStock) {
+                        const aIndex = this.tagStock.findIndex(tagItem => tagItem.name === a[0]);
+                        const bIndex = this.tagStock.findIndex(tagItem => tagItem.name === b[0]);
+                        return aIndex - bIndex;
+                    } else if (aInStock) {
+                        return -1;
+                    } else if (bInStock) {
+                        return 1;
+                    } else {
+                        return b[1].totalMinutes - a[1].totalMinutes;
+                    }
+                })
+            : tagEntries.sort((a, b) => b[1].totalMinutes - a[1].totalMinutes);
+
+        // タブナビゲーション生成
+        let tabsHTML = '<div class="tag-tabs-navigation">';
+        let panelsHTML = '<div class="tag-tabs-content">';
+        
+        sortedTags.forEach(([tagName, tagInfo], index) => {
+            const hours = Math.floor(tagInfo.totalMinutes / 60);
+            const mins = tagInfo.totalMinutes % 60;
+            let durationText = '';
+            
+            if (hours > 0) {
+                durationText = `${hours}時間${mins > 0 ? mins + '分' : ''}`;
+            } else {
+                durationText = `${mins}分`;
+            }
+            
+            const tabId = `tag-tab-${index}`;
+            const panelId = `tag-panel-${index}`;
+            const isActive = index === 0 ? ' active' : '';
+            
+            // タブボタン
+            tabsHTML += `
+                <button class="tag-tab${isActive}" data-tab="${tabId}" onclick="app.switchTagTab('${tabId}')">
+                    ${tagName} (${durationText})
+                </button>
+            `;
+            
+            // タブパネル
+            panelsHTML += `
+                <div class="tag-tab-panel${isActive}" id="${panelId}">
+                    <div class="tag-tasks">`;
+            
+            // タスク一覧
+            tagInfo.tasks.forEach(task => {
+                const timeRange = `${this.formatTime(task.startTime)} - ${this.formatTime(task.endTime)}`;
+                panelsHTML += `
+                    <div class="task-item">
+                        <div>
+                            <div class="task-item-name">${task.name}</div>
+                            <div class="task-item-time">${timeRange}</div>
+                        </div>
+                        <div class="task-item-duration">${task.duration}</div>
+                    </div>
+                `;
+            });
+            
+            panelsHTML += `
+                    </div>
+                    <div class="tag-total">
+                        <span>合計: ${durationText}</span>
+                        <button class="tag-copy-btn" onclick="app.copyTagSummary('${tagName}', '${durationText}')" title="タグ名と時間をコピー">
+                            <span class="material-icons">content_copy</span>
+                            コピー
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        tabsHTML += '</div>';
+        panelsHTML += '</div>';
+        
+        summaryContainer.innerHTML = tabsHTML + panelsHTML;
+    }
+
+    // タグタブ切り替え機能
+    switchTagTab(targetTabId) {
+        // すべてのタブとパネルから active クラスを削除
+        document.querySelectorAll('.tag-tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tag-tab-panel').forEach(panel => panel.classList.remove('active'));
+        
+        // 選択されたタブとパネルに active クラスを追加
+        const targetTab = document.querySelector(`[data-tab="${targetTabId}"]`);
+        const targetPanel = document.getElementById(targetTabId.replace('tab', 'panel'));
+        
+        if (targetTab && targetPanel) {
+            targetTab.classList.add('active');
+            targetPanel.classList.add('active');
+        }
+    }
+
+    // タグサマリーをコピーする機能
+    async copyTagSummary(tagName, duration) {
+        const copyText = `${tagName} - ${duration}`;
+        
+        try {
+            await navigator.clipboard.writeText(copyText);
+            this.showToast(`「${copyText}」をコピーしました`, 'success');
+        } catch (error) {
+            console.error('コピーエラー:', error);
+            this.showToast('コピーに失敗しました', 'error');
+        }
+    }
 
     async copyReport() {
         const reportContent = document.getElementById('report-content').value;
@@ -2223,6 +2738,8 @@ class NippoApp {
         const dialog = document.getElementById('goal-stock-dialog');
         dialog.classList.add('show');
         this.loadGoalStock();
+        // ダイアログ表示後にドラッグ&ドロップを初期化
+        setTimeout(() => this.initGoalStockDragDrop(), 100);
     }
 
     hideGoalStockDialog() {
@@ -2265,8 +2782,13 @@ class NippoApp {
         this.tempGoalStock.forEach((goal, index) => {
             const item = document.createElement('div');
             item.className = 'goal-stock-item';
+            item.draggable = true;
+            item.setAttribute('data-index', index);
             item.innerHTML = `
                 <div class="goal-stock-content">
+                    <div class="goal-stock-item-drag-handle" title="ドラッグして並び替え">
+                        <span class="material-icons">drag_indicator</span>
+                    </div>
                     <div class="goal-stock-item-name" title="目標名">${goal.name}</div>
                     <input type="text" value="${goal.name}" class="goal-stock-edit-input" oninput="app.onGoalInputChange(${index}, this)" style="display: none;">
                     <button class="goal-stock-edit-btn" onclick="app.editGoalStockItem(${index})" title="編集">
@@ -2400,6 +2922,8 @@ class NippoApp {
         const dialog = document.getElementById('task-stock-dialog');
         dialog.classList.add('show');
         this.loadTaskStock();
+        // ダイアログ表示後にドラッグ&ドロップを初期化
+        setTimeout(() => this.initTaskStockDragDrop(), 100);
     }
 
     hideTaskStockDialog() {
@@ -2442,8 +2966,13 @@ class NippoApp {
         this.tempTaskStock.forEach((task, index) => {
             const item = document.createElement('div');
             item.className = 'task-stock-item';
+            item.draggable = true;
+            item.setAttribute('data-index', index);
             item.innerHTML = `
                 <div class="stock-item-content">
+                    <div class="task-stock-item-drag-handle" title="ドラッグして並び替え">
+                        <span class="material-icons">drag_indicator</span>
+                    </div>
                     <div class="task-stock-item-name clickable" title="クリックして新しいタスクに追加" onclick="app.addTaskFromStock('${task.name.replace(/'/g, "\\'")}')">
                         <span class="material-icons" style="font-size: 14px; margin-right: 6px; opacity: 0.6; color: var(--accent);">add_circle_outline</span>
                         ${task.name}
@@ -2935,783 +3464,572 @@ class NippoApp {
         
         console.log('ウィンドウ復元後の再描画処理が完了しました');
     }
-}
 
-const app = new NippoApp();
-window.app = app; // グローバルスコープにappを公開
-
-// タグ管理機能を追加
-app.showTagStockDialog = function() {
-    console.log('=== タグストックダイアログ表示 ===');
-    console.log('現在のtagStock:', JSON.stringify(this.tagStock, null, 2));
-    
-    const dialog = document.getElementById('tag-stock-dialog');
-    dialog.classList.add('show');
-    
-    // 現在のタグストックからtempTagStockを作成（完全なコピー）
-    this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
-    this.hasTagStockChanges = false;
-    
-    console.log('初期化後のtempTagStock:', JSON.stringify(this.tempTagStock, null, 2));
-    console.log('変更フラグ初期状態:', this.hasTagStockChanges);
-    
-    this.renderTagStock();
-    this.updateTagStockSaveButton();
-};
-
-app.hideTagStockDialog = function() {
-    if (this.hasTagStockChanges) {
-        const result = confirm('保存されていない変更があります。変更を破棄して閉じますか？');
-        if (!result) {
-            return; // キャンセルされた場合は閉じない
-        }
+    // タグストック関連のメソッドをクラス内に移動
+    showTagStockDialog() {
+        console.log('=== タグストックダイアログ表示 ===');
+        console.log('現在のtagStock:', JSON.stringify(this.tagStock, null, 2));
+        
+        const dialog = document.getElementById('tag-stock-dialog');
+        dialog.classList.add('show');
+        
+        // 現在のタグストックからtempTagStockを作成（完全なコピー）
+        this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
+        this.hasTagStockChanges = false;
+        
+        console.log('初期化後のtempTagStock:', JSON.stringify(this.tempTagStock, null, 2));
+        console.log('変更フラグ初期状態:', this.hasTagStockChanges);
+        
+        this.renderTagStock();
+        // ダイアログ表示後にドラッグ&ドロップを初期化
+        setTimeout(() => this.initTagStockDragDrop(), 100);
+        this.updateTagStockSaveButton();
     }
-    
-    const dialog = document.getElementById('tag-stock-dialog');
-    dialog.classList.remove('show');
-    this.hasTagStockChanges = false;
-    
-    // 編集中のアイテムを元に戻す
-    this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
-    this.renderTagStock();
-};
 
-app.loadTagStock = async function() {
-    try {
-        const response = await fetch(`${this.apiBaseUrl}/api/tags`);
-        if (response.ok) {
-            const result = await response.json();
-            if (result.success) {
-                this.tagStock = result.tags.map((tag, index) => ({
-                    id: tag.id || `tag-${Date.now()}-${index}`,
-                    name: tag.name
-                }));
-                this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
-                this.renderTagStock();
-                this.updateTagDropdown();
+    hideTagStockDialog() {
+        if (this.hasTagStockChanges) {
+            const result = confirm('保存されていない変更があります。変更を破棄して閉じますか？');
+            if (!result) {
+                return; // キャンセルされた場合は閉じない
             }
         }
-    } catch (error) {
-        console.error('タグストック読み込みエラー:', error);
+        
+        const dialog = document.getElementById('tag-stock-dialog');
+        dialog.classList.remove('show');
+        this.hasTagStockChanges = false;
+        
+        // 編集中のアイテムを元に戻す
+        this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
+        this.renderTagStock();
     }
-    this.updateTagStockSaveButton();
-};
 
-app.checkAndFixTagIntegrity = async function() {
-    console.log('Checking tag integrity...');
-    const currentTagNames = this.tagStock.map(tag => tag.name);
-    let hasChanges = false;
+    renderTagStock() {
+        const container = document.getElementById('tag-stock-list');
+        container.innerHTML = '';
 
-    // 今日のタスクをチェック
-    this.tasks.forEach(task => {
-        if (task.tag && !currentTagNames.includes(task.tag)) {
-            console.log(`Resetting invalid tag "${task.tag}" to null for today's task`);
-            task.tag = null;
-            hasChanges = true;
-        }
-    });
+        this.tempTagStock.forEach((tag, index) => {
+            const tagItem = document.createElement('div');
+            tagItem.className = 'stock-item';
+            tagItem.draggable = true;
+            tagItem.setAttribute('data-index', index);
+            tagItem.innerHTML = `
+                <div class="stock-item-content">
+                    <div class="tag-stock-item-drag-handle" title="ドラッグして並び替え">
+                        <span class="material-icons">drag_indicator</span>
+                    </div>
+                    <div class="tag-stock-item-name" title="タグ名">${tag.name}</div>
+                    <input type="text" value="${tag.name}" class="tag-stock-edit-input" oninput="window.app.onTagInputChange(${index}, this)" style="display: none;">
+                    <button class="tag-stock-edit-btn" onclick="window.app.editTagStockItem(${index})" title="編集">
+                        <span class="material-icons">edit</span>
+                    </button>
+                    <button class="stock-item-remove" onclick="window.app.removeTempTag(${index})" title="削除">
+                        <span class="material-icons">delete</span>
+                    </button>
+                </div>
+            `;
+            container.appendChild(tagItem);
+        });
 
-    // 履歴データをチェック
-    for (const [dateKey, historyTasks] of Object.entries(this.historyData)) {
-        if (Array.isArray(historyTasks)) {
-            historyTasks.forEach(task => {
-                if (task.tag && !currentTagNames.includes(task.tag)) {
-                    console.log(`Resetting invalid tag "${task.tag}" to null for task on ${dateKey}`);
-                    task.tag = null;
-                    hasChanges = true;
-                }
+        this.updateTagStockSaveButton();
+    }
+
+    addTagStock() {
+        const input = document.getElementById('tag-stock-input');
+        const name = input.value.trim();
+        if (name) {
+            const isDuplicate = this.tempTagStock.some(tag => tag.name === name);
+            if (isDuplicate) {
+                this.showToast('同じ名前のタグが既に存在します', 'error');
+                return;
+            }
+            
+            this.tempTagStock.push({ 
+                id: `tag-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                name 
             });
+            input.value = '';
+            this.hasTagStockChanges = true;
+            this.renderTagStock();
         }
     }
 
-    // 変更があった場合は保存
-    if (hasChanges) {
-        console.log('Tag integrity issues found and fixed. Saving data...');
-        await this.saveData();
-    } else {
-        console.log('Tag integrity check passed - no issues found.');
+    removeTempTag(index) {
+        const removedTag = this.tempTagStock[index];
+        
+        // タグを使用しているタスクをカウント
+        const taskCount = this.tasks.filter(task => task.tag === removedTag.name).length;
+        
+        // タグが使用されている場合は確認ダイアログを表示
+        if (taskCount > 0) {
+            const confirmMessage = `タグ「${removedTag.name}」は${taskCount}個のタスクで使用されています。\n削除すると、これらのタスクからタグが削除されます。\n本当に削除しますか？`;
+            if (!confirm(confirmMessage)) {
+                return; // キャンセルされた場合は処理を中断
+            }
+        }
+        
+        this.tempTagStock.splice(index, 1);
+        this.hasTagStockChanges = true;
+        
+        // 現在のタスクからタグを削除
+        this.tasks.forEach(task => {
+            if (task.tag === removedTag.name) {
+                task.tag = null;
+            }
+        });
+        
+        // 履歴データからもタグを削除（非同期で実行）
+        this.updateHistoricalTaskTags(removedTag.name, null).catch(error => {
+            console.warn('履歴データのタグ更新に失敗:', error);
+        });
+        
+        this.updateTagDropdown();
+        this.updateEditTagDropdown();
+        
+        if (this.currentMode === 'today') {
+            this.updateTimeline();
+        }
+        
+        this.updateStats();
+        
+        const reportDialog = document.getElementById('report-dialog');
+        if (reportDialog && reportDialog.classList.contains('show')) {
+            this.generateTagSummary();
+        }
+        
+        this.renderTagStock();
+        
+        // タスクが更新された場合は通知
+        if (taskCount > 0) {
+            this.showToast(`タグ「${removedTag.name}」を削除し、${taskCount}個のタスクからタグを削除しました`, 'warning');
+        }
     }
-};
 
-app.renderTagStock = function() {
-    const container = document.getElementById('tag-stock-list');
-    container.innerHTML = '';
-
-    this.tempTagStock.forEach((tag, index) => {
-        const tagItem = document.createElement('div');
-        tagItem.className = 'stock-item';
-        tagItem.innerHTML = `
-            <div class="stock-item-content">
-                <div class="tag-stock-item-name" title="タグ名">${tag.name}</div>
-                <input type="text" value="${tag.name}" class="tag-stock-edit-input" oninput="app.onTagInputChange(${index}, this)" style="display: none;">
-                <button class="tag-stock-edit-btn" onclick="app.editTagStockItem(${index})" title="編集">
-                    <span class="material-icons">edit</span>
-                </button>
-                <button class="stock-item-remove" onclick="app.removeTempTag(${index})" title="削除">
-                    <span class="material-icons">delete</span>
-                </button>
-            </div>
-        `;
-        container.appendChild(tagItem);
-    });
-
-    this.updateTagStockSaveButton();
-};
-
-app.addTagStock = function() {
-    const input = document.getElementById('tag-stock-input');
-    const name = input.value.trim();
-    if (name) {
-        const isDuplicate = this.tempTagStock.some(tag => tag.name === name);
-        if (isDuplicate) {
-            this.showToast('同じ名前のタグが既に存在します', 'error');
+    editTagStockItem(index) {
+        console.log(`=== タグ編集ボタンクリック - インデックス: ${index} ===`);
+        
+        const container = document.getElementById('tag-stock-list');
+        const item = container.querySelectorAll('.stock-item')[index];
+        
+        if (!item) {
+            console.error(`タグアイテムが見つかりません - インデックス: ${index}`);
             return;
         }
         
-        this.tempTagStock.push({ 
-            id: `tag-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name 
-        });
-        input.value = '';
-        this.hasTagStockChanges = true;
-        this.renderTagStock();
-    }
-};
-
-app.updateTempTag = function(index, newName) {
-    const oldName = this.tempTagStock[index].name;
-    this.tempTagStock[index].name = newName;
-    this.hasTagStockChanges = true;
-    this.updateTagStockSaveButton();
-    
-    if (oldName !== newName) {
-        this.previewTagNameChange(oldName, newName);
-    }
-};
-
-app.previewTagNameChange = function(oldName, newName) {
-    // プレビュー機能を無効化 - 実際の保存時のみタグ変更を適用
-    console.log(`プレビューは無効化されています: "${oldName}" → "${newName}"`);
-    // this.tasks.forEach(task => {
-    //     if (task.tag === oldName) {
-    //         task.tag = newName;
-    //     }
-    // });
-    
-    // this.updateTagDropdown();
-    // this.updateEditTagDropdown();
-    
-    // if (this.currentMode === 'today') {
-    //     this.updateTimeline();
-    // }
-    
-    // this.updateStats();
-    
-    // const reportDialog = document.getElementById('report-dialog');
-    // if (reportDialog && reportDialog.classList.contains('show')) {
-    //     this.generateTagSummary();
-    // }
-};
-
-app.removeTempTag = function(index) {
-    const removedTag = this.tempTagStock[index];
-    
-    // タグを使用しているタスクをカウント
-    const taskCount = this.tasks.filter(task => task.tag === removedTag.name).length;
-    
-    // タグが使用されている場合は確認ダイアログを表示
-    if (taskCount > 0) {
-        const confirmMessage = `タグ「${removedTag.name}」は${taskCount}個のタスクで使用されています。\n削除すると、これらのタスクからタグが削除されます。\n本当に削除しますか？`;
-        if (!confirm(confirmMessage)) {
-            return; // キャンセルされた場合は処理を中断
-        }
-    }
-    
-    this.tempTagStock.splice(index, 1);
-    this.hasTagStockChanges = true;
-    
-    // 現在のタスクからタグを削除
-    this.tasks.forEach(task => {
-        if (task.tag === removedTag.name) {
-            task.tag = null;
-        }
-    });
-    
-    // 履歴データからもタグを削除（非同期で実行）
-    this.updateHistoricalTaskTags(removedTag.name, null).catch(error => {
-        console.warn('履歴データのタグ更新に失敗:', error);
-    });
-    
-    this.updateTagDropdown();
-    this.updateEditTagDropdown();
-    
-    if (this.currentMode === 'today') {
-        this.updateTimeline();
-    }
-    
-    this.updateStats();
-    
-    const reportDialog = document.getElementById('report-dialog');
-    if (reportDialog && reportDialog.classList.contains('show')) {
-        this.generateTagSummary();
-    }
-    
-    this.renderTagStock();
-    
-    // タスクが更新された場合は通知
-    if (taskCount > 0) {
-        this.showToast(`タグ「${removedTag.name}」を削除し、${taskCount}個のタスクからタグを削除しました`, 'warning');
-    }
-};
-
-app.onTagInputChange = function(index, inputElement) {
-    console.log(`=== onTagInputChange 呼び出し - インデックス: ${index} ===`);
-    
-    const originalValue = inputElement.dataset.originalValue || this.tempTagStock[index].name;
-    const currentValue = inputElement.value.trim();
-    
-    console.log(`現在値: "${currentValue}"`);
-    console.log(`元の値: "${originalValue}"`);
-    
-    // 目標ストックと同じ動作：入力のたびに即座に更新
-    if (currentValue !== originalValue) {
-        // 一時的な表示更新（tempTagStockの実際の値は編集完了時に更新）
-        const container = document.getElementById('tag-stock-list');
-        const item = container.querySelectorAll('.stock-item')[index];
-        const nameDiv = item.querySelector('.tag-stock-item-name');
-        nameDiv.textContent = currentValue;
-        
-        console.log(`タグ名表示更新: インデックス ${index} -> "${currentValue}" (元: "${originalValue}")`);
-        console.log('表示のみ更新 - tempTagStockは編集完了時に更新');
-    } else {
-        console.log('入力変更なし');
-    }
-};
-
-app.editTagStockItem = function(index) {
-    console.log(`=== タグ編集ボタンクリック - インデックス: ${index} ===`);
-    
-    const container = document.getElementById('tag-stock-list');
-    const item = container.querySelectorAll('.stock-item')[index];
-    
-    if (!item) {
-        console.error(`タグアイテムが見つかりません - インデックス: ${index}`);
-        return;
-    }
-    
-    const nameDiv = item.querySelector('.tag-stock-item-name');
-    const input = item.querySelector('.tag-stock-edit-input');
-    const editBtn = item.querySelector('.tag-stock-edit-btn');
-    
-    if (!nameDiv || !input || !editBtn) {
-        console.error('必要なDOM要素が見つかりません');
-        return;
-    }
-    
-    if (input.style.display === 'none') {
-        console.log(`編集モード開始 - インデックス: ${index}`);
-        // 編集モードに切り替え
-        nameDiv.style.display = 'none';
-        input.style.display = 'block';
-        input.focus();
-        input.select();
-        editBtn.innerHTML = '<span class="material-icons">check</span>';
-        editBtn.title = '入力終了';
-        
-        // 編集前の値を保存
-        input.dataset.originalValue = this.tempTagStock[index].name;
-    } else {
-        console.log(`編集モード終了 - インデックス: ${index}`);
-        // 入力終了：表示モードに戻る
-        const currentValue = input.value.trim();
-        const originalValue = input.dataset.originalValue || this.tempTagStock[index].name;
-        
-        console.log(`値の確定: "${currentValue}" (元: "${originalValue}")`);
-        
-        // 空文字チェック
-        if (currentValue === '') {
-            input.value = originalValue;
-            this.showToast('タグ名を空にすることはできません', 'warning');
-        } else if (currentValue !== originalValue) {
-            // 重複チェック
-            const isDuplicate = this.tempTagStock.some((tag, idx) => 
-                idx !== index && tag.name === currentValue
-            );
-            
-            if (isDuplicate) {
-                input.value = originalValue;
-                this.showToast('同じ名前のタグが既に存在します', 'error');
-            } else {
-                // 値を確定
-                this.tempTagStock[index].name = currentValue;
-                this.hasTagStockChanges = true;
-                this.updateTagStockSaveButton();
-                console.log(`タグ名確定: インデックス ${index} -> "${currentValue}"`);
-            }
-        }
-        
-        // 表示モードに戻る
-        nameDiv.textContent = this.tempTagStock[index].name; // 確定された値を表示
-        nameDiv.style.display = 'block';
-        input.style.display = 'none';
-        editBtn.innerHTML = '<span class="material-icons">edit</span>';
-        editBtn.title = '編集';
-        
-        // クリーンアップ
-        delete input.dataset.originalValue;
-        console.log(`編集完了 - 確定値: "${this.tempTagStock[index].name}"`);
-    }
-};
-
-app.checkTagStockChanges = function() {
-    // オリジナルとtempを比較して変更があるかチェック
-    const hasChanges = JSON.stringify(this.tagStock) !== JSON.stringify(this.tempTagStock);
-    this.hasTagStockChanges = hasChanges;
-    this.updateTagStockSaveButton();
-};
-
-app.updateTagDropdown = function() {
-    const tagSelect = document.getElementById('task-tag-select');
-    if (!tagSelect) return;
-
-    tagSelect.innerHTML = '<option value="">未選択</option>';
-    this.tagStock.forEach(tag => {
-        const option = document.createElement('option');
-        option.value = tag.name;
-        option.textContent = tag.name;
-        tagSelect.appendChild(option);
-    });
-};
-
-app.updateEditTagDropdown = function() {
-    const tagSelect = document.getElementById('edit-task-tag');
-    if (!tagSelect) return;
-
-    // 現在選択されている値を保持
-    const currentValue = tagSelect.value;
-
-    tagSelect.innerHTML = '<option value="">未選択</option>';
-    
-    // タグストックから選択肢を追加
-    this.tagStock.forEach(tag => {
-        const option = document.createElement('option');
-        option.value = tag.name;
-        option.textContent = tag.name;
-        tagSelect.appendChild(option);
-    });
-    
-    // 現在の値がタグストックに存在しない場合は、一時的な選択肢として追加
-    if (currentValue && !this.tagStock.some(tag => tag.name === currentValue)) {
-        const option = document.createElement('option');
-        option.value = currentValue;
-        option.textContent = `${currentValue} (削除済み)`;
-        option.style.color = '#888'; // グレーアウトして表示
-        tagSelect.appendChild(option);
-    }
-    
-    // 保持していた値を再設定
-    if (currentValue) {
-        tagSelect.value = currentValue;
-    }
-};
-
-app.updateTagStockSaveButton = function() {
-    const saveBtn = document.getElementById('save-tag-stock-btn');
-    const wasDisabled = saveBtn.disabled;
-    saveBtn.disabled = !this.hasTagStockChanges;
-    
-    if (wasDisabled !== saveBtn.disabled) {
-        console.log(`保存ボタン状態変更: ${wasDisabled ? '無効' : '有効'} → ${saveBtn.disabled ? '無効' : '有効'} (変更フラグ: ${this.hasTagStockChanges})`);
-    }
-};
-
-app.finishAllTagEditing = function() {
-    console.log('全タグ編集モード終了処理開始');
-    const container = document.getElementById('tag-stock-list');
-    const items = container.querySelectorAll('.stock-item');
-    
-    items.forEach((item, index) => {
         const nameDiv = item.querySelector('.tag-stock-item-name');
         const input = item.querySelector('.tag-stock-edit-input');
         const editBtn = item.querySelector('.tag-stock-edit-btn');
         
-        if (input && nameDiv && editBtn) {
-            // 入力が編集モードの場合のみ処理
-            if (input.style.display !== 'none') {
-                console.log(`タグ${index}の編集モードを終了`);
-                
-                // 現在の入力値でtempTagStockを更新（最終確定）
-                const currentValue = input.value.trim();
-                if (currentValue && this.tempTagStock[index]) {
-                    this.tempTagStock[index].name = currentValue;
-                    nameDiv.textContent = currentValue;
-                }
-                
-                // 編集モードを終了
-                nameDiv.style.display = 'block';
-                input.style.display = 'none';
-                editBtn.innerHTML = '<span class="material-icons">edit</span>';
-                editBtn.title = '編集';
-                
-                // originalValue属性をクリア
-                delete input.dataset.originalValue;
-            }
+        if (!nameDiv || !input || !editBtn) {
+            console.error('必要なDOM要素が見つかりません');
+            return;
         }
-    });
-    console.log('全タグ編集モード終了処理完了');
-};
-
-app.saveTagStockChanges = async function() {
-    console.log('=== シンプルなタグ保存処理開始 ===');
-    console.log('保存対象のタグ:', this.tempTagStock);
-    
-    if (!this.hasTagStockChanges) {
-        console.log('変更がないため保存処理をスキップ');
-        this.showToast('変更がありません', 'warning');
-        return;
-    }
-    
-    try {
-        console.log('APIリクエスト送信 - URL:', `${this.apiBaseUrl}/api/tags`);
-        console.log('リクエストボディ:', JSON.stringify({ tags: this.tempTagStock }));
         
-        const response = await fetch(`${this.apiBaseUrl}/api/tags`, { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({ tags: this.tempTagStock }) 
-        });
-        
-        console.log('レスポンス - ステータス:', response.status);
-        console.log('レスポンス - OK:', response.ok);
-        
-        if (response.ok) {
-            const result = await response.json();
-            console.log('レスポンス内容:', result);
+        if (input.style.display === 'none') {
+            console.log(`編集モード開始 - インデックス: ${index}`);
+            // 編集モードに切り替え
+            nameDiv.style.display = 'none';
+            input.style.display = 'block';
+            input.focus();
+            input.select();
+            editBtn.innerHTML = '<span class="material-icons">check</span>';
+            editBtn.title = '入力終了';
             
-            // 保存成功の処理
-            console.log('保存成功 - データ更新中');
-            this.tagStock = [...this.tempTagStock];
-            this.hasTagStockChanges = false;
-            this.updateTagStockSaveButton();
-            this.finishAllTagEditing();
-            
-            console.log('UI更新中');
-            this.renderTagStock();
-            this.updateTagDropdown();
-            this.updateEditTagDropdown();
-            
-            console.log('=== タグ保存処理完了 ===');
-            this.showToast('タグを保存しました');
+            // 編集前の値を保存
+            input.dataset.originalValue = this.tempTagStock[index].name;
         } else {
-            console.error('保存失敗 - HTTPステータス:', response.status);
-            const errorText = await response.text();
-            console.error('エラー内容:', errorText);
-            this.showToast('保存に失敗しました', 'error');
+            console.log(`編集モード終了 - インデックス: ${index}`);
+            // 入力終了：表示モードに戻る
+            const currentValue = input.value.trim();
+            const originalValue = input.dataset.originalValue || this.tempTagStock[index].name;
+            
+            console.log(`値の確定: "${currentValue}" (元: "${originalValue}")`);
+            
+            // 空文字チェック
+            if (currentValue === '') {
+                input.value = originalValue;
+                this.showToast('タグ名を空にすることはできません', 'warning');
+            } else if (currentValue !== originalValue) {
+                // 重複チェック
+                const isDuplicate = this.tempTagStock.some((tag, idx) => 
+                    idx !== index && tag.name === currentValue
+                );
+                
+                if (isDuplicate) {
+                    input.value = originalValue;
+                    this.showToast('同じ名前のタグが既に存在します', 'error');
+                } else {
+                    // 値を確定
+                    this.tempTagStock[index].name = currentValue;
+                    this.hasTagStockChanges = true;
+                    this.updateTagStockSaveButton();
+                    console.log(`タグ名確定: インデックス ${index} -> "${currentValue}"`);
+                }
+            }
+            
+            // 表示モードに戻る
+            nameDiv.textContent = this.tempTagStock[index].name; // 確定された値を表示
+            nameDiv.style.display = 'block';
+            input.style.display = 'none';
+            editBtn.innerHTML = '<span class="material-icons">edit</span>';
+            editBtn.title = '編集';
+            
+            // クリーンアップ
+            delete input.dataset.originalValue;
+            console.log(`編集完了 - 確定値: "${this.tempTagStock[index].name}"`);
         }
-    } catch (error) {
-        console.error('保存エラー:', error);
-        this.showToast('保存中にエラーが発生しました', 'error');
     }
-};
 
-app.updateExistingTaskTags = function(oldTags, newTags) {
-    const tagNameChanges = {};
-    const deletedTags = [];
-    const newTagNames = new Set(newTags.map(tag => tag.name));
-    
-    oldTags.forEach(oldTag => {
-        const matchingNewTag = newTags.find(newTag => 
-            newTag.id === oldTag.id || 
-            (newTag.originalId && newTag.originalId === oldTag.id)
-        );
+    onTagInputChange(index, inputElement) {
+        console.log(`=== onTagInputChange 呼び出し - インデックス: ${index} ===`);
         
-        if (matchingNewTag) {
-            if (oldTag.name !== matchingNewTag.name) {
-                tagNameChanges[oldTag.name] = matchingNewTag.name;
-            }
-        } else if (!newTagNames.has(oldTag.name)) {
-            deletedTags.push(oldTag.name);
+        const originalValue = inputElement.dataset.originalValue || this.tempTagStock[index].name;
+        const currentValue = inputElement.value.trim();
+        
+        console.log(`現在値: "${currentValue}"`);
+        console.log(`元の値: "${originalValue}"`);
+        
+        // 目標ストックと同じ動作：入力のたびに即座に更新
+        if (currentValue !== originalValue) {
+            // 一時的な表示更新（tempTagStockの実際の値は編集完了時に更新）
+            const container = document.getElementById('tag-stock-list');
+            const item = container.querySelectorAll('.stock-item')[index];
+            const nameDiv = item.querySelector('.tag-stock-item-name');
+            nameDiv.textContent = currentValue;
+            
+            console.log(`タグ名表示更新: インデックス ${index} -> "${currentValue}" (元: "${originalValue}")`);
+            console.log('表示のみ更新 - tempTagStockは編集完了時に更新');
+        } else {
+            console.log('入力変更なし');
         }
-    });
+    }
 
-    this.tasks.forEach(task => {
-        if (task.tag) {
-            if (tagNameChanges[task.tag]) {
-                task.tag = tagNameChanges[task.tag];
-            } else if (deletedTags.includes(task.tag)) {
+    updateTagStockSaveButton() {
+        const saveBtn = document.getElementById('save-tag-stock-btn');
+        const wasDisabled = saveBtn.disabled;
+        saveBtn.disabled = !this.hasTagStockChanges;
+        
+        if (wasDisabled !== saveBtn.disabled) {
+            console.log(`保存ボタン状態変更: ${wasDisabled ? '無効' : '有効'} → ${saveBtn.disabled ? '無効' : '有効'} (変更フラグ: ${this.hasTagStockChanges})`);
+        }
+    }
+
+    async loadTagStock() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/tags`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    this.tagStock = result.tags.map((tag, index) => ({
+                        id: tag.id || `tag-${Date.now()}-${index}`,
+                        name: tag.name
+                    }));
+                    this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
+                    this.renderTagStock();
+                    this.updateTagDropdown();
+                }
+            }
+        } catch (error) {
+            console.error('タグストック読み込みエラー:', error);
+        }
+        this.updateTagStockSaveButton();
+    }
+
+    async checkAndFixTagIntegrity() {
+        console.log('Checking tag integrity...');
+        const currentTagNames = this.tagStock.map(tag => tag.name);
+        let hasChanges = false;
+
+        // 今日のタスクをチェック
+        this.tasks.forEach(task => {
+            if (task.tag && !currentTagNames.includes(task.tag)) {
+                console.log(`Resetting invalid tag "${task.tag}" to null for today's task`);
                 task.tag = null;
+                hasChanges = true;
             }
-        }
-    });
+        });
 
-    this.updateHistoricalTaskTags(tagNameChanges, deletedTags);
-};
-
-app.updateHistoricalTaskTags = async function(tagNameChanges, deletedTags = []) {
-    try {
-        const datesResponse = await fetch(`${this.apiBaseUrl}/api/history/dates`);
-        if (!datesResponse.ok) return;
-
-        const datesResult = await datesResponse.json();
-        if (!datesResult.success || !datesResult.dates) return;
-
-        for (const dateString of datesResult.dates) {
-            try {
-                const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
-                if (!historyResponse.ok) continue;
-
-                const historyResult = await historyResponse.json();
-                if (!historyResult.success || !historyResult.data || !historyResult.data.tasks) continue;
-
-                let hasChanges = false;
-                historyResult.data.tasks.forEach(task => {
-                    if (task.tag) {
-                        if (tagNameChanges[task.tag]) {
-                            task.tag = tagNameChanges[task.tag];
-                            hasChanges = true;
-                        } else if (deletedTags.includes(task.tag)) {
-                            task.tag = null;
-                            hasChanges = true;
-                        }
+        // 履歴データをチェック
+        for (const [dateKey, historyTasks] of Object.entries(this.historyData)) {
+            if (Array.isArray(historyTasks)) {
+                historyTasks.forEach(task => {
+                    if (task.tag && !currentTagNames.includes(task.tag)) {
+                        console.log(`Resetting invalid tag "${task.tag}" to null for task on ${dateKey}`);
+                        task.tag = null;
+                        hasChanges = true;
                     }
                 });
-
-                if (hasChanges) {
-                    await fetch(`${this.apiBaseUrl}/api/history/${dateString}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(historyResult.data)
-                    });
-                }
-            } catch (error) {
-                console.error(`履歴データ更新エラー (${dateString}):`, error);
             }
         }
-    } catch (error) {
-        console.error('履歴データのタグ名更新エラー:', error);
-    }
-};
 
-app.generateTagSummary = async function() {
-    const summaryContainer = document.getElementById('tag-summary');
-    
-    summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">データを読み込み中...</p>';
-    
-    try {
-        const allTasks = await this.getAllHistoricalTasks();
+        // 変更があった場合は保存
+        if (hasChanges) {
+            console.log('Tag integrity issues found and fixed. Saving data...');
+            await this.saveData();
+        } else {
+            console.log('Tag integrity check passed - no issues found.');
+        }
+    }
+
+    updateTempTag(index, newName) {
+        const oldName = this.tempTagStock[index].name;
+        this.tempTagStock[index].name = newName;
+        this.hasTagStockChanges = true;
+        this.updateTagStockSaveButton();
         
-        if (allTasks.length === 0) {
-            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">まだタスクがありません</p>';
+        if (oldName !== newName) {
+            this.previewTagNameChange(oldName, newName);
+        }
+    }
+
+    previewTagNameChange(oldName, newName) {
+        // プレビュー機能を無効化 - 実際の保存時のみタグ変更を適用
+        console.log(`プレビューは無効化されています: "${oldName}" → "${newName}"`);
+    }
+
+    finishAllTagEditing() {
+        console.log('全タグ編集モード終了処理開始');
+        const container = document.getElementById('tag-stock-list');
+        const items = container.querySelectorAll('.stock-item');
+        
+        items.forEach((item, index) => {
+            const nameDiv = item.querySelector('.tag-stock-item-name');
+            const input = item.querySelector('.tag-stock-edit-input');
+            const editBtn = item.querySelector('.tag-stock-edit-btn');
+            
+            if (input && nameDiv && editBtn) {
+                // 入力が編集モードの場合のみ処理
+                if (input.style.display !== 'none') {
+                    console.log(`タグ${index}の編集モードを終了`);
+                    
+                    // 現在の入力値でtempTagStockを更新（最終確定）
+                    const currentValue = input.value.trim();
+                    if (currentValue && this.tempTagStock[index]) {
+                        this.tempTagStock[index].name = currentValue;
+                        nameDiv.textContent = currentValue;
+                    }
+                    
+                    // 編集モードを終了
+                    nameDiv.style.display = 'block';
+                    input.style.display = 'none';
+                    editBtn.innerHTML = '<span class="material-icons">edit</span>';
+                    editBtn.title = '編集';
+                    
+                    // originalValue属性をクリア
+                    delete input.dataset.originalValue;
+                }
+            }
+        });
+        console.log('全タグ編集モード終了処理完了');
+    }
+
+    async saveTagStockChanges() {
+        console.log('=== シンプルなタグ保存処理開始 ===');
+        console.log('保存対象のタグ:', this.tempTagStock);
+        
+        if (!this.hasTagStockChanges) {
+            console.log('変更がないため保存処理をスキップ');
+            this.showToast('変更がありません', 'warning');
             return;
         }
-
-        const tasksByTag = {};
-        
-        allTasks.forEach(task => {
-            const tagName = task.tag || '未分類';
-            const taskName = task.name || task.title || 'タスク名なし';
-            
-            if (!tasksByTag[tagName]) {
-                tasksByTag[tagName] = {
-                    tasks: [],
-                    totalDuration: 0
-                };
-            }
-            
-            const normalizedTask = { ...task, name: taskName };
-            tasksByTag[tagName].tasks.push(normalizedTask);
-            
-            if (task.endTime && !task.isBreak) {
-                const duration = this.parseDuration(this.calculateDuration(task.startTime, task.endTime));
-                tasksByTag[tagName].totalDuration += duration;
-            }
-        });
-
-        const tagNames = Object.keys(tasksByTag);
-        if (tagNames.length === 0) {
-            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">タグが設定されていません</p>';
-            return;
-        }
-
-        let tabsHTML = '<div class="tag-tabs-navigation">';
-        let contentHTML = '<div class="tag-tabs-content">';
-
-        tagNames.forEach((tagName, index) => {
-            const isActive = index === 0;
-            const tagData = tasksByTag[tagName];
-            const tagTotalTime = this.formatDurationFromMinutes(tagData.totalDuration);
-
-            tabsHTML += `
-                <button class="tag-tab ${isActive ? 'active' : ''}" onclick="app.switchTagTab('${tagName}', event)">
-                    ${tagName} (${tagTotalTime})
-                </button>
-            `;
-
-            contentHTML += `
-                <div class="tag-tab-panel ${isActive ? 'active' : ''}" id="tag-panel-${tagName}">
-                    <div class="tag-tasks">
-            `;
-
-            const tasksByDate = {};
-            tagData.tasks.forEach(task => {
-                if (!tasksByDate[task.date]) {
-                    tasksByDate[task.date] = [];
-                }
-                tasksByDate[task.date].push(task);
-            });
-
-            const sortedDates = Object.keys(tasksByDate).sort().reverse();
-            sortedDates.forEach(date => {
-                const dateTasks = tasksByDate[date];
-                const dateDisplay = date === this.getTodayString() ? '今日' : date;
-                
-                contentHTML += `<div class="tag-date-group"><h5 class="tag-date-header">${dateDisplay}</h5>`;
-                
-                dateTasks.forEach(task => {
-                    const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '実行中';
-                    const timeRange = task.endTime 
-                        ? `${this.formatTime(task.startTime)} - ${this.formatTime(task.endTime)}`
-                        : `${this.formatTime(task.startTime)} - 実行中`;
-
-                    contentHTML += `
-                        <div class="task-item">
-                            <div>
-                                <div class="task-item-name">${task.name}</div>
-                                <div class="task-item-time">${timeRange}</div>
-                            </div>
-                            <div class="task-item-duration">${duration}</div>
-                        </div>
-                    `;
-                });
-                
-                contentHTML += `</div>`;
-            });
-
-            contentHTML += `
-                    </div>
-                    <div class="tag-total">
-                        <span>合計: ${tagTotalTime}</span>
-                        <button class="tag-copy-btn" onclick="app.copyTagSummary('${tagName}', '${tagTotalTime}')">
-                            <span class="material-icons">content_copy</span>
-                            コピー
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-
-        tabsHTML += '</div>';
-        contentHTML += '</div>';
-        summaryContainer.innerHTML = tabsHTML + contentHTML;
-
-    } catch (error) {
-        console.error('タグサマリー生成エラー:', error);
-        summaryContainer.innerHTML = '<p style="color: var(--error); text-align: center; padding: 20px;">タグサマリーの生成に失敗しました</p>';
-    }
-};
-
-app.copyTagSummary = function(tagName, totalTime) {
-    const copyText = `${tagName} - ${totalTime}`;
-    
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(copyText).then(() => {
-            this.showToast(`「${copyText}」をコピーしました`);
-        }).catch(err => {
-            console.error('クリップボードのコピーに失敗しました:', err);
-            this.showToast('コピーに失敗しました', 'error');
-        });
-    } else {
-        // フォールバック：古いブラウザ向け
-        const textArea = document.createElement('textarea');
-        textArea.value = copyText;
-        document.body.appendChild(textArea);
-        textArea.select();
         
         try {
-            document.execCommand('copy');
-            this.showToast(`「${copyText}」をコピーしました`);
-        } catch (err) {
-            console.error('クリップボードのコピーに失敗しました:', err);
-            this.showToast('コピーに失敗しました', 'error');
-        }
-        
-        document.body.removeChild(textArea);
-    }
-};
-
-app.switchTagTab = function(tagName, event) {
-    document.querySelectorAll('.tag-tab').forEach(tab => tab.classList.remove('active'));
-    document.querySelectorAll('.tag-tab-panel').forEach(panel => panel.classList.remove('active'));
-    
-    event.target.classList.add('active');
-    
-    const targetPanel = document.getElementById(`tag-panel-${tagName}`);
-    if (targetPanel) {
-        targetPanel.classList.add('active');
-    }
-};
-
-app.getTodayString = function() {
-    return new Date().toISOString().split('T')[0];
-};
-
-app.getAllHistoricalTasks = async function() {
-    try {
-        const todayTasks = this.tasks.map(task => ({ ...task, date: this.getTodayString() }));
-        
-        const datesResponse = await fetch(`${this.apiBaseUrl}/api/history/dates`);
-        if (!datesResponse.ok) return todayTasks;
-
-        const datesResult = await datesResponse.json();
-        if (!datesResult.success || !datesResult.dates) return todayTasks;
-
-        const allTasks = [...todayTasks];
-        
-        for (const dateString of datesResult.dates) {
-            try {
-                const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
-                if (historyResponse.ok) {
-                    const historyResult = await historyResponse.json();
-                    if (historyResult.success && historyResult.data && historyResult.data.tasks) {
-                        const dateTasks = historyResult.data.tasks.map(task => ({ ...task, date: dateString }));
-                        allTasks.push(...dateTasks);
-                    }
-                }
-            } catch (error) {
-                console.error(`履歴データ取得エラー (${dateString}):`, error);
+            console.log('APIリクエスト送信 - URL:', `${this.apiBaseUrl}/api/tags`);
+            console.log('リクエストボディ:', JSON.stringify({ tags: this.tempTagStock }));
+            
+            const response = await fetch(`${this.apiBaseUrl}/api/tags`, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ tags: this.tempTagStock }) 
+            });
+            
+            console.log('レスポンス - ステータス:', response.status);
+            console.log('レスポンス - OK:', response.ok);
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('レスポンス内容:', result);
+                
+                // 保存成功の処理
+                console.log('保存成功 - データ更新中');
+                this.tagStock = [...this.tempTagStock];
+                this.hasTagStockChanges = false;
+                this.updateTagStockSaveButton();
+                this.finishAllTagEditing();
+                
+                console.log('UI更新中');
+                this.renderTagStock();
+                this.updateTagDropdown();
+                this.updateEditTagDropdown();
+                
+                console.log('=== タグ保存処理完了 ===');
+                this.showToast('タグを保存しました');
+            } else {
+                console.error('保存失敗 - HTTPステータス:', response.status);
+                const errorText = await response.text();
+                console.error('エラー内容:', errorText);
+                this.showToast('保存に失敗しました', 'error');
             }
+        } catch (error) {
+            console.error('保存エラー:', error);
+            this.showToast('保存中にエラーが発生しました', 'error');
         }
-
-        return allTasks;
-    } catch (error) {
-        console.error('全履歴タスク取得エラー:', error);
-        return this.tasks.map(task => ({ ...task, date: this.getTodayString() }));
     }
-};
 
-app.parseDuration = function(durationString) {
-    if (!durationString) return 0;
-    
-    let minutes = 0;
-    const hours = durationString.match(/(\d+)時間/);
-    const mins = durationString.match(/(\d+)分/);
-    
-    if (hours) minutes += parseInt(hours[1]) * 60;
-    if (mins) minutes += parseInt(mins[1]);
-    
-    return minutes;
-};
+    updateExistingTaskTags(oldTags, newTags) {
+        const tagNameChanges = {};
+        const deletedTags = [];
+        const newTagNames = new Set(newTags.map(tag => tag.name));
+        
+        oldTags.forEach(oldTag => {
+            const matchingNewTag = newTags.find(newTag => 
+                newTag.id === oldTag.id || 
+                (newTag.originalId && newTag.originalId === oldTag.id)
+            );
+            
+            if (matchingNewTag) {
+                if (oldTag.name !== matchingNewTag.name) {
+                    tagNameChanges[oldTag.name] = matchingNewTag.name;
+                }
+            } else if (!newTagNames.has(oldTag.name)) {
+                deletedTags.push(oldTag.name);
+            }
+        });
 
-app.formatDurationFromMinutes = function(totalMinutes) {
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    
-    if (hours > 0) {
-        return minutes > 0 ? `${hours}時間${minutes}分` : `${hours}時間`;
-    } else {
-        return `${minutes}分`;
+        this.tasks.forEach(task => {
+            if (task.tag) {
+                if (tagNameChanges[task.tag]) {
+                    task.tag = tagNameChanges[task.tag];
+                } else if (deletedTags.includes(task.tag)) {
+                    task.tag = null;
+                }
+            }
+        });
+
+        this.updateHistoricalTaskTags(tagNameChanges, deletedTags);
     }
-};
+
+    async updateHistoricalTaskTags(tagNameChanges, deletedTags = []) {
+        try {
+            const datesResponse = await fetch(`${this.apiBaseUrl}/api/history/dates`);
+            if (!datesResponse.ok) return;
+
+            const datesResult = await datesResponse.json();
+            if (!datesResult.success || !datesResult.dates) return;
+
+            for (const dateString of datesResult.dates) {
+                try {
+                    const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
+                    if (!historyResponse.ok) continue;
+
+                    const historyResult = await historyResponse.json();
+                    if (!historyResult.success || !historyResult.data || !historyResult.data.tasks) continue;
+
+                    let hasChanges = false;
+                    historyResult.data.tasks.forEach(task => {
+                        if (task.tag) {
+                            if (tagNameChanges[task.tag]) {
+                                task.tag = tagNameChanges[task.tag];
+                                hasChanges = true;
+                            } else if (deletedTags.includes(task.tag)) {
+                                task.tag = null;
+                                hasChanges = true;
+                            }
+                        }
+                    });
+
+                    if (hasChanges) {
+                        await fetch(`${this.apiBaseUrl}/api/history/${dateString}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(historyResult.data)
+                        });
+                    }
+                } catch (error) {
+                    console.error(`履歴データ更新エラー (${dateString}):`, error);
+                }
+            }
+        } catch (error) {
+            console.error('履歴データのタグ名更新エラー:', error);
+        }
+    }
+
+    // タグドロップダウンの更新
+    updateTagDropdown() {
+        const tagSelect = document.getElementById('task-tag-select');
+        if (!tagSelect) return;
+
+        // 現在選択されている値を保持
+        const currentValue = tagSelect.value;
+
+        tagSelect.innerHTML = '<option value="">未選択</option>';
+        
+        // タグストックから選択肢を追加
+        this.tagStock.forEach(tag => {
+            const option = document.createElement('option');
+            option.value = tag.name;
+            option.textContent = tag.name;
+            tagSelect.appendChild(option);
+        });
+        
+        // 現在の値がタグストックに存在しない場合は、一時的な選択肢として追加
+        if (currentValue && !this.tagStock.some(tag => tag.name === currentValue)) {
+            const option = document.createElement('option');
+            option.value = currentValue;
+            option.textContent = `${currentValue} (削除済み)`;
+            option.style.color = '#888'; // グレーアウトして表示
+            tagSelect.appendChild(option);
+        }
+        
+        // 保持していた値を再設定
+        if (currentValue) {
+            tagSelect.value = currentValue;
+        }
+    }
+
+    // 編集ダイアログのタグドロップダウン更新
+    updateEditTagDropdown() {
+        const tagSelect = document.getElementById('edit-task-tag');
+        if (!tagSelect) return;
+
+        // 現在選択されている値を保持
+        const currentValue = tagSelect.value;
+
+        tagSelect.innerHTML = '<option value="">未選択</option>';
+        
+        // タグストックから選択肢を追加
+        this.tagStock.forEach(tag => {
+            const option = document.createElement('option');
+            option.value = tag.name;
+            option.textContent = tag.name;
+            tagSelect.appendChild(option);
+        });
+        
+        // 現在の値がタグストックに存在しない場合は、一時的な選択肢として追加
+        if (currentValue && !this.tagStock.some(tag => tag.name === currentValue)) {
+            const option = document.createElement('option');
+            option.value = currentValue;
+            option.textContent = `${currentValue} (削除済み)`;
+            option.style.color = '#888'; // グレーアウトして表示
+            tagSelect.appendChild(option);
+        }
+        
+        // 保持していた値を再設定
+        if (currentValue) {
+            tagSelect.value = currentValue;
+        }
+    }
+
+    // タグストックの変更をチェック
+    checkTagStockChanges() {
+        // オリジナルとtempを比較して変更があるかチェック
+        const hasChanges = JSON.stringify(this.tagStock) !== JSON.stringify(this.tempTagStock);
+        this.hasTagStockChanges = hasChanges;
+        this.updateTagStockSaveButton();
+    }
+}
+
+const app = new NippoApp();
+window.app = app; // グローバルスコープにappを公開
 
 // グローバルなエラーハンドリング
 window.addEventListener('error', (event) => {
