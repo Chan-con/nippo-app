@@ -622,10 +622,12 @@ class NippoApp {
                     <div class="timeline-content">
                         <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" title="クリックでタスク名をコピー">
                             ${displayName}
-                            ${tagDisplay}
                         </div>
-                        ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
-                        ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
+                        <div class="timeline-meta">
+                            ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
+                            ${tagDisplay}
+                            ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
+                        </div>
                     </div>
                     <button class="timeline-edit" onclick="app.editTask('${task.id}')" title="編集">
                         <span class="material-icons">edit</span>
@@ -2555,12 +2557,18 @@ class NippoApp {
                 displayName = '休憩';
             }
             
+            // タグの表示
+            const tagDisplay = task.tag ? `<span class="task-tag">${task.tag}</span>` : '';
+            
             return `
                 <div class="timeline-item">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
                         <div class="timeline-task">${displayName}</div>
-                        ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
+                        <div class="timeline-meta">
+                            ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
+                            ${tagDisplay}
+                        </div>
                     </div>
                     <button class="timeline-edit" onclick="app.editHistoryTask('${historyData.date}', '${task.id}')" title="編集">
                         <span class="material-icons">edit</span>
