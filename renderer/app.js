@@ -10,10 +10,13 @@ class NippoApp {
         this.hasUnsavedChanges = false;
         this.taskStock = [];
         this.goalStock = [];
+        this.tagStock = [];
         this.tempGoalStock = [];
         this.tempTaskStock = [];
+        this.tempTagStock = [];
         this.hasGoalStockChanges = false;
         this.hasTaskStockChanges = false;
+        this.hasTagStockChanges = false;
         this.eventListenersInitialized = false;
         this.currentHotkeyTarget = null;
         this.isCapturingHotkey = false;
@@ -70,6 +73,15 @@ class NippoApp {
                 
                 // 目標ストックを読み込み
                 await this.loadGoalStock();
+                
+                // タスクストックを読み込み
+                await this.loadTaskStock();
+                
+                // タグストックを読み込み
+                await this.loadTagStock();
+                
+                // タグドロップダウンを初期化
+                this.updateTagDropdown();
                 
                 // 設定を読み込み
                 try {
@@ -171,6 +183,9 @@ class NippoApp {
 
         // タスクストック
         document.getElementById('task-stock-btn').addEventListener('click', () => this.showTaskStockDialog());
+        
+        // タグストック
+        document.getElementById('tag-stock-btn').addEventListener('click', () => this.showTagStockDialog());
 
         // タイトルバーボタン
         document.querySelector('.titlebar-button.minimize').addEventListener('click', () => {
@@ -239,6 +254,17 @@ class NippoApp {
             if (e.key === 'Enter') this.addTaskStock();
         });
         
+        // タグストックダイアログのイベントリスナー
+        document.getElementById('tag-stock-close').addEventListener('click', () => this.hideTagStockDialog());
+        document.getElementById('tag-stock-cancel').addEventListener('click', () => this.hideTagStockDialog());
+        document.getElementById('add-tag-stock-btn').addEventListener('click', () => this.addTagStock());
+        document.getElementById('save-tag-stock-btn').addEventListener('click', () => this.saveTagStockChanges());
+        
+        // タグストック入力のEnterキー対応
+        document.getElementById('tag-stock-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addTagStock();
+        });
+        
         // ホットキーキャプチャ用のキーボードイベントリスナー
         document.addEventListener('keydown', (e) => {
             if (this.isCapturingHotkey) {
@@ -293,7 +319,9 @@ class NippoApp {
 
     async addTask() {
         const taskInput = document.getElementById('task-input');
+        const taskTagSelect = document.getElementById('task-tag-select');
         const taskName = taskInput.value.trim();
+        const selectedTag = taskTagSelect ? taskTagSelect.value : '';
 
         if (!taskName) {
             this.showToast('タスク名を入力してください', 'warning');
@@ -304,6 +332,7 @@ class NippoApp {
         console.log('currentMode:', this.currentMode);
         console.log('currentDate:', this.currentDate);
         console.log('selectedDate:', this.selectedDate);
+        console.log('selectedTag:', selectedTag);
 
         // 履歴モードで日付が未選択の場合は追加を阻止
         if (this.currentMode === 'history' && !this.currentDate) {
@@ -320,6 +349,7 @@ class NippoApp {
             const requestData = { 
                 name: taskName, 
                 isBreak: false,
+                tag: selectedTag || null,
                 dateString: this.currentDate // null = 今日、文字列 = 指定日
             };
             
@@ -334,6 +364,10 @@ class NippoApp {
                 const result = await response.json();
                 if (result.success) {
                     taskInput.value = '';
+                    // タグ選択もリセット
+                    if (taskTagSelect) {
+                        taskTagSelect.selectedIndex = 0;
+                    }
                     
                     // 統一されたタスク読み込み
                     if (this.currentDate) {
@@ -355,6 +389,12 @@ class NippoApp {
                     if (!this.currentDate) {
                         this.currentTaskId = result.taskId;
                         this.updateCurrentTask(taskName);
+                    }
+                    
+                    // 報告書ダイアログが開いている場合はタグサマリーも更新
+                    const reportDialog = document.getElementById('report-dialog');
+                    if (reportDialog && reportDialog.classList.contains('show')) {
+                        await this.generateTagSummary();
                     }
                 }
             }
@@ -573,11 +613,17 @@ class NippoApp {
                 }
             }
             
+            // タグの表示
+            const tagDisplay = task.tag ? `<span class="task-tag">${task.tag}</span>` : '';
+            
             return `
                 <div class="${itemClass}">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
-                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
+                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" title="クリックでタスク名をコピー">
+                            ${displayName}
+                            ${tagDisplay}
+                        </div>
                         ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
                         ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
                     </div>
@@ -969,6 +1015,10 @@ class NippoApp {
 
         this.editingTaskId = taskId;
         this.editingDate = null; // 今日のタスクを編集中
+        
+        // 編集ダイアログにタグドロップダウンを更新してからタグ値を設定
+        this.updateEditTagDropdown();
+        document.getElementById('edit-task-tag').value = task.tag || '';
         this.showEditDialog();
     }
 
@@ -1032,11 +1082,13 @@ class NippoApp {
 
             // 編集ダイアログに値を設定
             const taskName = task.name || task.title || '';
+            const taskTag = task.tag || '';
             const startTime24 = this.convertTo24Hour(task.startTime);
             const endTime24 = task.endTime ? this.convertTo24Hour(task.endTime) : '';
             
             console.log('変換後の値:');
             console.log('- taskName:', taskName);
+            console.log('- taskTag:', taskTag);
             console.log('- startTime24:', startTime24);
             console.log('- endTime24:', endTime24);
             
@@ -1051,6 +1103,9 @@ class NippoApp {
             console.log('- this.editingTaskId:', this.editingTaskId);
             console.log('- this.editingDate:', this.editingDate);
             
+            // 編集ダイアログにタグドロップダウンを更新してからタグ値を設定
+            this.updateEditTagDropdown();
+            document.getElementById('edit-task-tag').value = taskTag;
             this.showEditDialog();
             console.log('編集ダイアログを表示しました');
         } catch (error) {
@@ -1072,6 +1127,7 @@ class NippoApp {
 
     async saveTask() {
         const taskName = document.getElementById('edit-task-name').value.trim();
+        const taskTag = document.getElementById('edit-task-tag').value.trim();
         const startTime24 = document.getElementById('edit-start-time').value.trim();
         const endTime24 = document.getElementById('edit-end-time').value.trim();
 
@@ -1087,6 +1143,7 @@ class NippoApp {
         try {
             const taskData = {
                 name: taskName,
+                tag: taskTag || null,
                 startTime: startTime,
                 endTime: endTime
             };
@@ -1131,6 +1188,12 @@ class NippoApp {
                     console.log('リロード完了');
                     
                     this.hideEditDialog();
+                    
+                    // 報告書ダイアログが開いている場合はタグサマリーも更新
+                    const reportDialog = document.getElementById('report-dialog');
+                    if (reportDialog && reportDialog.classList.contains('show')) {
+                        await this.generateTagSummary();
+                    }
                     
                     // 調整があった場合は通知
                     if (result.adjustments && result.adjustments.length > 0) {
@@ -1275,6 +1338,13 @@ class NippoApp {
                 const result = await response.json();
                 if (result.success) {
                     await this.loadTasks();
+                    
+                    // 報告書ダイアログが開いている場合はタグサマリーも更新
+                    const reportDialog = document.getElementById('report-dialog');
+                    if (reportDialog && reportDialog.classList.contains('show')) {
+                        await this.generateTagSummary();
+                    }
+                    
                     this.showToast('タスクを削除しました');
                 } else {
                     this.showToast('タスクの削除に失敗しました', 'error');
@@ -1305,6 +1375,13 @@ class NippoApp {
                 if (result.success) {
                     // 履歴データを再読み込み
                     await this.loadHistoryData(dateString);
+                    
+                    // 報告書ダイアログが開いている場合はタグサマリーも更新
+                    const reportDialog = document.getElementById('report-dialog');
+                    if (reportDialog && reportDialog.classList.contains('show')) {
+                        await this.generateTagSummary();
+                    }
+                    
                     this.showToast('履歴タスクを削除しました');
                 } else {
                     this.showToast('履歴タスクの削除に失敗しました', 'error');
@@ -1328,6 +1405,9 @@ class NippoApp {
 
         // タスクサマリーを生成
         this.generateTaskSummary();
+        
+        // タグサマリーを生成
+        await this.generateTagSummary();
 
         // 報告先リンクを生成
         await this.generateReportLinks();
@@ -2575,6 +2655,559 @@ class NippoApp {
 
 const app = new NippoApp();
 window.app = app; // グローバルスコープにappを公開
+
+// タグ管理機能を追加
+app.showTagStockDialog = function() {
+    const dialog = document.getElementById('tag-stock-dialog');
+    dialog.classList.add('show');
+    this.loadTagStock();
+};
+
+app.hideTagStockDialog = function() {
+    if (this.hasTagStockChanges) {
+        console.log('未保存の変更がありますが、ダイアログを閉じます');
+    }
+    
+    const dialog = document.getElementById('tag-stock-dialog');
+    dialog.classList.remove('show');
+    this.hasTagStockChanges = false;
+};
+
+app.loadTagStock = async function() {
+    try {
+        const response = await fetch(`${this.apiBaseUrl}/api/tags`);
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                this.tagStock = result.tags.map((tag, index) => ({
+                    id: tag.id || `tag-${Date.now()}-${index}`,
+                    name: tag.name
+                }));
+                this.tempTagStock = JSON.parse(JSON.stringify(this.tagStock));
+                this.renderTagStock();
+                this.updateTagDropdown();
+            }
+        }
+    } catch (error) {
+        console.error('タグストック読み込みエラー:', error);
+    }
+    this.updateTagStockSaveButton();
+};
+
+app.renderTagStock = function() {
+    const container = document.getElementById('tag-stock-list');
+    container.innerHTML = '';
+
+    this.tempTagStock.forEach((tag, index) => {
+        const tagItem = document.createElement('div');
+        tagItem.className = 'stock-item';
+        tagItem.innerHTML = `
+            <div class="stock-item-content">
+                <div class="tag-stock-item-name" title="タグ名">${tag.name}</div>
+                <input type="text" value="${tag.name}" class="tag-stock-edit-input" onchange="app.updateTempTag(${index}, this.value)" style="display: none;">
+                <button class="tag-stock-edit-btn" onclick="app.editTagStockItem(${index})" title="編集">
+                    <span class="material-icons">edit</span>
+                </button>
+                <button class="stock-item-remove" onclick="app.removeTempTag(${index})" title="削除">
+                    <span class="material-icons">delete</span>
+                </button>
+            </div>
+        `;
+        container.appendChild(tagItem);
+    });
+
+    this.updateTagStockSaveButton();
+};
+
+app.addTagStock = function() {
+    const input = document.getElementById('tag-stock-input');
+    const name = input.value.trim();
+    if (name) {
+        const isDuplicate = this.tempTagStock.some(tag => tag.name === name);
+        if (isDuplicate) {
+            this.showToast('同じ名前のタグが既に存在します', 'error');
+            return;
+        }
+        
+        this.tempTagStock.push({ 
+            id: `tag-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name 
+        });
+        input.value = '';
+        this.hasTagStockChanges = true;
+        this.renderTagStock();
+    }
+};
+
+app.updateTempTag = function(index, newName) {
+    const oldName = this.tempTagStock[index].name;
+    this.tempTagStock[index].name = newName;
+    this.hasTagStockChanges = true;
+    this.updateTagStockSaveButton();
+    
+    if (oldName !== newName) {
+        this.previewTagNameChange(oldName, newName);
+    }
+};
+
+app.previewTagNameChange = function(oldName, newName) {
+    console.log(`プレビュー更新: "${oldName}" → "${newName}"`);
+    
+    this.tasks.forEach(task => {
+        if (task.tag === oldName) {
+            task.tag = newName;
+        }
+    });
+    
+    this.updateTagDropdown();
+    this.updateEditTagDropdown();
+    
+    if (this.currentMode === 'today') {
+        this.updateTimeline();
+    }
+    
+    this.updateStats();
+    
+    const reportDialog = document.getElementById('report-dialog');
+    if (reportDialog && reportDialog.classList.contains('show')) {
+        this.generateTagSummary();
+    }
+};
+
+app.removeTempTag = function(index) {
+    const removedTag = this.tempTagStock[index];
+    
+    // タグを使用しているタスクをカウント
+    const taskCount = this.tasks.filter(task => task.tag === removedTag.name).length;
+    
+    // タグが使用されている場合は確認ダイアログを表示
+    if (taskCount > 0) {
+        const confirmMessage = `タグ「${removedTag.name}」は${taskCount}個のタスクで使用されています。\n削除すると、これらのタスクからタグが削除されます。\n本当に削除しますか？`;
+        if (!confirm(confirmMessage)) {
+            return; // キャンセルされた場合は処理を中断
+        }
+    }
+    
+    this.tempTagStock.splice(index, 1);
+    this.hasTagStockChanges = true;
+    
+    // 現在のタスクからタグを削除
+    this.tasks.forEach(task => {
+        if (task.tag === removedTag.name) {
+            task.tag = null;
+        }
+    });
+    
+    // 履歴データからもタグを削除（非同期で実行）
+    this.updateHistoricalTaskTags(removedTag.name, null).catch(error => {
+        console.warn('履歴データのタグ更新に失敗:', error);
+    });
+    
+    this.updateTagDropdown();
+    this.updateEditTagDropdown();
+    
+    if (this.currentMode === 'today') {
+        this.updateTimeline();
+    }
+    
+    this.updateStats();
+    
+    const reportDialog = document.getElementById('report-dialog');
+    if (reportDialog && reportDialog.classList.contains('show')) {
+        this.generateTagSummary();
+    }
+    
+    this.renderTagStock();
+    
+    // タスクが更新された場合は通知
+    if (taskCount > 0) {
+        this.showToast(`タグ「${removedTag.name}」を削除し、${taskCount}個のタスクからタグを削除しました`, 'warning');
+    }
+};
+
+app.editTagStockItem = function(index) {
+    const container = document.getElementById('tag-stock-list');
+    const item = container.querySelectorAll('.stock-item')[index];
+    const nameDiv = item.querySelector('.tag-stock-item-name');
+    const input = item.querySelector('.tag-stock-edit-input');
+    const editBtn = item.querySelector('.tag-stock-edit-btn');
+    
+    if (input.style.display === 'none') {
+        nameDiv.style.display = 'none';
+        input.style.display = 'block';
+        input.focus();
+        input.select();
+        editBtn.innerHTML = '<span class="material-icons">check</span>';
+    } else {
+        const newValue = input.value.trim();
+        if (newValue) {
+            if (newValue !== this.tempTagStock[index].name) {
+                const oldValue = this.tempTagStock[index].name;
+                this.updateTempTag(index, newValue);
+            }
+            nameDiv.textContent = newValue;
+        } else {
+            nameDiv.textContent = this.tempTagStock[index].name;
+            input.value = this.tempTagStock[index].name;
+        }
+        
+        nameDiv.style.display = 'block';
+        input.style.display = 'none';
+        editBtn.innerHTML = '<span class="material-icons">edit</span>';
+    }
+};
+
+app.updateTagDropdown = function() {
+    const tagSelect = document.getElementById('task-tag-select');
+    if (!tagSelect) return;
+
+    tagSelect.innerHTML = '<option value="">未選択</option>';
+    this.tagStock.forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag.name;
+        option.textContent = tag.name;
+        tagSelect.appendChild(option);
+    });
+};
+
+app.updateEditTagDropdown = function() {
+    const tagSelect = document.getElementById('edit-task-tag');
+    if (!tagSelect) return;
+
+    // 現在選択されている値を保持
+    const currentValue = tagSelect.value;
+
+    tagSelect.innerHTML = '<option value="">未選択</option>';
+    
+    // タグストックから選択肢を追加
+    this.tagStock.forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag.name;
+        option.textContent = tag.name;
+        tagSelect.appendChild(option);
+    });
+    
+    // 現在の値がタグストックに存在しない場合は、一時的な選択肢として追加
+    if (currentValue && !this.tagStock.some(tag => tag.name === currentValue)) {
+        const option = document.createElement('option');
+        option.value = currentValue;
+        option.textContent = `${currentValue} (削除済み)`;
+        option.style.color = '#888'; // グレーアウトして表示
+        tagSelect.appendChild(option);
+    }
+    
+    // 保持していた値を再設定
+    if (currentValue) {
+        tagSelect.value = currentValue;
+    }
+};
+
+app.updateTagStockSaveButton = function() {
+    const saveBtn = document.getElementById('save-tag-stock-btn');
+    saveBtn.disabled = !this.hasTagStockChanges;
+};
+
+app.saveTagStockChanges = async function() {
+    try {
+        const response = await fetch(`${this.apiBaseUrl}/api/tags`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ tags: this.tempTagStock }) 
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                this.updateExistingTaskTags(this.tagStock, this.tempTagStock);
+                this.tagStock = [...this.tempTagStock];
+                this.hasTagStockChanges = false;
+                this.updateTagStockSaveButton();
+                
+                this.updateTagDropdown();
+                this.updateEditTagDropdown();
+                this.renderTagStock();
+                this.updateTimeline();
+                this.updateStats();
+                
+                const reportDialog = document.getElementById('report-dialog');
+                if (reportDialog && reportDialog.classList.contains('show')) {
+                    await this.generateTagSummary();
+                }
+                
+                this.showToast('タグを保存しました');
+            } else {
+                this.showToast('タグの保存に失敗しました', 'error');
+            }
+        }
+    } catch (error) {
+        console.error('タグ保存エラー:', error);
+        this.showToast('タグの保存に失敗しました', 'error');
+    }
+};
+
+app.updateExistingTaskTags = function(oldTags, newTags) {
+    const tagNameChanges = {};
+    const deletedTags = [];
+    const newTagNames = new Set(newTags.map(tag => tag.name));
+    
+    oldTags.forEach(oldTag => {
+        const matchingNewTag = newTags.find(newTag => 
+            newTag.id === oldTag.id || 
+            (newTag.originalId && newTag.originalId === oldTag.id)
+        );
+        
+        if (matchingNewTag) {
+            if (oldTag.name !== matchingNewTag.name) {
+                tagNameChanges[oldTag.name] = matchingNewTag.name;
+            }
+        } else if (!newTagNames.has(oldTag.name)) {
+            deletedTags.push(oldTag.name);
+        }
+    });
+
+    this.tasks.forEach(task => {
+        if (task.tag) {
+            if (tagNameChanges[task.tag]) {
+                task.tag = tagNameChanges[task.tag];
+            } else if (deletedTags.includes(task.tag)) {
+                task.tag = null;
+            }
+        }
+    });
+
+    this.updateHistoricalTaskTags(tagNameChanges, deletedTags);
+};
+
+app.updateHistoricalTaskTags = async function(tagNameChanges, deletedTags = []) {
+    try {
+        const datesResponse = await fetch(`${this.apiBaseUrl}/api/history/dates`);
+        if (!datesResponse.ok) return;
+
+        const datesResult = await datesResponse.json();
+        if (!datesResult.success || !datesResult.dates) return;
+
+        for (const dateString of datesResult.dates) {
+            try {
+                const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
+                if (!historyResponse.ok) continue;
+
+                const historyResult = await historyResponse.json();
+                if (!historyResult.success || !historyResult.data || !historyResult.data.tasks) continue;
+
+                let hasChanges = false;
+                historyResult.data.tasks.forEach(task => {
+                    if (task.tag) {
+                        if (tagNameChanges[task.tag]) {
+                            task.tag = tagNameChanges[task.tag];
+                            hasChanges = true;
+                        } else if (deletedTags.includes(task.tag)) {
+                            task.tag = null;
+                            hasChanges = true;
+                        }
+                    }
+                });
+
+                if (hasChanges) {
+                    await fetch(`${this.apiBaseUrl}/api/history/${dateString}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(historyResult.data)
+                    });
+                }
+            } catch (error) {
+                console.error(`履歴データ更新エラー (${dateString}):`, error);
+            }
+        }
+    } catch (error) {
+        console.error('履歴データのタグ名更新エラー:', error);
+    }
+};
+
+app.generateTagSummary = async function() {
+    const summaryContainer = document.getElementById('tag-summary');
+    
+    summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">データを読み込み中...</p>';
+    
+    try {
+        const allTasks = await this.getAllHistoricalTasks();
+        
+        if (allTasks.length === 0) {
+            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">まだタスクがありません</p>';
+            return;
+        }
+
+        const tasksByTag = {};
+        
+        allTasks.forEach(task => {
+            const tagName = task.tag || '未分類';
+            const taskName = task.name || task.title || 'タスク名なし';
+            
+            if (!tasksByTag[tagName]) {
+                tasksByTag[tagName] = {
+                    tasks: [],
+                    totalDuration: 0
+                };
+            }
+            
+            const normalizedTask = { ...task, name: taskName };
+            tasksByTag[tagName].tasks.push(normalizedTask);
+            
+            if (task.endTime && !task.isBreak) {
+                const duration = this.parseDuration(this.calculateDuration(task.startTime, task.endTime));
+                tasksByTag[tagName].totalDuration += duration;
+            }
+        });
+
+        const tagNames = Object.keys(tasksByTag);
+        if (tagNames.length === 0) {
+            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">タグが設定されていません</p>';
+            return;
+        }
+
+        let tabsHTML = '<div class="tag-tabs-navigation">';
+        let contentHTML = '<div class="tag-tabs-content">';
+
+        tagNames.forEach((tagName, index) => {
+            const isActive = index === 0;
+            const tagData = tasksByTag[tagName];
+            const tagTotalTime = this.formatDurationFromMinutes(tagData.totalDuration);
+
+            tabsHTML += `
+                <button class="tag-tab ${isActive ? 'active' : ''}" onclick="app.switchTagTab('${tagName}', event)">
+                    ${tagName} (${tagTotalTime})
+                </button>
+            `;
+
+            contentHTML += `
+                <div class="tag-tab-panel ${isActive ? 'active' : ''}" id="tag-panel-${tagName}">
+                    <div class="tag-tasks">
+            `;
+
+            const tasksByDate = {};
+            tagData.tasks.forEach(task => {
+                if (!tasksByDate[task.date]) {
+                    tasksByDate[task.date] = [];
+                }
+                tasksByDate[task.date].push(task);
+            });
+
+            const sortedDates = Object.keys(tasksByDate).sort().reverse();
+            sortedDates.forEach(date => {
+                const dateTasks = tasksByDate[date];
+                const dateDisplay = date === this.getTodayString() ? '今日' : date;
+                
+                contentHTML += `<div class="tag-date-group"><h5 class="tag-date-header">${dateDisplay}</h5>`;
+                
+                dateTasks.forEach(task => {
+                    const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '実行中';
+                    const timeRange = task.endTime 
+                        ? `${this.formatTime(task.startTime)} - ${this.formatTime(task.endTime)}`
+                        : `${this.formatTime(task.startTime)} - 実行中`;
+
+                    contentHTML += `
+                        <div class="task-item">
+                            <div>
+                                <div class="task-item-name">${task.name}</div>
+                                <div class="task-item-time">${timeRange}</div>
+                            </div>
+                            <div class="task-item-duration">${duration}</div>
+                        </div>
+                    `;
+                });
+                
+                contentHTML += `</div>`;
+            });
+
+            contentHTML += `
+                    </div>
+                    <div class="tag-total">合計: ${tagTotalTime}</div>
+                </div>
+            `;
+        });
+
+        tabsHTML += '</div>';
+        contentHTML += '</div>';
+        summaryContainer.innerHTML = tabsHTML + contentHTML;
+
+    } catch (error) {
+        console.error('タグサマリー生成エラー:', error);
+        summaryContainer.innerHTML = '<p style="color: var(--error); text-align: center; padding: 20px;">タグサマリーの生成に失敗しました</p>';
+    }
+};
+
+app.switchTagTab = function(tagName, event) {
+    document.querySelectorAll('.tag-tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tag-tab-panel').forEach(panel => panel.classList.remove('active'));
+    
+    event.target.classList.add('active');
+    
+    const targetPanel = document.getElementById(`tag-panel-${tagName}`);
+    if (targetPanel) {
+        targetPanel.classList.add('active');
+    }
+};
+
+app.getTodayString = function() {
+    return new Date().toISOString().split('T')[0];
+};
+
+app.getAllHistoricalTasks = async function() {
+    try {
+        const todayTasks = this.tasks.map(task => ({ ...task, date: this.getTodayString() }));
+        
+        const datesResponse = await fetch(`${this.apiBaseUrl}/api/history/dates`);
+        if (!datesResponse.ok) return todayTasks;
+
+        const datesResult = await datesResponse.json();
+        if (!datesResult.success || !datesResult.dates) return todayTasks;
+
+        const allTasks = [...todayTasks];
+        
+        for (const dateString of datesResult.dates) {
+            try {
+                const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
+                if (historyResponse.ok) {
+                    const historyResult = await historyResponse.json();
+                    if (historyResult.success && historyResult.data && historyResult.data.tasks) {
+                        const dateTasks = historyResult.data.tasks.map(task => ({ ...task, date: dateString }));
+                        allTasks.push(...dateTasks);
+                    }
+                }
+            } catch (error) {
+                console.error(`履歴データ取得エラー (${dateString}):`, error);
+            }
+        }
+
+        return allTasks;
+    } catch (error) {
+        console.error('全履歴タスク取得エラー:', error);
+        return this.tasks.map(task => ({ ...task, date: this.getTodayString() }));
+    }
+};
+
+app.parseDuration = function(durationString) {
+    if (!durationString) return 0;
+    
+    let minutes = 0;
+    const hours = durationString.match(/(\d+)時間/);
+    const mins = durationString.match(/(\d+)分/);
+    
+    if (hours) minutes += parseInt(hours[1]) * 60;
+    if (mins) minutes += parseInt(mins[1]);
+    
+    return minutes;
+};
+
+app.formatDurationFromMinutes = function(totalMinutes) {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    if (hours > 0) {
+        return minutes > 0 ? `${hours}時間${minutes}分` : `${hours}時間`;
+    } else {
+        return `${minutes}分`;
+    }
+};
 
 // グローバルなエラーハンドリング
 window.addEventListener('error', (event) => {

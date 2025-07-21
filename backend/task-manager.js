@@ -132,7 +132,10 @@ class TaskManager {
                     startTime: task.startTime,
                     endTime: task.endTime,
                     name: task.title || task.name,
-                    isBreak: task.isBreak || false
+                    isBreak: task.isBreak || false,
+                    tag: task.tag,
+                    createdAt: task.createdAt,
+                    updatedAt: task.updatedAt
                 }));
                 
                 console.log(`JSON読み込み完了 - タスク数: ${compatibleTasks.length}`);
@@ -168,7 +171,10 @@ class TaskManager {
                 startTime: task.startTime,
                 endTime: task.endTime,
                 name: task.title || task.name,
-                isBreak: task.isBreak || false
+                isBreak: task.isBreak || false,
+                tag: task.tag,
+                createdAt: task.createdAt,
+                updatedAt: task.updatedAt
             }));
             
             console.log(`履歴読み込み完了 - 日付: ${dateString}, タスク数: ${compatibleTasks.length}`);
@@ -190,15 +196,18 @@ class TaskManager {
             // JSON形式でデータを構築
             const jsonData = {
                 date: dateString || this.getTodayDateString(),
-                tasks: tasks.map((task, index) => ({
-                    id: task.id !== undefined ? task.id : `task-${index + 1}`, // 既存IDを保持
-                    startTime: task.startTime || '',
-                    endTime: task.endTime || null,
-                    title: task.name || task.title || '',
-                    isBreak: task.isBreak || false,
-                    createdAt: task.createdAt || new Date().toISOString(), // 既存作成日時を保持
-                    updatedAt: new Date().toISOString() // 更新日時のみ新しく設定
-                })),
+                tasks: tasks.map((task, index) => {
+                    return {
+                        id: task.id !== undefined ? task.id : `task-${index + 1}`, // 既存IDを保持
+                        startTime: task.startTime || '',
+                        endTime: task.endTime || null,
+                        title: task.name || task.title || '',
+                        isBreak: task.isBreak || false,
+                        tag: task.tag || null,
+                        createdAt: task.createdAt || new Date().toISOString(), // 既存作成日時を保持
+                        updatedAt: new Date().toISOString() // 更新日時のみ新しく設定
+                    };
+                }),
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
@@ -266,11 +275,11 @@ class TaskManager {
         }
     }
 
-    async addTask(taskName, isBreak = false, dateString = null) {
+    async addTask(taskName, isBreak = false, dateString = null, tag = null) {
         /**タスクを追加 */
         await this.initialize();
         try {
-            console.log(`add_task開始: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}`);
+            console.log(`add_task開始: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}`);
             
             const tasks = await this.loadSchedule(dateString);
             console.log(`既存タスク数: ${tasks.length}`);
@@ -297,6 +306,7 @@ class TaskManager {
                 endTime: null,
                 name: taskName,
                 isBreak: isBreak,
+                tag: tag,
                 createdAt: new Date().toISOString()
             };
             tasks.push(newTask);
@@ -833,7 +843,7 @@ class TaskManager {
         return { tasks, adjustments };
     }
 
-    async updateTask(taskId, taskName, startTime, endTime) {
+    async updateTask(taskId, taskName, startTime, endTime, tag = null) {
         /**タスクを更新 */
         try {
             const tasks = await this.loadSchedule();
@@ -854,6 +864,8 @@ class TaskManager {
                 adjustedTasks[taskIndex].startTime = startTime;
                 adjustedTasks[taskIndex].endTime = endTime && endTime.trim() ? endTime : null;
                 adjustedTasks[taskIndex].isBreak = isBreak;
+                adjustedTasks[taskIndex].tag = tag;
+                adjustedTasks[taskIndex].updatedAt = new Date().toISOString();
                 
                 await this.saveSchedule(adjustedTasks);
                 
@@ -871,7 +883,7 @@ class TaskManager {
         }
     }
 
-    async updateHistoryTask(dateString, taskId, taskName, startTime, endTime) {
+    async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag = null) {
         /**履歴タスクを更新 */
         try {
             console.log(`履歴タスク更新: ${dateString}, taskId: ${taskId}`);
@@ -932,7 +944,10 @@ class TaskManager {
                 name: taskName,
                 startTime: startTime,
                 endTime: endTime && endTime.trim() ? endTime : null,
-                isBreak: isBreak
+                isBreak: isBreak,
+                tag: tag,
+                createdAt: tasks[taskIndex].createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString()
             };
             
             // 履歴データを保存
@@ -1269,6 +1284,81 @@ class TaskManager {
             return false;
         }
     }
+
+    // Goal stock management
+    async loadGoalStock() {
+        await this.initialize();
+        const goalStockFile = path.join(this.dataDir, 'goal_stock.json');
+        try {
+            const data = await fs.readFile(goalStockFile, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            console.log('Goal stock file not found, returning empty array');
+            return [];
+        }
+    }
+
+    async saveGoalStock(goals) {
+        await this.initialize();
+        const goalStockFile = path.join(this.dataDir, 'goal_stock.json');
+        try {
+            await fs.writeFile(goalStockFile, JSON.stringify(goals, null, 2));
+            console.log('Goal stock saved successfully');
+        } catch (error) {
+            console.error('Error saving goal stock:', error);
+            throw error;
+        }
+    }
+
+    // Task stock management
+    async loadTaskStock() {
+        await this.initialize();
+        const taskStockFile = path.join(this.dataDir, 'task_stock.json');
+        try {
+            const data = await fs.readFile(taskStockFile, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            console.log('Task stock file not found, returning empty array');
+            return [];
+        }
+    }
+
+    async saveTaskStock(tasks) {
+        await this.initialize();
+        const taskStockFile = path.join(this.dataDir, 'task_stock.json');
+        try {
+            await fs.writeFile(taskStockFile, JSON.stringify(tasks, null, 2));
+            console.log('Task stock saved successfully');
+        } catch (error) {
+            console.error('Error saving task stock:', error);
+            throw error;
+        }
+    }
+
+    // Tag stock management
+    async loadTagStock() {
+        await this.initialize();
+        const tagStockFile = path.join(this.dataDir, 'tag_stock.json');
+        try {
+            const data = await fs.readFile(tagStockFile, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            console.log('Tag stock file not found, returning empty array');
+            return [];
+        }
+    }
+
+    async saveTagStock(tags) {
+        await this.initialize();
+        const tagStockFile = path.join(this.dataDir, 'tag_stock.json');
+        try {
+            await fs.writeFile(tagStockFile, JSON.stringify(tags, null, 2));
+            console.log('Tag stock saved successfully');
+        } catch (error) {
+            console.error('Error saving tag stock:', error);
+            throw error;
+        }
+    }
 }
 
 // Express app setup
@@ -1305,14 +1395,15 @@ function createApp(taskManagerInstance) {
             const taskName = (data.name || '').trim();
             const isBreak = data.isBreak || false;
             const dateString = data.dateString || null; // 日付パラメータ追加
+            const tag = data.tag || null; // タグパラメータ追加
             
-            console.log(`API - タスク追加リクエスト: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}`);
+            console.log(`API - タスク追加リクエスト: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}`);
             
             if (!taskName) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
             }
             
-            const newTask = await taskManager.addTask(taskName, isBreak, dateString);
+            const newTask = await taskManager.addTask(taskName, isBreak, dateString, tag);
             try {
                 console.log(`API - 追加されたタスク: ${JSON.stringify(newTask)}`);
             } catch (error) {
@@ -1485,6 +1576,7 @@ function createApp(taskManagerInstance) {
             const taskName = (data.name || '').trim();
             const startTime = (data.startTime || '').trim();
             const endTime = (data.endTime || '').trim();
+            const tag = data.tag || null;
             
             console.log(`履歴タスク更新リクエストを受信: ${dateString}, taskId: ${taskId}`, data);
             
@@ -1501,7 +1593,7 @@ function createApp(taskManagerInstance) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime);
+            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag);
             if (result.success) {
                 res.json(result);
             } else {
@@ -1520,12 +1612,13 @@ function createApp(taskManagerInstance) {
             const taskName = (data.name || '').trim();
             const startTime = (data.startTime || '').trim();
             const endTime = (data.endTime || '').trim();
+            const tag = data.tag || null;
             
             if (!taskName || !startTime) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime);
+            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag);
             if (result) {
                 const responseData = { success: true, task: result.task };
                 if (result.adjustments) {
@@ -1833,6 +1926,72 @@ function createApp(taskManagerInstance) {
                 res.status(400).json({ success: false, error: 'URL is required' });
             }
         } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // Goal stock API endpoints
+    app.get('/api/goals', async (req, res) => {
+        try {
+            const goals = await taskManager.loadGoalStock();
+            res.json({ success: true, goals: goals });
+        } catch (error) {
+            console.error('Goal stock load error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/goals', async (req, res) => {
+        try {
+            const { goals } = req.body;
+            await taskManager.saveGoalStock(goals);
+            res.json({ success: true, message: 'Goal stock saved successfully' });
+        } catch (error) {
+            console.error('Goal stock save error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // Task stock API endpoints
+    app.get('/api/task-stock', async (req, res) => {
+        try {
+            const tasks = await taskManager.loadTaskStock();
+            res.json({ success: true, tasks: tasks });
+        } catch (error) {
+            console.error('Task stock load error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/task-stock', async (req, res) => {
+        try {
+            const { tasks } = req.body;
+            await taskManager.saveTaskStock(tasks);
+            res.json({ success: true, message: 'Task stock saved successfully' });
+        } catch (error) {
+            console.error('Task stock save error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // Tag stock API endpoints
+    app.get('/api/tags', async (req, res) => {
+        try {
+            const tags = await taskManager.loadTagStock();
+            res.json({ success: true, tags: tags });
+        } catch (error) {
+            console.error('Tag stock load error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/tags', async (req, res) => {
+        try {
+            const { tags } = req.body;
+            await taskManager.saveTagStock(tags);
+            res.json({ success: true, message: 'Tag stock saved successfully' });
+        } catch (error) {
+            console.error('Tag stock save error:', error);
             res.status(500).json({ success: false, error: error.message });
         }
     });

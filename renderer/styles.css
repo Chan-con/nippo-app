@@ -150,6 +150,42 @@ body {
   border: 1px solid var(--border);
 }
 
+.tag-select-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tag-select-label {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 40px;
+}
+
+.tag-select {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.tag-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.1);
+}
+
+.tag-select option {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 .input-group {
   display: flex;
   gap: 8px;
@@ -501,10 +537,25 @@ body {
   margin-bottom: 4px;
   cursor: pointer;
   transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .timeline-task:hover {
   color: var(--accent);
+}
+
+.task-tag {
+  font-size: 11px;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, var(--purple), var(--pink));
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+  display: inline-block;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .timeline-duration {
@@ -514,6 +565,104 @@ body {
   padding: 2px 8px;
   border-radius: var(--radius-small);
   display: inline-block;
+}
+
+.timeline-tag {
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--purple);
+  background: linear-gradient(135deg, var(--purple), var(--pink));
+  padding: 2px 8px;
+  border-radius: var(--radius-small);
+  display: inline-block;
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+/* タグ別作業時間のタブスタイル */
+.tag-tabs-navigation {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.tag-tab {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small) var(--radius-small) 0 0;
+  padding: 8px 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tag-tab:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.tag-tab.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.tag-tabs-content {
+  position: relative;
+}
+
+.tag-tab-panel {
+  display: none;
+}
+
+.tag-tab-panel.active {
+  display: block;
+}
+
+.tag-tasks {
+  margin-bottom: 12px;
+}
+
+.tag-total {
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-small);
+  font-weight: 600;
+  color: var(--accent);
+  text-align: right;
+  font-size: 14px;
+}
+
+.tag-date-group {
+  margin-bottom: 16px;
+}
+
+.tag-date-header {
+  margin: 0 0 8px 0;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-small);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: inline-block;
+}
+
+.tag-copy-section {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.tag-copy-section .btn-secondary {
+  padding: 10px 16px;
+  font-size: 14px;
+  gap: 6px;
+}
+
+.tag-copy-section .material-icons {
+  font-size: 18px;
 }
 
 /* 統計セクション */
@@ -1542,6 +1691,101 @@ body {
   }
 }
 
+/* 共通のストック管理アイテムスタイル */
+.stock-item,
+.goal-stock-item,
+.task-stock-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+  gap: 12px;
+}
+
+.stock-item:hover,
+.goal-stock-item:hover,
+.task-stock-item:hover {
+  background: var(--surface);
+  border-color: var(--accent-light);
+}
+
+.stock-item:last-child,
+.goal-stock-item:last-child,
+.task-stock-item:last-child {
+  margin-bottom: 0;
+}
+
+.stock-item-content,
+.goal-stock-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.stock-item-input,
+.goal-stock-item input,
+.task-stock-item input,
+.task-stock-item-name {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.stock-item-input:focus,
+.goal-stock-item input:focus,
+.task-stock-item input:focus,
+.task-stock-item-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.stock-item-remove,
+.goal-stock-item button,
+.task-stock-item button,
+.task-stock-item-delete,
+.stock-item button {
+  padding: 6px;
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+}
+
+.stock-item-remove:hover,
+.goal-stock-item button:hover,
+.task-stock-item button:hover,
+.task-stock-item-delete:hover,
+.stock-item button:hover {
+  background: var(--danger-dark);
+  transform: scale(1.05);
+}
+
+.stock-item-remove .material-icons,
+.goal-stock-item button .material-icons,
+.task-stock-item button .material-icons,
+.task-stock-item-delete .material-icons,
+.stock-item button .material-icons {
+  font-size: 18px;
+}
+
 /* タスクストックダイアログ */
 .task-stock-dialog {
   position: fixed;
@@ -1639,27 +1883,7 @@ body {
   padding: 8px;
 }
 
-.task-stock-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  margin-bottom: 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-  transition: all 0.2s ease;
-  min-height: 40px;
-}
-
-.task-stock-item:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--accent);
-}
-
-.task-stock-item:last-child {
-  margin-bottom: 0;
-}
+/* task-stock-item のスタイルは共通スタイルで定義済み */
 
 .task-stock-item-drag-handle {
   display: flex;
@@ -1692,20 +1916,7 @@ body {
   gap: 8px;
 }
 
-.task-stock-item-delete {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius-small);
-  transition: all 0.2s ease;
-}
-
-.task-stock-item-delete:hover {
-  background: var(--error);
-  color: white;
-}
+/* task-stock-item-delete のスタイルは共通スタイルで定義済み */
 
 .task-stock-input {
   display: flex;
@@ -1713,9 +1924,149 @@ body {
   align-items: center;
 }
 
+/* 古いスタイルを無効化 - 共通スタイルが優先されるようにする */
 .task-stock-input input {
   flex: 1;
   margin-bottom: 0;
+}
+
+/* タスクストックアイテム内のinputに対してより具体的に共通スタイルを適用 */
+.task-stock-item .stock-item-content input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+  margin-bottom: 0;
+}
+
+.task-stock-item .stock-item-content input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.task-stock-item .stock-item-content button {
+  padding: 6px;
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+}
+
+.task-stock-item .stock-item-content button:hover {
+  background: var(--danger-dark);
+  transform: scale(1.05);
+}
+
+.task-stock-item .stock-item-content button .material-icons {
+  font-size: 18px;
+}
+
+/* タスクストック編集ボタンスタイル */
+.task-stock-edit-btn {
+  background: var(--accent) !important;
+  color: white !important;
+}
+
+.task-stock-edit-btn:hover {
+  background: var(--accent-dark) !important;
+}
+
+/* タスクストック名表示エリア */
+.task-stock-item-name {
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: var(--radius-small);
+  transition: all 0.2s ease;
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid transparent;
+  user-select: none; /* テキスト選択を無効化 */
+}
+
+.task-stock-item-name:hover {
+  /* ホバー時の視覚変化なし - 完全にテキスト表示を維持 */
+}
+
+/* 編集中の入力フィールド */
+.task-stock-edit-input {
+  display: none;
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.task-stock-edit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+/* 目標管理とタグ管理の名前表示エリア */
+.goal-stock-item-name,
+.tag-stock-item-name {
+  padding: 8px 12px;
+  border-radius: var(--radius-small);
+  transition: all 0.2s ease;
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+/* 目標管理とタグ管理の編集入力フィールド */
+.goal-stock-edit-input,
+.tag-stock-edit-input {
+  display: none;
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.goal-stock-edit-input:focus,
+.tag-stock-edit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+/* 目標管理とタグ管理の編集ボタン */
+.goal-stock-edit-btn,
+.tag-stock-edit-btn,
+.stock-item .tag-stock-edit-btn {
+  background: var(--accent) !important;
+  color: white !important;
+}
+
+.goal-stock-edit-btn:hover,
+.tag-stock-edit-btn:hover,
+.stock-item .tag-stock-edit-btn:hover {
+  background: var(--accent-dark) !important;
 }
 
 .task-stock-input button {

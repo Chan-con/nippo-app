@@ -36,6 +36,12 @@
             
             <div class="sidebar-content">
                 <div class="task-input-section">
+                    <div class="tag-select-group">
+                        <label for="task-tag-select" class="tag-select-label">タグ:</label>
+                        <select id="task-tag-select" class="tag-select">
+                            <option value="">未選択</option>
+                        </select>
+                    </div>
                     <div class="input-group">
                         <input type="text" id="task-input" placeholder="新しいタスクを入力..." class="task-input">
                         <button id="add-task-btn" class="btn-primary">
@@ -64,6 +70,10 @@
                     <button id="task-stock-btn" class="btn-secondary">
                         <span class="material-icons">bookmark</span>
                         タスクストック
+                    </button>
+                    <button id="tag-stock-btn" class="btn-secondary">
+                        <span class="material-icons">label</span>
+                        タグ
                     </button>
                     <button id="settings-btn" class="btn-secondary">
                         <span class="material-icons" style="font-size: 18px;">settings</span>
@@ -179,6 +189,12 @@
                     <input type="text" id="edit-task-name" class="edit-input" placeholder="タスク名を入力">
                 </div>
                 <div class="edit-field">
+                    <label for="edit-task-tag">タグ</label>
+                    <select id="edit-task-tag" class="edit-input">
+                        <option value="">未選択</option>
+                    </select>
+                </div>
+                <div class="edit-field">
                     <label for="edit-start-time">開始時刻</label>
                     <input type="time" id="edit-start-time" class="edit-input">
                 </div>
@@ -216,6 +232,12 @@
                     <h4>📅 今日の作業内容</h4>
                     <div class="task-summary" id="task-summary">
                         <!-- タスクサマリーが動的に挿入される -->
+                    </div>
+                </div>
+                <div class="report-section">
+                    <h4>🏷️ タグ別作業時間</h4>
+                    <div class="tag-summary" id="tag-summary">
+                        <!-- タグ別作業時間が動的に挿入される -->
                     </div>
                 </div>
                 <div class="report-section">
@@ -384,6 +406,45 @@
                 <div class="task-stock-footer-buttons">
                     <button class="btn-cancel" id="task-stock-cancel">戻る</button>
                     <button class="btn-primary" id="save-task-stock-btn">
+                        <span class="material-icons">save</span>
+                        保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- タグ管理ダイアログ -->
+    <div class="task-stock-dialog" id="tag-stock-dialog">
+        <div class="task-stock-content">
+            <div class="task-stock-header">
+                <h3>🏷️ タグ管理</h3>
+                <button class="task-stock-close" id="tag-stock-close">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="task-stock-body">
+                <div class="task-stock-section">
+                    <h4>🏷️ 保存済みタグ</h4>
+                    <div class="task-stock-list" id="tag-stock-list">
+                        <!-- ストック済みタグが動的に挿入される -->
+                    </div>
+                </div>
+                <div class="task-stock-section">
+                    <h4>➕ 新しいタグを追加</h4>
+                    <div class="task-stock-input">
+                        <input type="text" id="tag-stock-input" class="edit-input" placeholder="タグ名を入力してください">
+                        <button id="add-tag-stock-btn" class="btn-primary">
+                            <span class="material-icons">add</span>
+                            追加
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="task-stock-footer">
+                <div class="task-stock-footer-buttons">
+                    <button class="btn-cancel" id="tag-stock-cancel">戻る</button>
+                    <button class="btn-primary" id="save-tag-stock-btn">
                         <span class="material-icons">save</span>
                         保存
                     </button>
