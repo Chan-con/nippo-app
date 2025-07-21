@@ -2432,6 +2432,7 @@ class NippoApp {
     }
     
     switchToHistoryMode() {
+        console.log('履歴モードに切り替え中...');
         this.currentMode = 'history';
         
         // UI更新
@@ -2446,8 +2447,43 @@ class NippoApp {
         // 履歴日付を読み込み
         this.loadHistoryDates();
         
-        // 履歴が選択されていない状態のUI
-        this.clearHistoryView();
+        // 既に日付が選択されている場合は、そのデータを読み込む
+        const calendarInput = document.getElementById('calendar-date-input');
+        const hasSelectedDate = calendarInput && calendarInput.value;
+        const hasCurrentDate = this.currentDate;
+        
+        console.log('履歴モード切り替え時の状態確認:', {
+            hasSelectedDate,
+            hasCurrentDate,
+            calendarInputValue: calendarInput?.value,
+            currentDate: this.currentDate
+        });
+        
+        if (hasSelectedDate || hasCurrentDate) {
+            const dateToLoad = this.currentDate || calendarInput.value;
+            console.log('履歴モード切り替え時に既存の日付データを読み込み:', dateToLoad);
+            
+            // データを読み込み
+            this.loadHistoryData(dateToLoad);
+            
+            // 内部状態を同期
+            this.currentDate = dateToLoad;
+            
+            // 日付表示を更新
+            const date = new Date(dateToLoad);
+            const displayDate = date.toLocaleDateString('ja-JP', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long'
+            });
+            document.getElementById('current-date').textContent = displayDate;
+            console.log('日付表示を更新:', displayDate);
+        } else {
+            console.log('履歴モード切り替え時に選択された日付なし - 空の状態を表示');
+            // 履歴が選択されていない状態のUI
+            this.clearHistoryView();
+        }
     }
     
     clearHistoryView() {
@@ -2488,15 +2524,25 @@ class NippoApp {
     
     onDateSelected(dateString) {
         console.log('onDateSelected - 選択された日付:', dateString);
+        console.log('現在のモード:', this.currentMode);
         
         if (!dateString) {
             console.log('日付が空のため処理を中断');
             return;
         }
         
+        // 履歴モードでない場合は処理をスキップ
+        if (this.currentMode !== 'history') {
+            console.log('履歴モードでないため、日付選択処理をスキップ');
+            return;
+        }
+        
         // 選択された日付を内部状態に保存
         this.currentDate = dateString;
         this.selectedDate = dateString;
+        
+        console.log('履歴データの読み込みを開始します:', dateString);
+        console.log('内部状態更新:', { currentDate: this.currentDate, selectedDate: this.selectedDate });
         
         // 履歴データを読み込み
         this.loadHistoryData(dateString);
@@ -2510,15 +2556,28 @@ class NippoApp {
             weekday: 'long'
         });
         document.getElementById('current-date').textContent = displayDate;
+        console.log('日付表示を更新しました:', displayDate);
     }
     
     async loadHistoryData(dateString) {
         try {
             console.log(`履歴データ読み込み開始: ${dateString}`);
+            
+            // ローディング状態を表示
+            const container = document.getElementById('timeline-container');
+            container.innerHTML = `
+                <div class="timeline-empty">
+                    <span class="material-icons">hourglass_empty</span>
+                    <p>データを読み込み中...</p>
+                </div>
+            `;
+            
             const response = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
             if (response.ok) {
                 const result = await response.json();
-                if (result.success && result.data) {
+                console.log('履歴APIレスポンス:', result);
+                
+                if (result.success && result.data && result.data.tasks && result.data.tasks.length > 0) {
                     console.log('履歴データ:', result.data);
                     
                     // 履歴データをタイムラインに表示
@@ -2527,18 +2586,25 @@ class NippoApp {
                     // 統計情報を更新
                     this.updateHistoryStats(result.data.tasks);
                 } else {
-                    // データがない場合は空の表示
+                    console.log('履歴データが見つからないか、空のデータです');
+                    // データがない場合は空の表示（日付指定済み）
                     this.renderEmptyHistory(dateString);
                 }
+            } else {
+                console.error('履歴APIリクエストが失敗しました:', response.status);
+                this.renderEmptyHistory(dateString);
             }
         } catch (error) {
             console.error('履歴データ読み込みエラー:', error);
+            this.renderEmptyHistory(dateString);
         }
     }
     
     renderHistoryTimeline(historyData) {
         const container = document.getElementById('timeline-container');
         const tasks = historyData.tasks || [];
+        
+        console.log(`履歴タイムライン描画開始: 日付=${historyData.date}, タスク数=${tasks.length}`);
         
         if (tasks.length === 0) {
             this.renderEmptyHistory(historyData.date);
@@ -2578,26 +2644,45 @@ class NippoApp {
         }).join('');
         
         container.innerHTML = timelineHTML;
+        console.log('履歴タイムライン描画完了');
     }
     
     renderEmptyHistory(dateString) {
         const container = document.getElementById('timeline-container');
-        const date = new Date(dateString);
-        const displayDate = date.toLocaleDateString('ja-JP', {
-            month: 'long',
-            day: 'numeric'
-        });
         
-        container.innerHTML = `
-            <div class="timeline-empty">
-                <span class="material-icons">calendar_today</span>
-                <p>${displayDate}のデータはありません</p>
-            </div>
-        `;
+        if (dateString) {
+            // 日付が指定されている場合は、その日にデータがないことを表示
+            const date = new Date(dateString);
+            const displayDate = date.toLocaleDateString('ja-JP', {
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            container.innerHTML = `
+                <div class="timeline-empty">
+                    <span class="material-icons">calendar_today</span>
+                    <p>${displayDate}のデータはありません</p>
+                    <p class="sub-text">この日はタスクが記録されていません</p>
+                </div>
+            `;
+            
+            console.log(`空の履歴表示: ${displayDate}`);
+        } else {
+            // 日付が指定されていない場合は、日付選択を促す
+            container.innerHTML = `
+                <div class="timeline-empty">
+                    <span class="material-icons">history</span>
+                    <p>日付を選択してください</p>
+                    <p class="sub-text">カレンダーから閲覧したい日付を選びます</p>
+                </div>
+            `;
+            
+            console.log('日付選択促進メッセージを表示');
+        }
         
         // 統計情報もクリア
-        document.getElementById('completed-tasks').textContent = '0';
-        document.getElementById('work-time').textContent = '0:00';
+        document.getElementById('completed-tasks').textContent = dateString ? '0' : '-';
+        document.getElementById('work-time').textContent = dateString ? '0:00' : '-';
         document.getElementById('productivity').textContent = '-';
     }
     
