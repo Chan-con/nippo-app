@@ -25,6 +25,7 @@ class NippoApp {
         this.selectedDate = null;
         this.currentDate = null; // 統一された日付管理（null = 今日）
         this.historyDates = [];
+        this.lastKnownDate = null; // 日付変更検知用
         this.init();
     }
 
@@ -339,6 +340,11 @@ class NippoApp {
         this.updateTaskCounter();
         this.updateBreakButton(false); // 初期状態は休憩開始ボタン
 
+        // 初期日付を記録
+        const now = new Date();
+        this.lastKnownDate = now.toDateString();
+        console.log('アプリ初期化時の日付記録:', this.lastKnownDate);
+
         // タスク入力フォーカスのイベントリスナーを追加（重複防止）
         if (!this.eventListenersInitialized) {
             window.electronAPI.onFocusTaskInput(() => {
@@ -405,6 +411,82 @@ class NippoApp {
 
         // 1分ごとに時刻を更新
         setInterval(() => this.updateDateTime(), 60000);
+        
+        // デバッグ用のグローバル関数を設定
+        window.app = this;
+        window.forceRefreshToday = () => {
+            console.log('手動でタスクデータを強制更新中...');
+            this.handleDateChange();
+        };
+        window.validateDate = () => {
+            console.log('日付整合性チェックを手動実行中...');
+            this.validateTaskDateIntegrity();
+        };
+        window.checkServerData = async () => {
+            console.log('サーバーのタスクデータをチェック中...');
+            try {
+                // 今日のデータ
+                const todayResponse = await fetch(`${this.apiBaseUrl}/api/tasks`);
+                const todayResult = await todayResponse.json();
+                console.log('今日のデータ (api/tasks):', todayResult);
+                
+                // 履歴データ（今日の日付で）
+                const today = new Date().toISOString().split('T')[0];
+                const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/${today}`);
+                const historyResult = await historyResponse.json();
+                console.log(`履歴データ (api/history/${today}):`, historyResult);
+            } catch (error) {
+                console.error('サーバーデータチェックエラー:', error);
+            }
+        };
+        window.checkYesterdayData = async () => {
+            console.log('昨日の履歴データをチェック中...');
+            try {
+                const yesterday = '2025-07-22';
+                const response = await fetch(`${this.apiBaseUrl}/api/history/${yesterday}`);
+                const result = await response.json();
+                console.log(`昨日のデータ (api/history/${yesterday}):`, result);
+                
+                if (result.success && result.data) {
+                    console.log('昨日のタスク詳細:', result.data.tasks);
+                } else {
+                    console.log('昨日のデータが見つからないか、エラーです');
+                }
+            } catch (error) {
+                console.error('昨日のデータチェックエラー:', error);
+            }
+        };
+        window.testHistoryMode = () => {
+            console.log('履歴モードをテスト中...');
+            this.switchToHistoryMode();
+            setTimeout(() => {
+                this.onDateSelected('2025-07-22');
+            }, 100);
+        };
+        window.filterTodayTasks = () => {
+            console.log('手動で今日のタスクのみを表示...');
+            const today = new Date();
+            const todayString = today.toDateString();
+            const todayISOString = today.toISOString().split('T')[0];
+            
+            const originalCount = this.tasks.length;
+            this.tasks = this.tasks.filter(task => {
+                if (task.createdAt) {
+                    const taskDate = new Date(task.createdAt).toDateString();
+                    return taskDate === todayString;
+                }
+                if (task.date) {
+                    return task.date === todayISOString;
+                }
+                return true; // 日付情報がない場合は残す
+            });
+            
+            console.log(`${originalCount}件から${this.tasks.length}件にフィルタリング`);
+            this.updateTimeline();
+            this.updateStats();
+            this.updateTaskCounter();
+            this.showToast(`今日のタスクのみ表示しました (${this.tasks.length}件)`);
+        };
     }
 
     async waitForAPI() {
@@ -593,8 +675,26 @@ class NippoApp {
         });
         timeElement.textContent = timeStr;
 
-        // 日付は今日モードの時のみ更新（履歴モードでは履歴日付を保持）
+        // 日付変更の検知（今日モードでのみ実行）
         if (this.currentMode !== 'history') {
+            const currentDateString = now.toDateString(); // "Wed Jul 23 2025" 形式
+            
+            // 初回実行時は現在の日付を記録
+            if (this.lastKnownDate === null) {
+                this.lastKnownDate = currentDateString;
+                console.log('初回日付記録:', this.lastKnownDate);
+            }
+            
+            // 日付が変更された場合
+            if (this.lastKnownDate !== currentDateString) {
+                console.log('日付変更を検知:', this.lastKnownDate, '->', currentDateString);
+                this.lastKnownDate = currentDateString;
+                
+                // 新しい日のタスクデータを読み込み
+                this.handleDateChange();
+            }
+            
+            // 日付表示を更新
             const dateStr = now.toLocaleDateString('ja-JP', {
                 year: 'numeric',
                 month: 'long',
@@ -623,6 +723,132 @@ class NippoApp {
         }
         
         return `${period} ${displayHour}:${minute.toString().padStart(2, '0')}`;
+    }
+
+    async handleDateChange() {
+        console.log('日付変更処理を開始...');
+        
+        try {
+            // 今日モードの場合のみ処理
+            if (this.currentMode === 'today') {
+                console.log('現在のタスクデータをクリア中...');
+                
+                // 現在のタスクをクリア
+                this.tasks = [];
+                this.currentTaskId = null;
+                this.updateCurrentTask('タスクなし');
+                this.updateBreakButton(false);
+                
+                // UIを即座に更新（空の状態で表示）
+                this.updateTimeline();
+                this.updateStats();
+                this.updateTaskCounter();
+                
+                console.log('新しい日のタスクデータを読み込み中...');
+                // 新しい日のタスクデータを読み込み
+                await this.loadTasks();
+                
+                // 履歴日付リストを更新
+                await this.loadHistoryDates();
+                
+                this.showToast('新しい日になりました。タスクデータを更新しました。');
+                console.log('日付変更処理完了');
+            }
+        } catch (error) {
+            console.error('日付変更処理エラー:', error);
+            this.showToast('日付変更時のデータ更新に失敗しました', 'error');
+        }
+    }
+
+    // タスクデータの日付整合性をチェックして、古いデータを除去
+    async validateTaskDateIntegrity() {
+        console.log('タスクデータの日付整合性チェックを開始...');
+        
+        if (this.currentMode !== 'today') {
+            console.log('今日モードでないためスキップ');
+            return;
+        }
+        
+        const today = new Date();
+        const todayString = today.toDateString(); // "Wed Jul 23 2025" 形式
+        const todayISOString = today.toISOString().split('T')[0]; // "2025-07-23" 形式
+        let hasOldTasks = false;
+        
+        console.log('今日の日付:', todayString, '(ISO:', todayISOString, ')');
+        
+        if (!this.tasks.length) {
+            console.log('タスクが空のため、整合性チェック完了');
+            return;
+        }
+        
+        // タスクの日付をチェック（createdAt または日付情報があるかチェック）
+        const oldTasks = [];
+        this.tasks.forEach((task, index) => {
+            console.log(`タスク ${index}: ${task.name}, startTime: ${task.startTime}`);
+            
+            let isOldTask = false;
+            
+            // タスクにcreatedAtがある場合はそれをチェック
+            if (task.createdAt) {
+                const taskDate = new Date(task.createdAt).toDateString();
+                console.log(`- createdAt: ${task.createdAt} (${taskDate})`);
+                if (taskDate !== todayString) {
+                    console.log(`- 古いタスクを検知: ${taskDate} != ${todayString}`);
+                    isOldTask = true;
+                }
+            }
+            
+            // タスクにdateプロパティがある場合もチェック
+            if (task.date) {
+                console.log(`- task.date: ${task.date}`);
+                if (task.date !== todayISOString) {
+                    console.log(`- 古いタスクを検知 (date): ${task.date} != ${todayISOString}`);
+                    isOldTask = true;
+                }
+            }
+            
+            if (isOldTask) {
+                oldTasks.push(task);
+                hasOldTasks = true;
+            }
+        });
+        
+        // lastKnownDateとの比較もチェック
+        if (this.lastKnownDate && this.lastKnownDate !== todayString) {
+            console.log('日付不整合を検知 (lastKnownDate):', this.lastKnownDate, '!=', todayString);
+            hasOldTasks = true;
+        }
+        
+        if (hasOldTasks) {
+            console.log('古いタスクデータを検知:', oldTasks.length, '件');
+            console.log('古いタスク:', oldTasks);
+            
+            // 古いタスクを配列から除外
+            this.tasks = this.tasks.filter(task => {
+                if (task.createdAt) {
+                    const taskDate = new Date(task.createdAt).toDateString();
+                    return taskDate === todayString;
+                }
+                if (task.date) {
+                    return task.date === todayISOString;
+                }
+                // 日付情報がない場合は残す
+                return true;
+            });
+            
+            console.log('フィルタリング後のタスク数:', this.tasks.length);
+            
+            // UIを更新
+            this.updateTimeline();
+            this.updateStats();
+            this.updateTaskCounter();
+            
+            if (oldTasks.length > 0) {
+                this.showToast(`${oldTasks.length}件の過去のタスクを非表示にしました`, 'warning');
+            }
+        } else {
+            console.log('タスクデータの日付整合性OK');
+        }
     }
 
     async addTask() {
@@ -860,15 +1086,48 @@ class NippoApp {
             this.currentDate = null;
             console.log('currentDate を null に設定しました (今日モード)');
             
+            // 元の仕様通り、日付パラメータなしでAPIを呼び出し（サーバー側で今日のデータを返す）
             const response = await fetch(`${this.apiBaseUrl}/api/tasks`);
             if (response.ok) {
                 const result = await response.json();
                 if (result.success) {
-                    const tasks = result.tasks;
-                    console.log('読み込まれたタスク数:', tasks.length);
-                    console.log('タスクデータ:', tasks);
+                    const allTasks = result.tasks;
+                    console.log('サーバーから取得したタスク数:', allTasks.length);
+                    console.log('全タスクデータ:', allTasks);
 
-                    this.tasks = tasks;
+                    // 今日の日付でタスクをフィルタリング
+                    const today = new Date();
+                    const todayString = today.toDateString(); // "Wed Jul 23 2025" 形式
+                    const todayISOString = today.toISOString().split('T')[0]; // "2025-07-23" 形式
+                    
+                    console.log('今日の日付フィルタ:', todayString, '(ISO:', todayISOString, ')');
+                    
+                    // タスクを今日のもののみにフィルタリング
+                    const todayTasks = allTasks.filter(task => {
+                        // createdAtによる判定
+                        if (task.createdAt) {
+                            const taskDate = new Date(task.createdAt).toDateString();
+                            const isToday = taskDate === todayString;
+                            console.log(`タスク "${task.name}": createdAt=${task.createdAt}, taskDate=${taskDate}, isToday=${isToday}`);
+                            return isToday;
+                        }
+                        
+                        // dateプロパティによる判定
+                        if (task.date) {
+                            const isToday = task.date === todayISOString;
+                            console.log(`タスク "${task.name}": date=${task.date}, isToday=${isToday}`);
+                            return isToday;
+                        }
+                        
+                        // 日付情報がない場合は、今日のタスクとして扱う（後方互換性）
+                        console.log(`タスク "${task.name}": 日付情報なし、今日のタスクとして扱う`);
+                        return true;
+                    });
+                    
+                    console.log('フィルタリング後の今日のタスク数:', todayTasks.length);
+                    console.log('今日のタスクデータ:', todayTasks);
+
+                    this.tasks = todayTasks;
                     this.updateTimeline();
                     this.updateStats();
                     this.updateTaskCounter();
@@ -893,6 +1152,9 @@ class NippoApp {
                     }
 
                     console.log('タスクデータの読み込み完了');
+                    
+                    // 日付整合性チェックを即座に実行（古いデータが混入していないかチェック）
+                    await this.validateTaskDateIntegrity();
                 }
             }
         } catch (error) {
@@ -3190,6 +3452,11 @@ class NippoApp {
     switchToTodayMode() {
         this.currentMode = 'today';
         this.currentDate = null; // 今日の日付を示す
+        
+        // 日付検知を再初期化
+        const now = new Date();
+        this.lastKnownDate = now.toDateString();
+        console.log('今日モード切り替え時の日付記録:', this.lastKnownDate);
         
         // UI更新
         document.getElementById('today-btn').classList.add('active');
