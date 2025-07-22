@@ -572,7 +572,7 @@ class NippoApp {
         document.getElementById('goal-stock-btn').addEventListener('click', () => this.showGoalStockDialog());
 
         // タスクストック
-        document.getElementById('task-stock-btn').addEventListener('click', () => this.showTaskStockDialog());
+        document.getElementById('task-stock-btn').addEventListener('click', async () => await this.showTaskStockDialog());
         
         // タグストック
         document.getElementById('tag-stock-btn').addEventListener('click', () => this.showTagStockDialog());
@@ -595,6 +595,7 @@ class NippoApp {
         document.getElementById('edit-cancel').addEventListener('click', () => this.hideEditDialog());
         document.getElementById('edit-save').addEventListener('click', () => this.saveTask());
         document.getElementById('edit-delete').addEventListener('click', () => this.deleteCurrentTask());
+        document.getElementById('add-to-stock-btn').addEventListener('click', async () => await this.addTaskNameToStock());
 
         // 報告書ダイアログのイベントリスナー
         document.getElementById('report-close').addEventListener('click', () => this.handleReportClose());
@@ -3236,10 +3237,14 @@ class NippoApp {
         }
     }
 
-    showTaskStockDialog() {
+    async showTaskStockDialog() {
         const dialog = document.getElementById('task-stock-dialog');
         dialog.classList.add('show');
-        this.loadTaskStock();
+        
+        // データを再読み込みしてからレンダリング
+        await this.loadTaskStock();
+        this.renderTaskStock();
+        
         // ダイアログ表示後にドラッグ&ドロップを初期化
         setTimeout(() => this.initTaskStockDragDrop(), 100);
     }
@@ -3256,8 +3261,16 @@ class NippoApp {
         dialog.classList.remove('show');
         this.hasTaskStockChanges = false;
         
-        // 編集中のアイテムを元に戻す
-        this.tempTaskStock = JSON.parse(JSON.stringify(this.taskStock));
+        // 編集中のアイテムを元に戻す（文字列配列として確保）
+        this.tempTaskStock = this.taskStock.map(item => {
+            if (typeof item === 'string') {
+                return item;
+            } else if (item && typeof item === 'object' && item.name) {
+                return item.name;
+            } else {
+                return String(item);
+            }
+        });
         this.renderTaskStock();
     }
 
@@ -3267,9 +3280,25 @@ class NippoApp {
             if (response.ok) {
                 const result = await response.json();
                 if (result.success) {
-                    this.taskStock = result.tasks;
+                    this.taskStock = result.tasks || [];
+                    
+                    console.log('読み込み前のtaskStock:', this.taskStock);
+                    
+                    // データがオブジェクト形式の場合は文字列配列に変換
+                    this.taskStock = this.taskStock.map(item => {
+                        if (typeof item === 'string') {
+                            return item;
+                        } else if (item && typeof item === 'object' && item.name) {
+                            return item.name;
+                        } else {
+                            return String(item);
+                        }
+                    });
+                    
+                    console.log('変換後のtaskStock:', this.taskStock);
+                    
                     this.tempTaskStock = JSON.parse(JSON.stringify(this.taskStock)); // ディープコピー
-                    this.renderTaskStock();
+                    console.log('タスクストック読み込み成功:', this.taskStock);
                 }
             }
         } catch (error) {
@@ -3279,9 +3308,26 @@ class NippoApp {
 
     renderTaskStock() {
         const list = document.getElementById('task-stock-list');
+        if (!list) {
+            console.warn('タスクストックリスト要素が見つかりません');
+            return;
+        }
+        
         list.innerHTML = '';
         
-        this.tempTaskStock.forEach((task, index) => {
+        // tempTaskStockが空配列でない場合のみ処理
+        if (!this.tempTaskStock || this.tempTaskStock.length === 0) {
+            list.innerHTML = '<div class="task-stock-empty"><span class="material-icons">inventory_2</span><p>タスクストックは空です</p><p class="sub-text">📚ボタンでタスクを追加してください</p></div>';
+            this.updateTaskStockSaveButton();
+            return;
+        }
+        
+        this.tempTaskStock.forEach((taskItem, index) => {
+            // データが文字列でない場合は文字列に変換
+            const taskName = typeof taskItem === 'string' ? taskItem : (taskItem.name || String(taskItem));
+            
+            console.log(`renderTaskStock - index: ${index}, taskItem:`, taskItem, 'taskName:', taskName);
+            
             const item = document.createElement('div');
             item.className = 'task-stock-item';
             item.draggable = true;
@@ -3291,11 +3337,11 @@ class NippoApp {
                     <div class="task-stock-item-drag-handle" title="ドラッグして並び替え">
                         <span class="material-icons">drag_indicator</span>
                     </div>
-                    <div class="task-stock-item-name clickable" title="クリックして新しいタスクに追加" onclick="app.addTaskFromStock('${task.name.replace(/'/g, "\\'")}')">
+                    <div class="task-stock-item-name clickable" title="クリックして新しいタスクに追加" onclick="app.addTaskFromStock('${taskName.replace(/'/g, "\\'")}')">
                         <span class="material-icons" style="font-size: 14px; margin-right: 6px; opacity: 0.6; color: var(--accent);">add_circle_outline</span>
-                        ${task.name}
+                        ${taskName}
                     </div>
-                    <input type="text" value="${task.name}" class="task-stock-edit-input" oninput="app.onTaskInputChange(${index}, this)" style="display: none;">
+                    <input type="text" value="${taskName}" class="task-stock-edit-input" oninput="app.onTaskInputChange(${index}, this)" style="display: none;">
                     <button class="task-stock-edit-btn" onclick="app.editTaskStockItem(${index})" title="編集">
                         <span class="material-icons">edit</span>
                     </button>
@@ -3311,11 +3357,11 @@ class NippoApp {
     }
 
     onTaskInputChange(index, inputElement) {
-        const originalValue = inputElement.dataset.originalValue || this.tempTaskStock[index].name;
+        const originalValue = inputElement.dataset.originalValue || this.tempTaskStock[index];
         const currentValue = inputElement.value.trim();
         
         if (currentValue !== originalValue) {
-            this.tempTaskStock[index].name = currentValue;
+            this.tempTaskStock[index] = currentValue;
             this.hasTaskStockChanges = true;
             this.updateTaskStockSaveButton();
             
@@ -3344,7 +3390,7 @@ class NippoApp {
             editBtn.title = '入力終了';
             
             // 編集前の値を保存
-            input.dataset.originalValue = this.tempTaskStock[index].name;
+            input.dataset.originalValue = this.tempTaskStock[index];  // 文字列として取得
         } else {
             // 入力終了：表示モードに戻る
             nameDiv.style.display = 'block';
@@ -3358,15 +3404,16 @@ class NippoApp {
         const input = document.getElementById('task-stock-input');
         const name = input.value.trim();
         if (name) {
-            this.tempTaskStock.push({ name });
+            this.tempTaskStock.push(name);  // 文字列として追加
             input.value = '';
             this.hasTaskStockChanges = true;
+            console.log('タスクストック追加後:', this.tempTaskStock);
             this.renderTaskStock();
         }
     }
 
     updateTempTask(index, newName) {
-        this.tempTaskStock[index].name = newName;
+        this.tempTaskStock[index] = newName;  // 文字列として更新
         this.hasTaskStockChanges = true;
         this.updateTaskStockSaveButton();
     }
@@ -4348,6 +4395,57 @@ class NippoApp {
         const hasChanges = JSON.stringify(this.tagStock) !== JSON.stringify(this.tempTagStock);
         this.hasTagStockChanges = hasChanges;
         this.updateTagStockSaveButton();
+    }
+
+    async addTaskNameToStock() {
+        const taskNameInput = document.getElementById('edit-task-name');
+        const taskName = taskNameInput.value.trim();
+        
+        if (!taskName) {
+            this.showToast('タスク名を入力してください', 'warning');
+            return;
+        }
+        
+        // 休憩タスクはストックに追加しない
+        if (taskName === '休憩' || taskName.includes('休憩')) {
+            this.showToast('休憩タスクはストックに追加できません', 'warning');
+            return;
+        }
+        
+        // 既に存在するかチェック
+        if (this.taskStock.includes(taskName)) {
+            this.showToast('そのタスクは既にストックに存在します', 'warning');
+            return;
+        }
+        
+        try {
+            // タスクストックに追加
+            this.taskStock.push(taskName);
+            // tempTaskStockも更新（存在しない場合は初期化）
+            if (!this.tempTaskStock) {
+                this.tempTaskStock = [...this.taskStock];
+            } else {
+                this.tempTaskStock.push(taskName);
+            }
+            
+            // 変更フラグを設定
+            this.hasTaskStockChanges = true;
+            
+            // すぐにサーバーに保存
+            await this.saveTaskStockChanges();
+            
+            // タスクストックダイアログが開いている場合はUIを更新
+            const dialog = document.getElementById('task-stock-dialog');
+            if (dialog && dialog.classList.contains('show')) {
+                this.renderTaskStock();
+            }
+            
+            this.showToast(`「${taskName}」をタスクストックに追加しました`, 'success');
+            
+        } catch (error) {
+            console.error('タスクストック追加エラー:', error);
+            this.showToast('タスクストックへの追加に失敗しました', 'error');
+        }
     }
 }
 

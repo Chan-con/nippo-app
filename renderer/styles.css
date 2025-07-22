@@ -2509,3 +2509,42 @@ body {
   background: var(--bg-tertiary);
   border-radius: var(--radius-small);
 }
+
+/* 入力フィールドとボタンの組み合わせ */
+.input-with-button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input-with-button .edit-input {
+  flex: 1;
+}
+
+.icon-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  padding: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  transition: all 0.2s ease;
+}
+
+.icon-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-small);
+}
+
+.icon-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
