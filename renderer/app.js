@@ -801,14 +801,54 @@ class NippoApp {
 
     async copyTimeline() {
         try {
-            const result = await window.electronAPI.copyTimeline();
-            if (result.success) {
-                this.showToast('タイムラインをクリップボードにコピーしました');
+            // タイムラインテキストを生成
+            let timelineText = '';
+            
+            if (this.tasks.length === 0) {
+                timelineText = '今日はまだタスクがありません';
             } else {
-                this.showToast(result.error || 'コピーに失敗しました', 'error');
+                // タスクを時系列順で整理
+                const sortedTasks = [...this.tasks].sort((a, b) => {
+                    const timeA = this.convertTo24Hour(a.startTime);
+                    const timeB = this.convertTo24Hour(b.startTime);
+                    return timeA.localeCompare(timeB);
+                });
+
+                timelineText = sortedTasks.map(task => {
+                    const startTime = task.startTime; // 午前/午後形式をそのまま使用
+                    const endTime = task.endTime ? task.endTime : '実行中';
+                    
+                    // 休憩タスクの表示名を整理
+                    let displayName = task.name;
+                    if (task.isBreak) {
+                        if (displayName === '[BREAK] 休憩' || displayName === '🔴 休憩' || displayName === '') {
+                            displayName = '休憩';
+                        } else if (displayName.startsWith('[BREAK] ')) {
+                            displayName = displayName.replace('[BREAK] ', '');
+                        } else if (displayName.startsWith('🔴 休憩: ')) {
+                            displayName = displayName.replace('🔴 休憩: ', '');
+                        }
+                    }
+                    
+                    let line;
+                    if (task.endTime) {
+                        // 完了タスクは「午前 08:59 ~ 午前 12:00」形式
+                        line = `${startTime} ~ ${endTime}\n${displayName}`;
+                    } else {
+                        // 実行中タスクは「午前 08:59 ~ 実行中」形式
+                        line = `${startTime} ~ ${endTime}\n${displayName}`;
+                    }
+                    
+                    return line;
+                }).join('\n');
             }
+            
+            // クリップボードにコピー
+            await navigator.clipboard.writeText(timelineText);
+            this.showToast('タイムラインをクリップボードにコピーしました');
+            
         } catch (error) {
-            console.error('コピーエラー:', error);
+            console.error('タイムラインコピーエラー:', error);
             this.showToast('コピーに失敗しました', 'error');
         }
     }
