@@ -1546,7 +1546,8 @@ class NippoApp {
         taskInput.value = '';
         taskInput.value = taskName;
         taskInput.focus();
-        taskInput.select(); // テキストを選択状態にする
+        // カーソルを最後に移動
+        taskInput.setSelectionRange(taskInput.value.length, taskInput.value.length);
         
         this.showToast(`「${taskName}」をタスク入力にコピーしました`);
     }
