@@ -3720,7 +3720,7 @@ class NippoApp {
                 <div class="timeline-item">
                     <div class="timeline-time">${startTime}</div>
                     <div class="timeline-content">
-                        <div class="timeline-task">${displayName}</div>
+                        <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
                         <div class="timeline-meta">
                             ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
                             ${tagDisplay}
