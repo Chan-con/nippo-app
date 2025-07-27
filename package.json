@@ -7,8 +7,6 @@
     "start": "electron .",
     "build": "electron-builder",
     "package:win": "electron-builder --win",
-    "package:mac": "electron-builder --mac",
-    "package:linux": "electron-builder --linux",
     "dev": "nodemon --exec electron ."
   },
   "keywords": [
@@ -21,8 +19,8 @@
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^26.0.0",
-    "electron-builder": "^24.0.0",
+    "electron": "^22.0.0",
+    "electron-builder": "^22.14.13",
     "nodemon": "^3.0.0"
   },
   "dependencies": {
@@ -45,31 +43,15 @@
       "assets/**/*",
       "node_modules/**/*"
     ],
-    "asarUnpack": [
-      "**\\*.node"
-    ],
-    "extraMetadata": {
-      "devTools": true
-    },
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         },
         {
           "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "icon": "assets/icon.png"
@@ -79,15 +61,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "SlackTracker",
-      "perMachine": true,
-      "allowElevation": true
-    },
-    "mac": {
-      "icon": "assets/icon.png"
-    },
-    "linux": {
-      "icon": "assets/icon.png"
+      "shortcutName": "SlackTracker"
     }
   }
 }
