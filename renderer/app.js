@@ -431,7 +431,15 @@ class NippoApp {
                 console.log('今日のデータ (api/tasks):', todayResult);
                 
                 // 履歴データ（今日の日付で）
-                const today = new Date().toISOString().split('T')[0];
+                const now = new Date();
+                // OSのローカル時間（日本時間）で今日の日付を取得
+                const localDateParts = now.toLocaleDateString('ja-JP', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit',
+                    timeZone: 'Asia/Tokyo'
+                }).split('/');
+                const today = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
                 const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/${today}`);
                 const historyResult = await historyResponse.json();
                 console.log(`履歴データ (api/history/${today}):`, historyResult);
@@ -467,13 +475,22 @@ class NippoApp {
             console.log('手動で今日のタスクのみを表示...');
             const today = new Date();
             const todayString = today.toDateString();
-            const todayISOString = today.toISOString().split('T')[0];
+            // OSのローカル時間（日本時間）で今日の日付を取得
+            const localDateParts = today.toLocaleDateString('ja-JP', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit',
+                timeZone: 'Asia/Tokyo'
+            }).split('/');
+            const todayISOString = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
             
             const originalCount = this.tasks.length;
             this.tasks = this.tasks.filter(task => {
                 if (task.createdAt) {
-                    const taskDate = new Date(task.createdAt).toDateString();
-                    return taskDate === todayString;
+                    const taskDate = new Date(task.createdAt);
+                    // OSのローカル時間（日本時間）で日付を取得してtoDateString形式で比較
+                    const taskDateForComparison = new Date(taskDate.toLocaleDateString('en-US', { timeZone: 'Asia/Tokyo' })).toDateString();
+                    return taskDateForComparison === todayString;
                 }
                 if (task.date) {
                     return task.date === todayISOString;
@@ -486,6 +503,28 @@ class NippoApp {
             this.updateStats();
             this.updateTaskCounter();
             this.showToast(`今日のタスクのみ表示しました (${this.tasks.length}件)`);
+        };
+        window.cleanupTodayHistory = async () => {
+            console.log('30日の履歴をクリーンアップ中...');
+            try {
+                const response = await fetch(`${this.apiBaseUrl}/api/history/cleanup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetDate: '2025-07-30' })
+                });
+                const result = await response.json();
+                console.log('クリーンアップ結果:', result);
+                
+                if (result.success) {
+                    console.log(`✅ ${result.message}`);
+                    // 履歴データリストを更新
+                    await this.loadHistoryDates();
+                } else {
+                    console.error('❌ クリーンアップ失敗:', result.message);
+                }
+            } catch (error) {
+                console.error('クリーンアップAPIエラー:', error);
+            }
         };
     }
 
@@ -542,7 +581,15 @@ class NippoApp {
             if (calendarInput) {
                 // 未来の日付を選択できないように制限
                 const today = new Date();
-                calendarInput.max = today.toISOString().split('T')[0];
+                // OSのローカル時間（日本時間）で今日の日付を取得
+                const localDateParts = today.toLocaleDateString('ja-JP', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit',
+                    timeZone: 'Asia/Tokyo'
+                }).split('/');
+                const todayStr = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
+                calendarInput.max = todayStr;
                 
                 calendarInput.addEventListener('change', (e) => {
                     console.log('日付変更イベントが発生しました:', e.target.value);
@@ -772,7 +819,14 @@ class NippoApp {
         
         const today = new Date();
         const todayString = today.toDateString(); // "Wed Jul 23 2025" 形式
-        const todayISOString = today.toISOString().split('T')[0]; // "2025-07-23" 形式
+        // OSのローカル時間（日本時間）で今日の日付を取得
+        const localDateParts = today.toLocaleDateString('ja-JP', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit',
+            timeZone: 'Asia/Tokyo'
+        }).split('/');
+        const todayISOString = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
         let hasOldTasks = false;
         
         console.log('今日の日付:', todayString, '(ISO:', todayISOString, ')');
@@ -791,10 +845,20 @@ class NippoApp {
             
             // タスクにcreatedAtがある場合はそれをチェック
             if (task.createdAt) {
-                const taskDate = new Date(task.createdAt).toDateString();
-                console.log(`- createdAt: ${task.createdAt} (${taskDate})`);
-                if (taskDate !== todayString) {
-                    console.log(`- 古いタスクを検知: ${taskDate} != ${todayString}`);
+                const taskDate = new Date(task.createdAt);
+                // OSのローカル時間（日本時間）で日付を取得
+                const taskDateString = taskDate.toLocaleDateString('ja-JP', {
+                    year: 'numeric',
+                    month: '2-digit', 
+                    day: '2-digit',
+                    weekday: 'long',
+                    timeZone: 'Asia/Tokyo'
+                });
+                // DateStringと同じ形式で比較するため変換
+                const taskDateForComparison = new Date(taskDate.toLocaleDateString('en-US', { timeZone: 'Asia/Tokyo' })).toDateString();
+                console.log(`- createdAt: ${task.createdAt} (${taskDateForComparison})`);
+                if (taskDateForComparison !== todayString) {
+                    console.log(`- 古いタスクを検知: ${taskDateForComparison} != ${todayString}`);
                     isOldTask = true;
                 }
             }
@@ -827,8 +891,10 @@ class NippoApp {
             // 古いタスクを配列から除外
             this.tasks = this.tasks.filter(task => {
                 if (task.createdAt) {
-                    const taskDate = new Date(task.createdAt).toDateString();
-                    return taskDate === todayString;
+                    const taskDate = new Date(task.createdAt);
+                    // OSのローカル時間（日本時間）で日付を取得してtoDateString形式で比較
+                    const taskDateForComparison = new Date(taskDate.toLocaleDateString('en-US', { timeZone: 'Asia/Tokyo' })).toDateString();
+                    return taskDateForComparison === todayString;
                 }
                 if (task.date) {
                     return task.date === todayISOString;
@@ -1099,7 +1165,15 @@ class NippoApp {
                     // 今日の日付でタスクをフィルタリング
                     const today = new Date();
                     const todayString = today.toDateString(); // "Wed Jul 23 2025" 形式
-                    const todayISOString = today.toISOString().split('T')[0]; // "2025-07-23" 形式
+                    // UTC時差問題を避けるためにローカル時間を使用
+                    // OSのローカル時間（日本時間）で今日の日付を取得
+                    const localDateParts = today.toLocaleDateString('ja-JP', { 
+                        year: 'numeric', 
+                        month: '2-digit', 
+                        day: '2-digit',
+                        timeZone: 'Asia/Tokyo'
+                    }).split('/');
+                    const todayISOString = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
                     
                     console.log('今日の日付フィルタ:', todayString, '(ISO:', todayISOString, ')');
                     
@@ -1107,9 +1181,11 @@ class NippoApp {
                     const todayTasks = allTasks.filter(task => {
                         // createdAtによる判定
                         if (task.createdAt) {
-                            const taskDate = new Date(task.createdAt).toDateString();
-                            const isToday = taskDate === todayString;
-                            console.log(`タスク "${task.name}": createdAt=${task.createdAt}, taskDate=${taskDate}, isToday=${isToday}`);
+                            const taskDate = new Date(task.createdAt);
+                            // OSのローカル時間（日本時間）で日付を取得してtoDateString形式で比較
+                            const taskDateForComparison = new Date(taskDate.toLocaleDateString('en-US', { timeZone: 'Asia/Tokyo' })).toDateString();
+                            const isToday = taskDateForComparison === todayString;
+                            console.log(`タスク "${task.name}": createdAt=${task.createdAt}, taskDate=${taskDateForComparison}, isToday=${isToday}`);
                             return isToday;
                         }
                         
@@ -2359,8 +2435,11 @@ class NippoApp {
     async generateTagSummary() {
         const summaryContainer = document.getElementById('tag-summary');
         
-        if (this.tasks.length === 0) {
-            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">今日はまだタスクがありません</p>';
+        // 全タスクデータを取得（現在の日付 + 全履歴）
+        const allTasks = await this.getAllTasksIncludingHistory();
+        
+        if (allTasks.length === 0) {
+            summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">まだタスクがありません</p>';
             return;
         }
 
@@ -2368,25 +2447,59 @@ class NippoApp {
         const tagData = new Map();
         
         // 完了したタスクのみを対象とする
-        const completedTasks = this.tasks.filter(task => task.endTime && !task.isBreak);
+        const completedTasks = allTasks.filter(task => task.endTime && !task.isBreak);
+        
+        // デバッグ用: 完了したタスクの詳細を確認
+        console.log('完了したタスク数:', completedTasks.length);
+        console.log('完了したタスクの詳細情報:');
+        completedTasks.forEach((task, index) => {
+            const taskName = task.name || task.title || 'unnamed task';
+            console.log(`タスク${index + 1}:`, JSON.stringify({
+                name: taskName,
+                tag: task.tag,
+                hasTag: !!task.tag,
+                tagType: typeof task.tag,
+                date: task.date,
+                taskKeys: Object.keys(task),
+                endTime: task.endTime,
+                isBreak: task.isBreak
+            }, null, 2));
+        });
         
         completedTasks.forEach(task => {
-            if (task.tag) {
+            // デバッグ用: タスクオブジェクト全体を確認（最初の1件のみ）
+            if (completedTasks.indexOf(task) === 0) {
+                console.log('最初のタスクオブジェクト全体:', JSON.stringify(task, null, 2));
+            }
+            
+            // タスク名を取得（nameまたはtitleプロパティ）
+            const taskName = task.name || task.title || 'unnamed task';
+            
+            // タグがnull、undefined、空文字の場合はスキップ
+            // 他の可能性のあるプロパティ名もチェック
+            const tagValue = task.tag || task.tags || task.category || task.type;
+            
+            if (tagValue && typeof tagValue === 'string' && tagValue.trim() !== '') {
+                console.log(`タスク "${taskName}" のタグ値:`, tagValue);
+                
                 const duration = this.calculateDurationInMinutes(task.startTime, task.endTime);
-                if (!tagData.has(task.tag)) {
-                    tagData.set(task.tag, {
+                if (!tagData.has(tagValue)) {
+                    tagData.set(tagValue, {
                         totalMinutes: 0,
                         tasks: []
                     });
                 }
-                const data = tagData.get(task.tag);
+                const data = tagData.get(tagValue);
                 data.totalMinutes += duration;
                 data.tasks.push({
-                    name: task.name,
+                    name: taskName, // 修正: nameまたはtitleを使用
                     startTime: task.startTime,
                     endTime: task.endTime,
-                    duration: this.calculateDuration(task.startTime, task.endTime)
+                    duration: this.calculateDuration(task.startTime, task.endTime),
+                    date: task.date || 'today' // 日付情報を追加
                 });
+            } else {
+                console.log(`タスク "${taskName}" にはタグがありません。利用可能なプロパティ:`, Object.keys(task));
             }
         });
 
@@ -2395,6 +2508,16 @@ class NippoApp {
             summaryContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">タグが設定されたタスクがありません</p>';
             return;
         }
+
+        // デバッグ用: 集計されたタグデータを確認
+        console.log('集計されたタグデータ:');
+        Array.from(tagData.entries()).forEach(([tagName, data]) => {
+            console.log(`タグ: ${tagName}`, JSON.stringify({
+                tagName,
+                totalMinutes: data.totalMinutes,
+                taskCount: data.tasks.length
+            }, null, 2));
+        });
 
         // タグストック順序に従って並び替え
         const tagEntries = Array.from(tagData.entries());
@@ -2451,8 +2574,27 @@ class NippoApp {
                 <div class="tag-tab-panel${isActive}" id="${panelId}">
                     <div class="tag-tasks">`;
             
-            // タスク一覧
-            tagInfo.tasks.forEach(task => {
+            // タスク一覧（日付別にソート）
+            const sortedTasks = tagInfo.tasks.sort((a, b) => {
+                if (a.date === 'today' && b.date !== 'today') return -1;
+                if (a.date !== 'today' && b.date === 'today') return 1;
+                if (a.date !== 'today' && b.date !== 'today') {
+                    return b.date.localeCompare(a.date); // 新しい日付順
+                }
+                return 0;
+            });
+            
+            let currentDate = '';
+            sortedTasks.forEach(task => {
+                const taskDate = task.date === 'today' ? '今日' : task.date;
+                if (taskDate !== currentDate) {
+                    if (currentDate !== '') {
+                        panelsHTML += '<div class="date-separator"></div>';
+                    }
+                    panelsHTML += `<div class="date-header">${taskDate}</div>`;
+                    currentDate = taskDate;
+                }
+                
                 const timeRange = `${this.formatTime(task.startTime)} - ${this.formatTime(task.endTime)}`;
                 panelsHTML += `
                     <div class="task-item">
@@ -2468,7 +2610,7 @@ class NippoApp {
             panelsHTML += `
                     </div>
                     <div class="tag-total">
-                        <span>合計: ${durationText}</span>
+                        <span>合計: ${durationText} (履歴含む)</span>
                         <button class="tag-copy-btn" onclick="app.copyTagSummary('${tagName}', '${durationText}')" title="タグ名と時間をコピー">
                             <span class="material-icons">content_copy</span>
                             コピー
@@ -2482,6 +2624,64 @@ class NippoApp {
         panelsHTML += '</div>';
         
         summaryContainer.innerHTML = tabsHTML + panelsHTML;
+    }
+
+    // 全てのタスクデータを取得（現在の日付 + 全履歴）
+    async getAllTasksIncludingHistory() {
+        try {
+            let allTasks = [];
+            
+            // 現在のタスクを追加（今日モードの場合）
+            if (this.currentMode === 'today') {
+                allTasks = [...this.tasks.map(task => ({ ...task, date: 'today' }))];
+                console.log('今日モードのタスクを追加:', allTasks.length, '件');
+            }
+            
+            // 全履歴データを取得
+            const historyResponse = await fetch(`${this.apiBaseUrl}/api/history/dates`);
+            if (historyResponse.ok) {
+                const historyResult = await historyResponse.json();
+                
+                if (historyResult.success && historyResult.dates.length > 0) {
+                    for (const dateString of historyResult.dates) {
+                        const dayResponse = await fetch(`${this.apiBaseUrl}/api/history/${dateString}`);
+                        if (dayResponse.ok) {
+                            const dayResult = await dayResponse.json();
+                            if (dayResult.success && dayResult.data && dayResult.data.tasks) {
+                                const historyTasks = dayResult.data.tasks.map(task => ({
+                                    ...task,
+                                    date: dateString
+                                }));
+                                allTasks = [...allTasks, ...historyTasks];
+                                console.log(`履歴データ追加 ${dateString}:`, historyTasks.length, '件');
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // デバッグ用: 取得したタスクの詳細を確認
+            console.log(`全タスクデータ取得完了: ${allTasks.length}件（履歴含む）`);
+            console.log('取得したタスクの詳細:');
+            allTasks.forEach((task, index) => {
+                if (index < 5) { // 最初の5件のみ詳細表示
+                    const taskName = task.name || task.title || 'unnamed task';
+                    console.log(`タスク${index + 1}:`, JSON.stringify({
+                        name: taskName,
+                        tag: task.tag,
+                        date: task.date,
+                        endTime: task.endTime,
+                        isBreak: task.isBreak,
+                        taskKeys: Object.keys(task)
+                    }, null, 2));
+                }
+            });
+            
+            return allTasks;
+        } catch (error) {
+            console.error('全タスクデータ取得エラー:', error);
+            return this.tasks; // エラー時は現在のタスクのみ返す
+        }
     }
 
     // タグタブ切り替え機能
@@ -3498,6 +3698,7 @@ class NippoApp {
     
     // 履歴機能
     switchToTodayMode() {
+        console.log('今日モードに切り替え中...');
         this.currentMode = 'today';
         this.currentDate = null; // 今日の日付を示す
         
@@ -3505,6 +3706,7 @@ class NippoApp {
         const now = new Date();
         this.lastKnownDate = now.toDateString();
         console.log('今日モード切り替え時の日付記録:', this.lastKnownDate);
+        console.log('実際の今日の日付:', now.toString());
         
         // UI更新
         document.getElementById('today-btn').classList.add('active');
@@ -3516,6 +3718,7 @@ class NippoApp {
         document.getElementById('break-btn').style.display = 'flex';
         
         // 今日のタスクを再読み込み
+        console.log('今日モード切り替え - 今日のタスクを読み込み中...');
         this.loadTasks();
         
         // 日付表示を更新
@@ -3538,7 +3741,9 @@ class NippoApp {
         // 履歴日付を読み込み
         this.loadHistoryDates();
         
-        // 既に日付が選択されている場合は、そのデータを読み込む
+        // 今日モードから履歴モードに切り替える際の処理
+        const now = new Date();
+        const todayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const calendarInput = document.getElementById('calendar-date-input');
         const hasSelectedDate = calendarInput && calendarInput.value;
         const hasCurrentDate = this.currentDate;
@@ -3547,12 +3752,26 @@ class NippoApp {
             hasSelectedDate,
             hasCurrentDate,
             calendarInputValue: calendarInput?.value,
-            currentDate: this.currentDate
+            currentDate: this.currentDate,
+            todayString,
+            actualDate: now.toString()
         });
         
-        if (hasSelectedDate || hasCurrentDate) {
-            const dateToLoad = this.currentDate || calendarInput.value;
-            console.log('履歴モード切り替え時に既存の日付データを読み込み:', dateToLoad);
+        // 日付が選択されている場合で、それが今日以外ならそれを使用
+        let dateToLoad = null;
+        if (hasCurrentDate && this.currentDate !== todayString) {
+            dateToLoad = this.currentDate;
+        } else if (hasSelectedDate && calendarInput.value !== todayString) {
+            dateToLoad = calendarInput.value;
+        }
+        
+        if (dateToLoad) {
+            console.log('履歴モード切り替え時に日付データを読み込み:', dateToLoad);
+            
+            // カレンダー入力フィールドに日付を設定
+            if (calendarInput) {
+                calendarInput.value = dateToLoad;
+            }
             
             // データを読み込み
             this.loadHistoryData(dateToLoad);
@@ -3571,7 +3790,7 @@ class NippoApp {
             document.getElementById('current-date').textContent = displayDate;
             console.log('日付表示を更新:', displayDate);
         } else {
-            console.log('履歴モード切り替え時に選択された日付なし - 空の状態を表示');
+            console.log('履歴モード切り替え時に選択された過去日付なし - 空の状態を表示');
             // 履歴が選択されていない状態のUI
             this.clearHistoryView();
         }
@@ -3625,6 +3844,17 @@ class NippoApp {
         // 履歴モードでない場合は処理をスキップ
         if (this.currentMode !== 'history') {
             console.log('履歴モードでないため、日付選択処理をスキップ');
+            return;
+        }
+        
+        // 今日の日付が選択された場合は今日モードに戻す
+        const now = new Date();
+        const todayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        
+        if (dateString === todayString) {
+            console.log('今日の日付が選択されたため、今日モードに切り替えます');
+            this.showToast('今日のデータは「今日」モードでご確認ください', 'warning');
+            this.switchToTodayMode();
             return;
         }
         

@@ -668,6 +668,29 @@ body {
   font-size: 16px;
 }
 
+/* 日付セパレーター */
+.date-header {
+  margin: 16px 0 8px 0;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-small);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent);
+}
+
+.date-header:first-child {
+  margin-top: 0;
+}
+
+.date-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
+  opacity: 0.5;
+}
+
 .tag-date-group {
   margin-bottom: 16px;
 }

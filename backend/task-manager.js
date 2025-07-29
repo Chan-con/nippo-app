@@ -113,9 +113,15 @@ class TaskManager {
                     taskDate = task.taskDate;
                 } else if (task.createdAt) {
                     const createdDate = new Date(task.createdAt);
-                    // 日本時間（UTC+9）に変換してから日付を取得
-                    const jstDate = new Date(createdDate.getTime() + (9 * 60 * 60 * 1000));
-                    taskDate = `${jstDate.getFullYear()}-${String(jstDate.getMonth() + 1).padStart(2, '0')}-${String(jstDate.getDate()).padStart(2, '0')}`;
+                    // OSのローカル時間（日本時間）で日付を確実に取得
+                    // toLocaleDateStringを使用してローカルタイムゾーンでの日付を取得
+                    const localDateParts = createdDate.toLocaleDateString('ja-JP', { 
+                        year: 'numeric', 
+                        month: '2-digit', 
+                        day: '2-digit',
+                        timeZone: 'Asia/Tokyo' // 明示的に日本時間を指定
+                    }).split('/');
+                    taskDate = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
                 }
                 
                 if (!tasksByDate[taskDate]) {
@@ -199,9 +205,14 @@ class TaskManager {
                         } else if (task.createdAt) {
                             const createdDate = new Date(task.createdAt);
                             if (!isNaN(createdDate.getTime())) {
-                                // 日本時間（UTC+9）に変換してから日付を取得
-                                const jstDate = new Date(createdDate.getTime() + (9 * 60 * 60 * 1000));
-                                taskDate = `${jstDate.getFullYear()}-${String(jstDate.getMonth() + 1).padStart(2, '0')}-${String(jstDate.getDate()).padStart(2, '0')}`;
+                                // OSのローカル時間（日本時間）で日付を確実に取得
+                                const localDateParts = createdDate.toLocaleDateString('ja-JP', { 
+                                    year: 'numeric', 
+                                    month: '2-digit', 
+                                    day: '2-digit',
+                                    timeZone: 'Asia/Tokyo' // 明示的に日本時間を指定
+                                }).split('/');
+                                taskDate = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
                             }
                         }
                         
@@ -289,12 +300,16 @@ class TaskManager {
     }
 
     getTodayDateString() {
-        /**今日の日付文字列を取得 (YYYY-MM-DD形式) */
+        /**今日の日付文字列を取得 (YYYY-MM-DD形式) - OSのローカル時間（日本時間）を使用 */
         const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+        // OSのローカル時間（日本時間）で日付を確実に取得
+        const localDateParts = today.toLocaleDateString('ja-JP', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit',
+            timeZone: 'Asia/Tokyo' // 明示的に日本時間を指定
+        }).split('/');
+        return `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
     }
 
     getTodayDataFile() {
@@ -791,7 +806,7 @@ class TaskManager {
     }
 
     async getAllHistoryDates() {
-        /**履歴の日付一覧を取得 */
+        /**履歴の日付一覧を取得（今日の日付は除外） */
         try {
             console.log('getAllHistoryDates開始');
             await this.initialize();
@@ -800,19 +815,112 @@ class TaskManager {
             const files = await fs.readdir(this.historyDir);
             console.log('読み込んだファイル一覧:', files);
             
+            // 今日の日付を取得
+            const todayString = this.getTodayDateString();
+            console.log('今日の日付:', todayString);
+            
             const dates = files
                 .filter(file => file.startsWith('data_') && file.endsWith('.json'))
                 .map(file => file.replace('data_', '').replace('.json', ''))
+                .filter(date => date !== todayString) // 今日の日付を除外
                 .sort()
                 .reverse(); // 新しい日付から並べる
             
-            console.log('抽出した日付一覧:', dates);
+            console.log('抽出した日付一覧（今日を除く）:', dates);
             const result = { success: true, dates: dates };
             console.log('getAllHistoryDates結果:', result);
             return result;
         } catch (error) {
             console.error(`履歴日付取得エラー: ${error}`);
             return { success: false, dates: [] };
+        }
+    }
+
+    async cleanupHistoryByDate(targetDate) {
+        /**指定された日付の履歴ファイルから、その日付以外のタスクを除去 */
+        try {
+            console.log(`履歴クリーンアップ開始: ${targetDate}`);
+            await this.initialize();
+            
+            const historyFile = path.join(this.historyDir, `data_${targetDate}.json`);
+            
+            // ファイルの存在確認
+            try {
+                await fs.access(historyFile);
+            } catch (error) {
+                console.log(`履歴ファイルが存在しません: ${historyFile}`);
+                return { success: true, message: 'ファイルが存在しないため、クリーンアップ不要です' };
+            }
+            
+            // ファイルを読み込み
+            const content = await fs.readFile(historyFile, 'utf-8');
+            const data = JSON.parse(content);
+            
+            if (!data.tasks || data.tasks.length === 0) {
+                console.log('タスクが存在しないため、クリーンアップ不要です');
+                return { success: true, message: 'タスクが存在しないため、クリーンアップ不要です' };
+            }
+            
+            console.log(`クリーンアップ前のタスク数: ${data.tasks.length}`);
+            console.log('クリーンアップ前のタスク:', data.tasks.map(t => ({
+                id: t.id,
+                name: t.name || t.title,
+                createdAt: t.createdAt,
+                startTime: t.startTime
+            })));
+            
+            // 指定された日付のタスクのみを残す
+            const targetDateISO = targetDate; // "2025-07-30" 形式
+            const filteredTasks = data.tasks.filter(task => {
+                if (task.createdAt) {
+                    const taskDate = new Date(task.createdAt);
+                    // OSのローカル時間（日本時間）で日付を確実に取得
+                    const localDateParts = taskDate.toLocaleDateString('ja-JP', { 
+                        year: 'numeric', 
+                        month: '2-digit', 
+                        day: '2-digit',
+                        timeZone: 'Asia/Tokyo' // 明示的に日本時間を指定
+                    }).split('/');
+                    const taskDateISO = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
+                    const isValidTask = taskDateISO === targetDateISO;
+                    
+                    if (!isValidTask) {
+                        console.log(`除外するタスク: ${task.name || task.title} (作成日時: ${task.createdAt}, 期待日付: ${targetDateISO}, 実際日付: ${taskDateISO})`);
+                    }
+                    
+                    return isValidTask;
+                }
+                
+                // createdAtがない場合は残す（安全のため）
+                console.log(`createdAtがないタスクは残します: ${task.name || task.title}`);
+                return true;
+            });
+            
+            console.log(`クリーンアップ後のタスク数: ${filteredTasks.length}`);
+            
+            // クリーンアップ結果をファイルに書き戻し
+            const cleanedData = {
+                ...data,
+                tasks: filteredTasks,
+                updatedAt: new Date().toISOString()
+            };
+            
+            await fs.writeFile(historyFile, JSON.stringify(cleanedData, null, 2), 'utf-8');
+            
+            const removedCount = data.tasks.length - filteredTasks.length;
+            console.log(`履歴クリーンアップ完了: ${removedCount}件のタスクを除去しました`);
+            
+            return { 
+                success: true, 
+                message: `${removedCount}件の不正なタスクを除去しました`,
+                originalCount: data.tasks.length,
+                cleanedCount: filteredTasks.length,
+                removedCount: removedCount
+            };
+            
+        } catch (error) {
+            console.error(`履歴クリーンアップエラー: ${error}`);
+            return { success: false, message: 'クリーンアップに失敗しました', error: error.message };
         }
     }
 
@@ -2217,6 +2325,18 @@ function createApp(taskManagerInstance) {
 
     app.get('/api/health', (req, res) => {
         res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+    });
+
+    // 履歴データクリーンアップ API
+    app.post('/api/history/cleanup', async (req, res) => {
+        try {
+            const { targetDate } = req.body;
+            const result = await taskManager.cleanupHistoryByDate(targetDate);
+            res.json(result);
+        } catch (error) {
+            console.error('履歴クリーンアップエラー:', error);
+            res.status(500).json({ success: false, message: '履歴クリーンアップに失敗しました' });
+        }
     });
 
     return { app, taskManager };
