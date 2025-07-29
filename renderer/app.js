@@ -3708,6 +3708,13 @@ class NippoApp {
         console.log('今日モード切り替え時の日付記録:', this.lastKnownDate);
         console.log('実際の今日の日付:', now.toString());
         
+        // 履歴の日付入力フィールドをクリア（ユーザーの混乱を防ぐ）
+        const calendarInput = document.getElementById('calendar-date-input');
+        if (calendarInput) {
+            calendarInput.value = '';
+            console.log('今日モードに切り替え時に日付入力フィールドをクリアしました');
+        }
+        
         // UI更新
         document.getElementById('today-btn').classList.add('active');
         document.getElementById('history-btn').classList.remove('active');
@@ -3729,6 +3736,13 @@ class NippoApp {
         console.log('履歴モードに切り替え中...');
         this.currentMode = 'history';
         
+        // 履歴モードに切り替え時に日付入力フィールドをクリア（フレッシュスタート）
+        const calendarInput = document.getElementById('calendar-date-input');
+        if (calendarInput) {
+            calendarInput.value = '';
+            console.log('履歴モード切り替え時に日付入力フィールドをクリアしました');
+        }
+        
         // UI更新
         document.getElementById('today-btn').classList.remove('active');
         document.getElementById('history-btn').classList.add('active');
@@ -3741,59 +3755,13 @@ class NippoApp {
         // 履歴日付を読み込み
         this.loadHistoryDates();
         
-        // 今日モードから履歴モードに切り替える際の処理
-        const now = new Date();
-        const todayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const calendarInput = document.getElementById('calendar-date-input');
-        const hasSelectedDate = calendarInput && calendarInput.value;
-        const hasCurrentDate = this.currentDate;
+        // 内部状態をクリア
+        this.currentDate = null;
+        this.selectedDate = null;
         
-        console.log('履歴モード切り替え時の状態確認:', {
-            hasSelectedDate,
-            hasCurrentDate,
-            calendarInputValue: calendarInput?.value,
-            currentDate: this.currentDate,
-            todayString,
-            actualDate: now.toString()
-        });
-        
-        // 日付が選択されている場合で、それが今日以外ならそれを使用
-        let dateToLoad = null;
-        if (hasCurrentDate && this.currentDate !== todayString) {
-            dateToLoad = this.currentDate;
-        } else if (hasSelectedDate && calendarInput.value !== todayString) {
-            dateToLoad = calendarInput.value;
-        }
-        
-        if (dateToLoad) {
-            console.log('履歴モード切り替え時に日付データを読み込み:', dateToLoad);
-            
-            // カレンダー入力フィールドに日付を設定
-            if (calendarInput) {
-                calendarInput.value = dateToLoad;
-            }
-            
-            // データを読み込み
-            this.loadHistoryData(dateToLoad);
-            
-            // 内部状態を同期
-            this.currentDate = dateToLoad;
-            
-            // 日付表示を更新
-            const date = new Date(dateToLoad);
-            const displayDate = date.toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                weekday: 'long'
-            });
-            document.getElementById('current-date').textContent = displayDate;
-            console.log('日付表示を更新:', displayDate);
-        } else {
-            console.log('履歴モード切り替え時に選択された過去日付なし - 空の状態を表示');
-            // 履歴が選択されていない状態のUI
-            this.clearHistoryView();
-        }
+        console.log('履歴モード切り替え時に選択された過去日付なし - 空の状態を表示');
+        // 履歴が選択されていない状態のUI
+        this.clearHistoryView();
     }
     
     clearHistoryView() {
@@ -3854,6 +3822,14 @@ class NippoApp {
         if (dateString === todayString) {
             console.log('今日の日付が選択されたため、今日モードに切り替えます');
             this.showToast('今日のデータは「今日」モードでご確認ください', 'warning');
+            
+            // 日付入力フィールドをクリア
+            const calendarInput = document.getElementById('calendar-date-input');
+            if (calendarInput) {
+                calendarInput.value = '';
+                console.log('日付入力フィールドをクリアしました');
+            }
+            
             this.switchToTodayMode();
             return;
         }
