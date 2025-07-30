@@ -1867,6 +1867,7 @@ class NippoApp {
         const dialog = document.getElementById('edit-dialog');
         dialog.classList.remove('show');
         this.editingTaskId = null;
+        this.editingDate = null; // 履歴タスクの編集状態もクリア
     }
 
     async saveTask() {
@@ -1997,36 +1998,94 @@ class NippoApp {
         }, duration);
     }
 
-    deleteCurrentTask() {
-        // タスクIDの比較を柔軟に行う
-        const task = this.tasks.find(t => {
-            // まず完全一致を試行
-            if (t.id === this.editingTaskId) {
-                return true;
+    async deleteCurrentTask() {
+        let task = null;
+        let taskName = 'タスク';
+        
+        // 履歴タスクの場合は履歴データから取得
+        if (this.editingDate) {
+            try {
+                console.log('履歴タスクの削除処理開始:', { editingTaskId: this.editingTaskId, editingDate: this.editingDate });
+                
+                // 履歴データを取得
+                const response = await fetch(`${this.apiBaseUrl}/api/history/${this.editingDate}`);
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data && result.data.tasks) {
+                        // 履歴データからタスクを検索
+                        task = result.data.tasks.find(t => {
+                            // まず完全一致を試行
+                            if (t.id === this.editingTaskId) {
+                                return true;
+                            }
+                            
+                            // 文字列と数値の混在パターンを処理
+                            if (typeof t.id === 'string' && typeof this.editingTaskId === 'number') {
+                                const match = t.id.match(/\d+/);
+                                const taskIdNum = match ? parseInt(match[0]) : null;
+                                return taskIdNum === this.editingTaskId;
+                            }
+                            
+                            if (typeof t.id === 'number' && typeof this.editingTaskId === 'string') {
+                                const match = this.editingTaskId.match(/\d+/);
+                                const editingIdNum = match ? parseInt(match[0]) : null;
+                                return t.id === editingIdNum;
+                            }
+                            
+                            return false;
+                        });
+                        
+                        if (task) {
+                            taskName = task.name || task.title || 'タスク';
+                            console.log('履歴タスクが見つかりました:', task);
+                        } else {
+                            console.error('履歴データからタスクが見つかりません:', {
+                                editingTaskId: this.editingTaskId,
+                                availableHistoryTasks: result.data.tasks.map(t => ({ id: t.id, type: typeof t.id, name: t.name || t.title }))
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('履歴データの取得エラー:', error);
             }
+        } else {
+            // 今日のタスクの場合は既存の処理
+            task = this.tasks.find(t => {
+                // まず完全一致を試行
+                if (t.id === this.editingTaskId) {
+                    return true;
+                }
+                
+                // 文字列と数値の混在パターンを処理
+                if (typeof t.id === 'string' && typeof this.editingTaskId === 'number') {
+                    const match = t.id.match(/\d+/);
+                    const taskIdNum = match ? parseInt(match[0]) : null;
+                    return taskIdNum === this.editingTaskId;
+                }
+                
+                if (typeof t.id === 'number' && typeof this.editingTaskId === 'string') {
+                    const match = this.editingTaskId.match(/\d+/);
+                    const editingIdNum = match ? parseInt(match[0]) : null;
+                    return t.id === editingIdNum;
+                }
+                
+                return false;
+            });
             
-            // 文字列と数値の混在パターンを処理
-            if (typeof t.id === 'string' && typeof this.editingTaskId === 'number') {
-                const match = t.id.match(/\d+/);
-                const taskIdNum = match ? parseInt(match[0]) : null;
-                return taskIdNum === this.editingTaskId;
+            if (task) {
+                taskName = task.name || task.title || 'タスク';
+            } else {
+                console.error('今日のタスクが見つかりません:', {
+                    editingTaskId: this.editingTaskId,
+                    editingTaskIdType: typeof this.editingTaskId,
+                    availableTasks: this.tasks.map(t => ({ id: t.id, type: typeof t.id, name: t.name }))
+                });
             }
-            
-            if (typeof t.id === 'number' && typeof this.editingTaskId === 'string') {
-                const match = this.editingTaskId.match(/\d+/);
-                const editingIdNum = match ? parseInt(match[0]) : null;
-                return t.id === editingIdNum;
-            }
-            
-            return false;
-        });
+        }
         
         if (!task) {
-            console.error('削除対象のタスクが見つかりません:', {
-                editingTaskId: this.editingTaskId,
-                editingTaskIdType: typeof this.editingTaskId,
-                availableTasks: this.tasks.map(t => ({ id: t.id, type: typeof t.id, name: t.name }))
-            });
+            this.showToast('削除対象のタスクが見つかりません', 'error');
             return;
         }
 
@@ -2035,7 +2094,6 @@ class NippoApp {
         const message = document.getElementById('confirm-message');
         
         title.textContent = 'タスクを削除';
-        const taskName = task.name || task.title || 'タスク';
         message.textContent = `タスク「${taskName}」を削除しますか？この操作は元に戻せません。`;
         
         // 履歴タスクか今日のタスクかで処理を分ける
@@ -2106,17 +2164,30 @@ class NippoApp {
         try {
             const taskId = this.pendingTaskId;
             const dateString = this.pendingDate;
-            console.log('履歴タスク削除開始:', { taskId, dateString });
+            console.log('履歴タスク削除開始:', { 
+                taskId, 
+                dateString, 
+                taskIdType: typeof taskId,
+                dateStringType: typeof dateString 
+            });
             
             if (taskId === null || taskId === undefined || !dateString) {
+                console.error('削除対象のタスクまたは日付が特定できません:', { taskId, dateString });
                 this.showToast('削除対象のタスクまたは日付が特定できません', 'error');
                 return;
             }
             
+            console.log('履歴タスク削除APIを呼び出し中:', `${this.apiBaseUrl}/api/history/${dateString}/tasks/${taskId}`);
             const response = await fetch(`${this.apiBaseUrl}/api/history/${dateString}/tasks/${taskId}`, { method: 'DELETE' });
+            
+            console.log('履歴タスク削除APIレスポンス:', { status: response.status, ok: response.ok });
+            
             if (response.ok) {
                 const result = await response.json();
+                console.log('履歴タスク削除APIレスポンス内容:', result);
+                
                 if (result.success) {
+                    console.log('履歴タスクの削除に成功、データを再読み込み中...');
                     // 履歴データを再読み込み
                     await this.loadHistoryData(dateString);
                     
@@ -2128,13 +2199,19 @@ class NippoApp {
                     
                     this.showToast('履歴タスクを削除しました');
                 } else {
-                    this.showToast('履歴タスクの削除に失敗しました', 'error');
+                    console.error('履歴タスクの削除に失敗:', result);
+                    this.showToast(result.message || '履歴タスクの削除に失敗しました', 'error');
                 }
+            } else {
+                const errorText = await response.text();
+                console.error('履歴タスク削除APIエラー:', { status: response.status, statusText: response.statusText, errorText });
+                this.showToast(`履歴タスクの削除に失敗しました (${response.status})`, 'error');
             }
         } catch (error) {
             console.error('履歴タスク削除エラー:', error);
             this.showToast('履歴タスクの削除に失敗しました', 'error');
         } finally {
+            console.log('履歴タスク削除処理のクリーンアップ');
             this.pendingTaskId = null; // クリーンアップ
             this.pendingDate = null; // クリーンアップ
         }
