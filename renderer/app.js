@@ -25,6 +25,7 @@ class NippoApp {
         this.selectedDate = null;
         this.currentDate = null; // 統一された日付管理（null = 今日）
         this.historyDates = [];
+        this.historyData = {}; // 履歴データの初期化
         this.lastKnownDate = null; // 日付変更検知用
         this.init();
     }
@@ -3857,7 +3858,7 @@ class NippoApp {
         document.getElementById('productivity').textContent = '-';
         
         // 履歴日付表示をリセット
-        document.getElementById('history-date-display').textContent = '日付を選択';
+        document.getElementById('current-date').textContent = '日付を選択';
     }
     
     async loadHistoryDates() {
@@ -4402,17 +4403,21 @@ class NippoApp {
             }
         });
 
-        // 履歴データをチェック
-        for (const [dateKey, historyTasks] of Object.entries(this.historyData)) {
-            if (Array.isArray(historyTasks)) {
-                historyTasks.forEach(task => {
-                    if (task.tag && !currentTagNames.includes(task.tag)) {
-                        console.log(`Resetting invalid tag "${task.tag}" to null for task on ${dateKey}`);
-                        task.tag = null;
-                        hasChanges = true;
-                    }
-                });
+        // 履歴データをチェック（this.historyDataが存在する場合のみ）
+        if (this.historyData && typeof this.historyData === 'object') {
+            for (const [dateKey, historyTasks] of Object.entries(this.historyData)) {
+                if (Array.isArray(historyTasks)) {
+                    historyTasks.forEach(task => {
+                        if (task.tag && !currentTagNames.includes(task.tag)) {
+                            console.log(`Resetting invalid tag "${task.tag}" to null for task on ${dateKey}`);
+                            task.tag = null;
+                            hasChanges = true;
+                        }
+                    });
+                }
             }
+        } else {
+            console.log('履歴データが初期化されていないため、履歴データのタグ整合性チェックをスキップしました');
         }
 
         // 変更があった場合は保存
