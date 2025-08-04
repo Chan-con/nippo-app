@@ -946,13 +946,26 @@ class NippoApp {
         // 現在実行中のタスクがあるかチェック
         const currentRunningTask = this.tasks.find(task => !task.endTime);
         
+        // 直前のタスクの終了時刻を取得（新しいタスクの開始時刻として使用）
+        let startTime = null;
+        const lastCompletedTask = this.tasks
+            .filter(task => task.endTime) // 終了済みのタスクのみ
+            .sort((a, b) => new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) // 更新日時でソート
+            .pop(); // 最後のタスクを取得
+        
+        if (lastCompletedTask && lastCompletedTask.endTime) {
+            startTime = lastCompletedTask.endTime;
+            console.log(`直前のタスクの終了時刻を新しいタスクの開始時刻に設定: ${startTime}`);
+        }
+        
         try {
             // 統一されたAPI呼び出し（日付パラメータ付き）
             const requestData = { 
                 name: taskName, 
                 isBreak: false,
                 tag: selectedTag || null,
-                dateString: this.currentDate // null = 今日、文字列 = 指定日
+                dateString: this.currentDate, // null = 今日、文字列 = 指定日
+                startTime: startTime // 直前のタスクの終了時刻を開始時刻として設定
             };
             
             console.log('API リクエストデータ:', requestData);
@@ -1024,8 +1037,30 @@ class NippoApp {
         // 現在実行中のタスクがあるかチェック
         const currentRunningTask = this.tasks.find(task => !task.endTime);
         
+        // 直前のタスクの終了時刻を取得（新しい休憩タスクの開始時刻として使用）
+        let startTime = null;
+        const lastCompletedTask = this.tasks
+            .filter(task => task.endTime) // 終了済みのタスクのみ
+            .sort((a, b) => new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) // 更新日時でソート
+            .pop(); // 最後のタスクを取得
+        
+        if (lastCompletedTask && lastCompletedTask.endTime) {
+            startTime = lastCompletedTask.endTime;
+            console.log(`直前のタスクの終了時刻を休憩の開始時刻に設定: ${startTime}`);
+        }
+        
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '休憩', isBreak: true }) });
+            const requestData = { 
+                name: '休憩', 
+                isBreak: true,
+                startTime: startTime // 直前のタスクの終了時刻を開始時刻として設定
+            };
+            
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(requestData) 
+            });
             if (response.ok) {
                 const result = await response.json();
                 if (result.success) {

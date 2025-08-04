@@ -504,17 +504,18 @@ class TaskManager {
         }
     }
 
-    async addTask(taskName, isBreak = false, dateString = null, tag = null) {
+    async addTask(taskName, isBreak = false, dateString = null, tag = null, startTime = null) {
         /**タスクを追加 */
         await this.initialize();
         try {
-            console.log(`add_task開始: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}`);
+            console.log(`add_task開始: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}, startTime=${startTime}`);
             
             const tasks = await this.loadSchedule(dateString);
             console.log(`既存タスク数: ${tasks.length}`);
             
-            const addTime = this.getTimeForDate(dateString);
-            console.log(`追加時刻: ${addTime}`);
+            // 開始時刻を決定：指定された時刻があればそれを使用、なければ現在時刻
+            const addTime = startTime || this.getTimeForDate(dateString);
+            console.log(`使用する開始時刻: ${addTime} (指定時刻: ${startTime}, 現在時刻: ${startTime ? 'スキップ' : this.getTimeForDate(dateString)})`);
             
             // 未終了のタスクがあれば終了時刻を設定
             for (const task of tasks) {
@@ -1723,14 +1724,15 @@ function createApp(taskManagerInstance) {
             const isBreak = data.isBreak || false;
             const dateString = data.dateString || null; // 日付パラメータ追加
             const tag = data.tag || null; // タグパラメータ追加
+            const startTime = data.startTime || null; // 開始時刻パラメータ追加
             
-            console.log(`API - タスク追加リクエスト: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}`);
+            console.log(`API - タスク追加リクエスト: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}, startTime=${startTime}`);
             
             if (!taskName) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
             }
             
-            const newTask = await taskManager.addTask(taskName, isBreak, dateString, tag);
+            const newTask = await taskManager.addTask(taskName, isBreak, dateString, tag, startTime);
             try {
                 console.log(`API - 追加されたタスク: ${JSON.stringify(newTask)}`);
             } catch (error) {
