@@ -19,6 +19,7 @@ class TaskManager {
 
     async initialize() {
         if (!this.initialized) {
+            console.log('TaskManager初期化開始...');
             await this.ensureDataDir();
             
             // 日付変更チェックとアーカイブ処理
@@ -26,6 +27,15 @@ class TaskManager {
             
             // 既存履歴ファイルの混在データ修正（一度だけ実行）
             await this.fixAllMixedDateHistoryFiles();
+            
+            // 履歴の整合性をチェックして欠落した日付を補完
+            try {
+                console.log('履歴整合性チェックを実行します...');
+                await this.ensureHistoryIntegrity();
+                console.log('履歴整合性チェック完了');
+            } catch (error) {
+                console.error('履歴整合性チェックでエラーが発生しましたが、処理を継続します:', error);
+            }
             
             this.initialized = true;
             console.log('TaskManager初期化完了 - データディレクトリ:', this.dataDir);
@@ -813,6 +823,9 @@ class TaskManager {
             await this.initialize();
             console.log('initialize完了 - historyDir:', this.historyDir);
             
+            // まず履歴の整合性をチェックして欠落した日付を補完
+            await this.ensureHistoryIntegrity();
+            
             const files = await fs.readdir(this.historyDir);
             console.log('読み込んだファイル一覧:', files);
             
@@ -944,6 +957,78 @@ class TaskManager {
             console.error(`履歴読み込みエラー: ${error}`);
             return { success: false, message: '履歴の読み込みに失敗しました' };
         }
+    }
+
+    async ensureHistoryIntegrity() {
+        /**履歴の整合性を確保：欠落した日付の空ファイルを作成 */
+        try {
+            console.log('履歴整合性チェック開始...');
+            
+            // 最初の履歴ファイルの日付を取得
+            const files = await fs.readdir(this.historyDir);
+            const historyFiles = files
+                .filter(file => file.startsWith('data_') && file.endsWith('.json'))
+                .map(file => file.replace('data_', '').replace('.json', ''))
+                .sort();
+            
+            if (historyFiles.length === 0) {
+                console.log('履歴ファイルが存在しないため、整合性チェックをスキップ');
+                return;
+            }
+            
+            const startDate = new Date(historyFiles[0]);
+            const today = new Date();
+            
+            // 開始日から昨日まで、1日ずつチェック
+            const currentDate = new Date(startDate);
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            console.log(`履歴整合性チェック範囲: ${this.formatDateForFilename(currentDate)} ～ ${this.formatDateForFilename(yesterday)}`);
+            
+            let createdCount = 0;
+            
+            while (currentDate <= yesterday) {
+                const dateString = this.formatDateForFilename(currentDate);
+                const historyFile = path.join(this.historyDir, `data_${dateString}.json`);
+                
+                const fileExists = await fs.access(historyFile).then(() => true).catch(() => false);
+                
+                if (!fileExists) {
+                    console.log(`欠落した履歴ファイルを作成: ${dateString}`);
+                    
+                    const emptyHistoryData = {
+                        date: dateString,
+                        tasks: [],
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        note: '自動生成された空の履歴ファイル'
+                    };
+                    
+                    await fs.writeFile(historyFile, JSON.stringify(emptyHistoryData, null, 2), 'utf-8');
+                    createdCount++;
+                }
+                
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            
+            if (createdCount > 0) {
+                console.log(`履歴整合性チェック完了: ${createdCount}件の空履歴ファイルを作成しました`);
+            } else {
+                console.log('履歴整合性チェック完了: 欠落なし');
+            }
+            
+        } catch (error) {
+            console.error('履歴整合性チェックエラー:', error);
+        }
+    }
+
+    formatDateForFilename(date) {
+        /**日付をファイル名用の文字列に変換 (YYYY-MM-DD) */
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     async updateHistoryByDate(dateString, data) {
