@@ -948,14 +948,22 @@ class NippoApp {
         
         // 直前のタスクの終了時刻を取得（新しいタスクの開始時刻として使用）
         let startTime = null;
-        const lastCompletedTask = this.tasks
-            .filter(task => task.endTime) // 終了済みのタスクのみ
-            .sort((a, b) => new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) // 更新日時でソート
-            .pop(); // 最後のタスクを取得
         
-        if (lastCompletedTask && lastCompletedTask.endTime) {
-            startTime = lastCompletedTask.endTime;
-            console.log(`直前のタスクの終了時刻を新しいタスクの開始時刻に設定: ${startTime}`);
+        if (currentRunningTask) {
+            // 実行中のタスクがある場合は、現在時刻でそのタスクを終了させ、その時刻を新しいタスクの開始時刻として使用
+            startTime = this.getTime(); // 現在時刻を取得
+            console.log(`実行中のタスクがあるため、現在時刻で直前のタスクを終了し、新しいタスクの開始時刻に設定: ${startTime}`);
+        } else {
+            // 実行中のタスクがない場合は、最後に終了したタスクの終了時刻を使用
+            const lastCompletedTask = this.tasks
+                .filter(task => task.endTime) // 終了済みのタスクのみ
+                .sort((a, b) => new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) // 更新日時でソート
+                .pop(); // 最後のタスクを取得
+            
+            if (lastCompletedTask && lastCompletedTask.endTime) {
+                startTime = lastCompletedTask.endTime;
+                console.log(`直前の終了済みタスクの終了時刻を新しいタスクの開始時刻に設定: ${startTime}`);
+            }
         }
         
         try {
@@ -1039,21 +1047,29 @@ class NippoApp {
         
         // 直前のタスクの終了時刻を取得（新しい休憩タスクの開始時刻として使用）
         let startTime = null;
-        const lastCompletedTask = this.tasks
-            .filter(task => task.endTime) // 終了済みのタスクのみ
-            .sort((a, b) => new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) // 更新日時でソート
-            .pop(); // 最後のタスクを取得
         
-        if (lastCompletedTask && lastCompletedTask.endTime) {
-            startTime = lastCompletedTask.endTime;
-            console.log(`直前のタスクの終了時刻を休憩の開始時刻に設定: ${startTime}`);
+        if (currentRunningTask) {
+            // 実行中のタスクがある場合は、現在時刻でそのタスクを終了させ、その時刻を休憩の開始時刻として使用
+            startTime = this.getTime(); // 現在時刻を取得
+            console.log(`実行中のタスクがあるため、現在時刻で直前のタスクを終了し、休憩の開始時刻に設定: ${startTime}`);
+        } else {
+            // 実行中のタスクがない場合は、最後に終了したタスクの終了時刻を使用
+            const lastCompletedTask = this.tasks
+                .filter(task => task.endTime) // 終了済みのタスクのみ
+                .sort((a, b) => new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) // 更新日時でソート
+                .pop(); // 最後のタスクを取得
+            
+            if (lastCompletedTask && lastCompletedTask.endTime) {
+                startTime = lastCompletedTask.endTime;
+                console.log(`直前の終了済みタスクの終了時刻を休憩の開始時刻に設定: ${startTime}`);
+            }
         }
         
         try {
             const requestData = { 
                 name: '休憩', 
                 isBreak: true,
-                startTime: startTime // 直前のタスクの終了時刻を開始時刻として設定
+                startTime: startTime // 直前のタスクの終了時刻または現在時刻を開始時刻として設定
             };
             
             const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { 
