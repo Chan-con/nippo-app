@@ -710,6 +710,12 @@ class NippoApp {
                 this.captureHotkey(e);
             }
         });
+
+        // ウィンドウリサイズ時にタグスクロールボタンの状態を更新
+        window.addEventListener('resize', () => {
+            // 少し遅延してからボタン状態を更新（レイアウト調整後）
+            setTimeout(() => this.updateTagScrollButtons(), 100);
+        });
     }
 
     updateDateTime() {
@@ -2672,8 +2678,12 @@ class NippoApp {
                 })
             : tagEntries.sort((a, b) => b[1].totalMinutes - a[1].totalMinutes);
 
-        // タブナビゲーション生成
-        let tabsHTML = '<div class="tag-tabs-navigation">';
+        // タブナビゲーション生成（スクロールボタン付き）
+        let tabsHTML = '<div class="tag-tabs-container">';
+        tabsHTML += '<button class="tag-scroll-btn tag-scroll-left" onclick="app.scrollTagTabs(\'left\')" title="左にスクロール">';
+        tabsHTML += '<span class="material-icons">chevron_left</span>';
+        tabsHTML += '</button>';
+        tabsHTML += '<div class="tag-tabs-navigation">';
         let panelsHTML = '<div class="tag-tabs-content">';
         
         sortedTags.forEach(([tagName, tagInfo], index) => {
@@ -2749,10 +2759,17 @@ class NippoApp {
             `;
         });
         
-        tabsHTML += '</div>';
+        tabsHTML += '</div>'; // tag-tabs-navigation終了
+        tabsHTML += '<button class="tag-scroll-btn tag-scroll-right" onclick="app.scrollTagTabs(\'right\')" title="右にスクロール">';
+        tabsHTML += '<span class="material-icons">chevron_right</span>';
+        tabsHTML += '</button>';
+        tabsHTML += '</div>'; // tag-tabs-container終了
         panelsHTML += '</div>';
         
         summaryContainer.innerHTML = tabsHTML + panelsHTML;
+        
+        // スクロールボタンの表示/非表示を設定
+        this.updateTagScrollButtons();
     }
 
     // 全てのタスクデータを取得（現在の日付 + 全履歴）
@@ -2826,7 +2843,84 @@ class NippoApp {
         if (targetTab && targetPanel) {
             targetTab.classList.add('active');
             targetPanel.classList.add('active');
+            
+            // アクティブなタブをビューポートの中央にスムーズスクロール
+            this.scrollTagTabIntoView(targetTab);
         }
+    }
+
+    // タグタブをビューポート内にスクロールする機能
+    scrollTagTabIntoView(tabElement) {
+        const navigation = document.querySelector('.tag-tabs-navigation');
+        if (!navigation || !tabElement) return;
+
+        // タブの位置とナビゲーションの情報を取得
+        const tabRect = tabElement.getBoundingClientRect();
+        const navRect = navigation.getBoundingClientRect();
+        const scrollLeft = navigation.scrollLeft;
+
+        // タブがナビゲーション領域外にある場合にスクロール
+        const tabLeftRelative = tabElement.offsetLeft;
+        const tabRightRelative = tabLeftRelative + tabElement.offsetWidth;
+        const visibleLeft = scrollLeft;
+        const visibleRight = scrollLeft + navigation.clientWidth;
+
+        let scrollTo = scrollLeft;
+
+        if (tabLeftRelative < visibleLeft) {
+            // タブが左側に隠れている場合、左端に合わせる
+            scrollTo = tabLeftRelative - 10; // 少し余裕を持たせる
+        } else if (tabRightRelative > visibleRight) {
+            // タブが右側に隠れている場合、右端に合わせる
+            scrollTo = tabRightRelative - navigation.clientWidth + 10; // 少し余裕を持たせる
+        }
+
+        // スムーズスクロールを実行
+        if (scrollTo !== scrollLeft) {
+            navigation.scrollTo({
+                left: scrollTo,
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    // タグタブのスクロール機能
+    scrollTagTabs(direction) {
+        const navigation = document.querySelector('.tag-tabs-navigation');
+        if (!navigation) return;
+
+        const scrollAmount = 200; // スクロール量（ピクセル）
+        const currentScroll = navigation.scrollLeft;
+        
+        if (direction === 'left') {
+            navigation.scrollTo({
+                left: Math.max(0, currentScroll - scrollAmount),
+                behavior: 'smooth'
+            });
+        } else {
+            navigation.scrollTo({
+                left: currentScroll + scrollAmount,
+                behavior: 'smooth'
+            });
+        }
+
+        // スクロール後にボタンの表示状態を更新
+        setTimeout(() => this.updateTagScrollButtons(), 100);
+    }
+
+    // タグスクロールボタンの表示/非表示を更新
+    updateTagScrollButtons() {
+        const navigation = document.querySelector('.tag-tabs-navigation');
+        const leftBtn = document.querySelector('.tag-scroll-left');
+        const rightBtn = document.querySelector('.tag-scroll-right');
+        
+        if (!navigation || !leftBtn || !rightBtn) return;
+
+        const canScrollLeft = navigation.scrollLeft > 0;
+        const canScrollRight = navigation.scrollLeft < (navigation.scrollWidth - navigation.clientWidth);
+
+        leftBtn.style.display = canScrollLeft ? 'flex' : 'none';
+        rightBtn.style.display = canScrollRight ? 'flex' : 'none';
     }
 
     // タグサマリーをコピーする機能

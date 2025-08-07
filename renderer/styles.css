@@ -584,11 +584,74 @@ body {
 }
 
 /* タグ別作業時間のタブスタイル */
+.tag-tabs-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  margin-bottom: 16px;
+}
+
 .tag-tabs-navigation {
   display: flex;
   gap: 4px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg-tertiary);
+  flex: 1;
+}
+
+.tag-tabs-navigation::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tag-tabs-navigation::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.tag-tabs-navigation::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.tag-tabs-navigation::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hover);
+}
+
+.tag-scroll-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  width: 32px;
+  height: 32px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-secondary);
+  z-index: 1;
+}
+
+.tag-scroll-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.tag-scroll-left {
+  margin-right: 8px;
+}
+
+.tag-scroll-right {
+  margin-left: 8px;
+}
+
+.tag-scroll-btn .material-icons {
+  font-size: 18px;
 }
 
 .tag-tab {
@@ -600,6 +663,8 @@ body {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tag-tab:hover {
@@ -627,6 +692,29 @@ body {
 
 .tag-tasks {
   margin-bottom: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg-tertiary);
+}
+
+.tag-tasks::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tag-tasks::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.tag-tasks::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.tag-tasks::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hover);
 }
 
 .tag-total {
