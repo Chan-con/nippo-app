@@ -4003,26 +4003,31 @@ class NippoApp {
                 const result = await response.json();
                 console.log('履歴APIレスポンス:', result);
                 
-                if (result.success && result.data && result.data.tasks && result.data.tasks.length > 0) {
+                if (result.success && result.data) {
                     console.log('履歴データ:', result.data);
                     
-                    // 履歴データをタイムラインに表示
-                    this.renderHistoryTimeline(result.data);
-                    
-                    // 統計情報を更新
-                    this.updateHistoryStats(result.data.tasks);
+                    // タスクが存在する場合
+                    if (result.data.tasks && result.data.tasks.length > 0) {
+                        // 履歴データをタイムラインに表示
+                        this.renderHistoryTimeline(result.data);
+                        
+                        // 統計情報を更新
+                        this.updateHistoryStats(result.data.tasks);
+                    } else {
+                        // タスクが空の場合でも、日付情報があることを表示
+                        this.renderEmptyHistory(dateString, '該当日にタスクが記録されていません');
+                    }
                 } else {
-                    console.log('履歴データが見つからないか、空のデータです');
-                    // データがない場合は空の表示（日付指定済み）
-                    this.renderEmptyHistory(dateString);
+                    console.log('履歴データの取得に失敗:', result.message || '不明なエラー');
+                    this.renderEmptyHistory(dateString, result.message || '履歴データを読み込めませんでした');
                 }
             } else {
-                console.error('履歴APIリクエストが失敗しました:', response.status);
-                this.renderEmptyHistory(dateString);
+                console.error('履歴APIリクエストが失敗しました:', response.status, response.statusText);
+                this.renderEmptyHistory(dateString, `サーバーエラー (${response.status}): データを取得できませんでした`);
             }
         } catch (error) {
             console.error('履歴データ読み込みエラー:', error);
-            this.renderEmptyHistory(dateString);
+            this.renderEmptyHistory(dateString, `接続エラー: ${error.message}`);
         }
     }
     
@@ -4073,7 +4078,7 @@ class NippoApp {
         console.log('履歴タイムライン描画完了');
     }
     
-    renderEmptyHistory(dateString) {
+    renderEmptyHistory(dateString, customMessage = null) {
         const container = document.getElementById('timeline-container');
         
         if (dateString) {
@@ -4084,34 +4089,32 @@ class NippoApp {
                 day: 'numeric'
             });
             
+            const message = customMessage || 'この日はタスクが記録されていません';
+            
             container.innerHTML = `
                 <div class="timeline-empty">
                     <span class="material-icons">calendar_today</span>
                     <p>${displayDate}のデータはありません</p>
-                    <p class="sub-text">この日はタスクが記録されていません</p>
+                    <p class="sub-text">${message}</p>
                 </div>
             `;
             
-            console.log(`空の履歴表示: ${displayDate}`);
+            console.log(`空の履歴表示: ${displayDate}, メッセージ: ${message}`);
         } else {
-            // 日付が指定されていない場合は、日付選択を促す
+            // 日付が未選択の場合
             container.innerHTML = `
                 <div class="timeline-empty">
-                    <span class="material-icons">history</span>
+                    <span class="material-icons">calendar_today</span>
                     <p>日付を選択してください</p>
-                    <p class="sub-text">カレンダーから閲覧したい日付を選びます</p>
+                    <p class="sub-text">カレンダーから日付を選択して履歴を表示します</p>
                 </div>
             `;
-            
-            console.log('日付選択促進メッセージを表示');
         }
         
-        // 統計情報もクリア
-        document.getElementById('completed-tasks').textContent = dateString ? '0' : '-';
-        document.getElementById('work-time').textContent = dateString ? '0:00' : '-';
-        document.getElementById('productivity').textContent = '-';
+        // 統計情報をクリア
+        this.updateHistoryStats([]);
     }
-    
+
     updateHistoryStats(tasks) {
         const completedWorkTasks = tasks.filter(task => task.endTime && !task.isBreak).length;
         

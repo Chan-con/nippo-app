@@ -28,6 +28,9 @@ class TaskManager {
             // 既存履歴ファイルの混在データ修正（一度だけ実行）
             await this.fixAllMixedDateHistoryFiles();
             
+            // 今日のファイルに蓄積された過去データをアーカイブ
+            await this.archiveMixedDataFromToday();
+            
             // 履歴の整合性をチェックして欠落した日付を補完
             try {
                 console.log('履歴整合性チェックを実行します...');
@@ -1029,6 +1032,114 @@ class TaskManager {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
+    }
+
+    async archiveMixedDataFromToday() {
+        /**今日のファイルに蓄積された過去データを適切な履歴ファイルに移動 */
+        try {
+            console.log('今日のファイルの混在データアーカイブを開始...');
+            
+            const todayFile = path.join(this.dataDir, 'data_today.json');
+            const todayDateString = this.getTodayDateString();
+            
+            // 今日のファイルが存在しない場合は処理をスキップ
+            if (!await fs.access(todayFile).then(() => true).catch(() => false)) {
+                console.log('今日のファイルが存在しないため、混在データアーカイブをスキップ');
+                return;
+            }
+            
+            const content = await fs.readFile(todayFile, 'utf-8');
+            const data = JSON.parse(content);
+            
+            if (!data.tasks || data.tasks.length === 0) {
+                console.log('今日のファイルにタスクがないため、混在データアーカイブをスキップ');
+                return;
+            }
+            
+            // タスクを日付別にグループ化
+            const tasksByDate = {};
+            const todayTasks = [];
+            
+            for (const task of data.tasks) {
+                let taskDateString = todayDateString; // デフォルトは今日
+                
+                if (task.createdAt) {
+                    const createdDate = new Date(task.createdAt);
+                    // OSのローカル時間（日本時間）で日付を確実に取得
+                    const localDateParts = createdDate.toLocaleDateString('ja-JP', { 
+                        year: 'numeric', 
+                        month: '2-digit', 
+                        day: '2-digit',
+                        timeZone: 'Asia/Tokyo'
+                    }).split('/');
+                    taskDateString = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
+                }
+                
+                if (taskDateString === todayDateString) {
+                    // 今日のタスクは今日のファイルに残す
+                    todayTasks.push(task);
+                } else {
+                    // 過去のタスクは履歴ファイルに移動
+                    if (!tasksByDate[taskDateString]) {
+                        tasksByDate[taskDateString] = [];
+                    }
+                    tasksByDate[taskDateString].push(task);
+                }
+            }
+            
+            let archivedCount = 0;
+            
+            // 過去のタスクを履歴ファイルに保存
+            for (const [date, dateTasks] of Object.entries(tasksByDate)) {
+                const historyFile = path.join(this.historyDir, `data_${date}.json`);
+                
+                // 既存の履歴ファイルを読み込み
+                let existingData = {
+                    date: date,
+                    tasks: [],
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                
+                try {
+                    const existingContent = await fs.readFile(historyFile, 'utf-8');
+                    existingData = JSON.parse(existingContent);
+                } catch (error) {
+                    console.log(`新しい履歴ファイルを作成: ${historyFile}`);
+                }
+                
+                // 重複チェックを行いながらタスクを追加
+                const existingTaskIds = new Set(existingData.tasks.map(t => t.id));
+                const newTasks = dateTasks.filter(t => !existingTaskIds.has(t.id));
+                
+                if (newTasks.length > 0) {
+                    existingData.tasks = [...existingData.tasks, ...newTasks];
+                    existingData.updatedAt = new Date().toISOString();
+                    
+                    await fs.writeFile(historyFile, JSON.stringify(existingData, null, 2), 'utf-8');
+                    console.log(`履歴ファイルに移動: ${historyFile} (${newTasks.length}件のタスク)`);
+                    archivedCount += newTasks.length;
+                }
+            }
+            
+            // 今日のファイルを今日のタスクのみに更新
+            if (archivedCount > 0) {
+                const updatedTodayData = {
+                    date: todayDateString,
+                    tasks: todayTasks,
+                    createdAt: data.createdAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                
+                await fs.writeFile(todayFile, JSON.stringify(updatedTodayData, null, 2), 'utf-8');
+                console.log(`今日のファイルを更新完了: ${archivedCount}件の過去タスクをアーカイブし、${todayTasks.length}件の今日のタスクを残しました`);
+            } else {
+                console.log('混在データアーカイブ完了: アーカイブすべき過去データなし');
+            }
+            
+        } catch (error) {
+            console.error('今日のファイルの混在データアーカイブでエラーが発生:', error);
+        }
     }
 
     async updateHistoryByDate(dateString, data) {
