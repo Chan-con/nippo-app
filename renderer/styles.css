@@ -772,6 +772,37 @@ body {
   margin-top: 0;
 }
 
+/* 日付ヘッダーと統計の組み合わせ */
+.date-header-with-stats {
+  margin: 16px 0 8px 0;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-small);
+  border-left: 3px solid var(--accent);
+  overflow: hidden;
+}
+
+.date-header-with-stats:first-child {
+  margin-top: 0;
+}
+
+.date-header-with-stats .date-header {
+  margin: 0;
+  padding: 8px 12px 4px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.date-total {
+  padding: 0 12px 8px 12px;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .date-separator {
   height: 1px;
   background: var(--border);

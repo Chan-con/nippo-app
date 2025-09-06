@@ -2710,8 +2710,21 @@ class NippoApp {
             
             // タブパネル
             panelsHTML += `
-                <div class="tag-tab-panel${isActive}" id="${panelId}">
-                    <div class="tag-tasks">`;
+                <div class="tag-tab-panel${isActive}" id="${panelId}">`;
+            
+            // 日付別作業時間の集計を計算
+            const dateStats = new Map();
+            tagInfo.tasks.forEach(task => {
+                const taskDate = task.date === 'today' ? '今日' : task.date;
+                if (!dateStats.has(taskDate)) {
+                    dateStats.set(taskDate, { totalMinutes: 0, taskCount: 0 });
+                }
+                const stats = dateStats.get(taskDate);
+                stats.totalMinutes += this.calculateDurationInMinutes(task.startTime, task.endTime);
+                stats.taskCount += 1;
+            });
+            
+            panelsHTML += `<div class="tag-tasks">`;
             
             // タスク一覧（日付別にソート）
             const sortedTasks = tagInfo.tasks.sort((a, b) => {
@@ -2730,7 +2743,27 @@ class NippoApp {
                     if (currentDate !== '') {
                         panelsHTML += '<div class="date-separator"></div>';
                     }
-                    panelsHTML += `<div class="date-header">${taskDate}</div>`;
+                    
+                    // その日の合計時間を取得
+                    const dayStats = dateStats.get(taskDate);
+                    let dayTotalText = '';
+                    if (dayStats) {
+                        const hours = Math.floor(dayStats.totalMinutes / 60);
+                        const mins = dayStats.totalMinutes % 60;
+                        
+                        if (hours > 0) {
+                            dayTotalText = `${hours}時間${mins > 0 ? mins + '分' : ''}`;
+                        } else {
+                            dayTotalText = `${mins}分`;
+                        }
+                    }
+                    
+                    panelsHTML += `
+                        <div class="date-header-with-stats">
+                            <div class="date-header">${taskDate}</div>
+                            <div class="date-total">${dayTotalText} (${dayStats ? dayStats.taskCount : 0}件)</div>
+                        </div>
+                    `;
                     currentDate = taskDate;
                 }
                 
