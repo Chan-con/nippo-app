@@ -346,6 +346,105 @@ class TaskManager {
         return path.join(this.historyDir, `data_${dateString}.json`);
     }
 
+    async syncTaskToHistory(task, dateString = null) {
+        /**タスクを履歴にリアルタイム同期 */
+        try {
+            const taskDate = dateString || this.getTodayDateString();
+            console.log(`履歴同期開始: ${taskDate}, タスクID: ${task.id}`);
+            
+            const historyFile = this.getHistoryDataFile(taskDate);
+            
+            // 履歴データを読み込み
+            let historyData;
+            const exists = await fs.access(historyFile).then(() => true).catch(() => false);
+            
+            if (exists) {
+                const content = await fs.readFile(historyFile, 'utf-8');
+                historyData = JSON.parse(content);
+            } else {
+                historyData = {
+                    date: taskDate,
+                    tasks: [],
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+            }
+            
+            // 既存タスクを検索（同じIDのタスクがあれば更新、なければ追加）
+            const existingIndex = historyData.tasks.findIndex(t => t.id === task.id);
+            
+            // タスクデータを履歴形式に変換
+            const historyTask = {
+                id: task.id,
+                startTime: task.startTime,
+                endTime: task.endTime || null,
+                title: task.name || task.title,
+                isBreak: task.isBreak || false,
+                tag: task.tag || null,
+                createdAt: task.createdAt,
+                updatedAt: new Date().toISOString(),
+                date: taskDate
+            };
+            
+            if (existingIndex !== -1) {
+                // 既存タスクを更新
+                historyData.tasks[existingIndex] = historyTask;
+                console.log(`履歴タスクを更新: ${task.id}`);
+            } else {
+                // 新規タスクを追加
+                historyData.tasks.push(historyTask);
+                console.log(`履歴タスクを追加: ${task.id}`);
+            }
+            
+            historyData.updatedAt = new Date().toISOString();
+            
+            await fs.writeFile(historyFile, JSON.stringify(historyData, null, 2), 'utf-8');
+            console.log(`履歴同期完了: ${historyFile}`);
+            
+            return { success: true };
+        } catch (error) {
+            console.error('履歴同期エラー:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async removeTaskFromHistory(taskId, dateString = null) {
+        /**タスクを履歴から削除 */
+        try {
+            const taskDate = dateString || this.getTodayDateString();
+            console.log(`履歴からタスク削除開始: ${taskDate}, タスクID: ${taskId}`);
+            
+            const historyFile = this.getHistoryDataFile(taskDate);
+            
+            // 履歴データを読み込み
+            const exists = await fs.access(historyFile).then(() => true).catch(() => false);
+            if (!exists) {
+                console.log('履歴ファイルが存在しないため、削除処理をスキップ');
+                return { success: true };
+            }
+            
+            const content = await fs.readFile(historyFile, 'utf-8');
+            const historyData = JSON.parse(content);
+            
+            // タスクを検索して削除
+            const initialLength = historyData.tasks.length;
+            historyData.tasks = historyData.tasks.filter(t => t.id !== taskId);
+            
+            if (historyData.tasks.length < initialLength) {
+                historyData.updatedAt = new Date().toISOString();
+                await fs.writeFile(historyFile, JSON.stringify(historyData, null, 2), 'utf-8');
+                console.log(`履歴からタスクを削除完了: ${taskId}`);
+            } else {
+                console.log(`履歴にタスクが見つかりませんでした: ${taskId}`);
+            }
+            
+            return { success: true };
+        } catch (error) {
+            console.error('履歴削除エラー:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     async loadSchedule(dateString = null) {
         /**スケジュールデータを読み込む（JSON形式統一） */
         await this.initialize();
@@ -539,6 +638,10 @@ class TaskManager {
                         console.log(`未終了タスクを終了: [絵文字を含むタスク] ID=${task.id}`);
                     }
                     task.endTime = addTime;
+                    task.updatedAt = new Date().toISOString();
+                    
+                    // 未終了タスクの終了も履歴に同期
+                    await this.syncTaskToHistory(task, taskDate);
                 }
             }
             
@@ -566,6 +669,10 @@ class TaskManager {
             
             console.log(`saveSchedule開始 - タスク数: ${tasks.length}`);
             await this.saveSchedule(tasks, dateString);
+            
+            // 履歴にもリアルタイム同期
+            await this.syncTaskToHistory(newTask, taskDate);
+            
             console.log("add_task完了");
             return newTask;
         } catch (error) {
@@ -628,7 +735,12 @@ class TaskManager {
             if (!task.endTime) {
                 console.log(`未終了タスクを発見: ${task.name}`);
                 task.endTime = addTime;
+                task.updatedAt = new Date().toISOString();
                 await this.saveSchedule(tasks, dateString);
+                
+                // 履歴にもリアルタイム同期
+                await this.syncTaskToHistory(task, dateString);
+                
                 console.log(`タスクを終了しました: ${JSON.stringify(task)}`);
                 return task;
             }
@@ -1393,6 +1505,9 @@ class TaskManager {
                 
                 await this.saveSchedule(adjustedTasks);
                 
+                // 履歴にもリアルタイム同期
+                await this.syncTaskToHistory(adjustedTasks[taskIndex]);
+                
                 return {
                     task: adjustedTasks[taskIndex],
                     adjustments: adjustments
@@ -1534,6 +1649,10 @@ class TaskManager {
                 
                 // 削除後にJSONファイルに保存（IDの再振りは行わない）
                 await this.saveSchedule(tasks);
+                
+                // 履歴からもリアルタイム削除
+                await this.removeTaskFromHistory(deletedTask.id);
+                
                 console.log(`タスク削除完了`);
                 return deletedTask;
             }
