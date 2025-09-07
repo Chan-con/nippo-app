@@ -2786,14 +2786,16 @@ class NippoApp {
                     </div>
                     <div class="tag-total">
                         <span>合計: ${durationText} (履歴含む)</span>
-                        <button class="tag-copy-btn" onclick="app.copyTagSummary('${tagName}', '${durationText}')" title="タグ名と時間をコピー">
-                            <span class="material-icons">content_copy</span>
-                            コピー
-                        </button>
-                        <button class="tag-copy-btn" onclick="app.exportTagCsv('${tagName}')" title="このタグのタスクをCSV出力 (作業日,作業内容,作業開始時刻,作業終了時刻)">
-                            <span class="material-icons">download</span>
-                            CSV
-                        </button>
+                        <div class="tag-total-actions">
+                            <button class="tag-copy-btn" onclick="app.copyTagSummary('${tagName}', '${durationText}')" title="タグ名と時間をコピー">
+                                <span class="material-icons">content_copy</span>
+                                コピー
+                            </button>
+                            <button class="tag-copy-btn tag-csv-btn" onclick="app.exportTagCsv('${tagName}')" title="このタグのタスクをCSV出力 (作業日,作業内容,作業開始時刻,作業終了時刻)">
+                                <span class="material-icons">download</span>
+                                CSV
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
