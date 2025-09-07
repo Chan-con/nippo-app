@@ -2654,6 +2654,9 @@ class NippoApp {
             }, null, 2));
         });
 
+    // 後でCSV出力等に利用できるように最新のタグ集計データを保持
+    this.tagSummaryData = tagData;
+
         // タグストック順序に従って並び替え
         const tagEntries = Array.from(tagData.entries());
         const sortedTags = this.tagStock.length > 0 
@@ -2786,6 +2789,10 @@ class NippoApp {
                         <button class="tag-copy-btn" onclick="app.copyTagSummary('${tagName}', '${durationText}')" title="タグ名と時間をコピー">
                             <span class="material-icons">content_copy</span>
                             コピー
+                        </button>
+                        <button class="tag-copy-btn" onclick="app.exportTagCsv('${tagName}')" title="このタグのタスクをCSV出力 (作業日,作業内容,作業開始時刻,作業終了時刻)">
+                            <span class="material-icons">download</span>
+                            CSV
                         </button>
                     </div>
                 </div>
@@ -2966,6 +2973,83 @@ class NippoApp {
         } catch (error) {
             console.error('コピーエラー:', error);
             this.showToast('コピーに失敗しました', 'error');
+        }
+    }
+
+    // タグ別CSVエクスポート
+    exportTagCsv(tagName) {
+        if (!this.tagSummaryData || !this.tagSummaryData.has(tagName)) {
+            this.showToast('CSV出力対象のタグデータがありません', 'error');
+            return;
+        }
+
+        const tasks = this.tagSummaryData.get(tagName).tasks;
+        if (!tasks || tasks.length === 0) {
+            this.showToast('このタグのタスクがありません', 'error');
+            return;
+        }
+
+        // 今日の日付を取得（YYYY-MM-DD）
+        const today = new Date();
+        const localDateParts = today.toLocaleDateString('ja-JP', {
+            year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tokyo'
+        }).split('/');
+        const todayStr = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
+
+        // CSVヘッダー
+        const headers = ['作業日', '作業内容', '作業開始時刻', '作業終了時刻'];
+        const lines = [headers.join(',')];
+
+        const escape = (value) => {
+            if (value == null) return '';
+            const str = String(value).replace(/"/g, '""');
+            return `"${str}"`;
+        };
+
+        // 午前/午後 h:mm を 24時間 HH:MM へ変換
+        const to24h = (jpTime) => {
+            if (!jpTime) return '';
+            // 既に HH:MM 形式ならそのまま
+            if (/^\d{2}:\d{2}$/.test(jpTime)) return jpTime;
+            const m = jpTime.match(/(午前|午後)\s*(\d{1,2}):(\d{2})/);
+            if (!m) return jpTime; // 想定外形式はそのまま
+            let hour = parseInt(m[2], 10);
+            const minute = m[3];
+            if (m[1] === '午前') {
+                if (hour === 12) hour = 0; // 午前12時 = 00時
+            } else { // 午後
+                if (hour !== 12) hour += 12; // 午後12時は12時のまま
+            }
+            return `${hour.toString().padStart(2,'0')}:${minute}`;
+        };
+
+        tasks.forEach(t => {
+            const date = (t.date === 'today' || t.date === '今日') ? todayStr : t.date;
+            const row = [
+                escape(date),
+                escape(t.name || t.title || ''),
+                escape(to24h(t.startTime)),
+                escape(to24h(t.endTime))
+            ];
+            lines.push(row.join(','));
+        });
+
+        const csv = lines.join('\n');
+        try {
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const timestamp = todayStr.replace(/-/g, '');
+            a.href = url;
+            a.download = `tag_${tagName}_${timestamp}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            this.showToast(`「${tagName}」のCSVを出力しました`, 'success');
+        } catch (error) {
+            console.error('CSV出力エラー:', error);
+            this.showToast('CSV出力に失敗しました', 'error');
         }
     }
 
