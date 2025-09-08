@@ -3026,7 +3026,9 @@ class NippoApp {
         };
 
         tasks.forEach(t => {
-            const date = (t.date === 'today' || t.date === '今日') ? todayStr : t.date;
+            // 出力用日付（内部は YYYY-MM-DD 想定だが CSV では YYYY/MM/DD を求められている）
+            const rawDate = (t.date === 'today' || t.date === '今日') ? todayStr : t.date;
+            const date = rawDate ? rawDate.replace(/-/g, '/') : '';
             const row = [
                 escape(date),
                 escape(t.name || t.title || ''),
