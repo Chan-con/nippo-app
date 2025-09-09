@@ -161,31 +161,22 @@ function restoreAndFocusWindow() {
     
     // 5. プラットフォーム別のフォーカス処理
     if (process.platform === 'win32') {
-      console.log('Windows用のフォーカス処理を実行します');
-      
-      // ページを完全にリロードしてDOM状態をリセット
-      console.log('ページをリロードしてDOM状態をリセットします');
-      mainWindow.webContents.reload();
-      
-      // リロード完了後にフォーカス処理を実行
-      mainWindow.webContents.once('did-finish-load', () => {
-        console.log('ページリロードが完了しました');
-        
-        // ウィンドウを表示してフォーカス
-        mainWindow.show();
-        mainWindow.focus();
-        mainWindow.moveTop();
-        mainWindow.center();
-        
-        // 短時間だけ最前面に表示
-        mainWindow.setAlwaysOnTop(true);
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.setAlwaysOnTop(false);
-            console.log('フォーカス処理が完了しました');
-          }
-        }, 200);
-      });
+      console.log('Windows用のフォーカス処理を実行します（リロードしない）');
+      // リロードせずに前面化とフォーカスのみ行う（ポップアップ/編集中内容を保持）
+      mainWindow.show();
+      mainWindow.setSkipTaskbar(false);
+      mainWindow.focus();
+      try { mainWindow.moveTop(); } catch (_) {}
+      // フォーカスを確実にするため一時的に最前面指定
+      mainWindow.setAlwaysOnTop(true);
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.setAlwaysOnTop(false);
+          // レンダラーに復元通知（必要に応じて再描画など）
+          mainWindow.webContents.send('window-restored');
+          console.log('フォーカス処理が完了しました（Windows）');
+        }
+      }, 200);
     } else {
       // macOSやLinux用の処理
       mainWindow.focus();
@@ -344,6 +335,14 @@ app.whenReady().then(async () => {
   
   // 設定を読み込み
   await loadSettings();
+  // 時刻丸め設定をTaskManagerへ反映
+  try {
+    if (taskManager && settings && settings.timeRounding) {
+      taskManager.setTimeRoundingConfig(settings.timeRounding);
+    }
+  } catch (e) {
+    console.error('時刻丸め設定の適用に失敗:', e);
+  }
   
   createWindow();
   createApplicationMenu(); // アプリケーションメニューを作成
@@ -443,7 +442,8 @@ async function loadSettings() {
       settings = {
         globalHotkey: {
           toggleWindow: ''
-        }
+  },
+  timeRounding: { interval: 0, mode: 'nearest' }
       };
     }
     console.log('設定を読み込みました:', settings);
@@ -452,7 +452,8 @@ async function loadSettings() {
     settings = {
       globalHotkey: {
         toggleWindow: ''
-      }
+      },
+      timeRounding: { interval: 0, mode: 'nearest' }
     };
   }
 }
@@ -467,6 +468,15 @@ async function saveSettings(newSettings) {
     
     // 新しい設定を保存
     settings = newSettings;
+    
+    // 時刻丸め設定をTaskManagerへ反映
+    try {
+      if (taskManager && settings && settings.timeRounding) {
+        taskManager.setTimeRoundingConfig(settings.timeRounding);
+      }
+    } catch (e) {
+      console.error('時刻丸め設定の適用に失敗:', e);
+    }
     
     // 新しいホットキーを登録
     registerHotkeys();

@@ -4427,24 +4427,29 @@ class NippoApp {
     }
     
     handleWindowRestored() {
-        // 1. タイムラインを再読み込み
+        // 1) タイムラインなど軽量な再描画のみ（ポップアップの再生成は行わない）
         if (this.currentMode === 'today') {
-            this.loadTasks();
+            // 直近の状態を反映（サーバに依存せず現在メモリのタスクを再描画）
+            this.updateTimeline();
         } else if (this.currentMode === 'history' && this.currentDate) {
-            this.loadHistoryData(this.currentDate);
+            // 履歴表示中は現状のUIを保つ
+            this.updateTimeline();
         }
-        
-        // 2. 報告書ダイアログが開いている場合は内容を再読み込み
-        if (document.getElementById('report-dialog').classList.contains('show')) {
-            this.showReportDialog();
+
+        // 2) ポップアップ（報告書/設定）が開いていてもそのまま保持。
+        // 必要ならボタン状態などの軽量なUIのみ更新。
+        const reportOpen = document.getElementById('report-dialog').classList.contains('show');
+        if (reportOpen) {
+            this.updateSaveButtonState();
+            this.updateClipboardCopyButtonState();
         }
-        
-        // 3. 設定ダイアログが開いている場合は内容を再読み込み
-        if (document.getElementById('settings-dialog').classList.contains('show')) {
-            this.openSettingsDialog();
+        const settingsOpen = document.getElementById('settings-dialog').classList.contains('show');
+        if (settingsOpen) {
+            // 丸めプレビュー等の軽微な更新のみ
+            this.updateRoundingPreview?.();
         }
-        
-        // 4. タスク入力欄にフォーカス
+
+        // 3) タスク入力欄にフォーカス
         const taskInput = document.getElementById('task-input');
         if (taskInput) {
             taskInput.focus();
