@@ -15,6 +15,9 @@ class TaskManager {
         this.historyDir = path.join(this.dataDir, 'history');
         
         this.initialized = false;
+
+    // 時刻丸め設定（デフォルト: 丸めなし）
+    this.timeRounding = { interval: 0, mode: 'nearest' };
     }
 
     async initialize() {
@@ -43,6 +46,39 @@ class TaskManager {
             this.initialized = true;
             console.log('TaskManager初期化完了 - データディレクトリ:', this.dataDir);
         }
+    }
+
+    // メインプロセスから設定を渡せるようにする（簡易）
+    setTimeRoundingConfig(config) {
+        if (!config) return;
+        const interval = parseInt(config.interval, 10);
+        const mode = config.mode || 'nearest';
+        if (!isNaN(interval) && interval >= 0) {
+            this.timeRounding = { interval, mode };
+            console.log('時刻丸め設定を適用:', this.timeRounding);
+        }
+    }
+
+    roundTime(now) {
+        const interval = this.timeRounding?.interval || 0;
+        if (!interval) return now; // 丸めなし
+        const mode = this.timeRounding?.mode || 'nearest';
+        const minutes = now.getMinutes();
+        const remainder = minutes % interval;
+        let adjMinutes = minutes;
+        if (mode === 'floor') {
+            adjMinutes = minutes - remainder;
+        } else if (mode === 'ceil') {
+            adjMinutes = remainder === 0 ? minutes : minutes + (interval - remainder);
+        } else { // nearest
+            adjMinutes = remainder < interval / 2 ? minutes - remainder : minutes + (interval - remainder);
+        }
+        const rounded = new Date(now);
+        rounded.setSeconds(0, 0);
+        // 繰り上がり/繰り下がり対応
+        const delta = adjMinutes - minutes;
+        rounded.setMinutes(minutes + delta);
+        return rounded;
     }
 
     async ensureDataDir() {
@@ -696,8 +732,10 @@ class TaskManager {
 
     getTimeForDate(dateString = null) {
         /**指定日付の現在時刻を取得（日付は指定、時刻は現在時刻） */
-        const now = new Date();
+    let now = new Date();
         console.log(`getTimeForDate呼び出し - dateString: ${dateString}, 現在時刻: ${now.toISOString()}`);
+    // 丸めを適用
+    now = this.roundTime(now);
         
         const amOrPm = now.getHours() < 12 ? "午前" : "午後";
         
@@ -723,7 +761,7 @@ class TaskManager {
     async endCurrentTask(dateString = null) {
         /**現在のタスクを終了 */
         const tasks = await this.loadSchedule(dateString);
-        const addTime = this.getTimeForDate(dateString);
+    const addTime = this.getTimeForDate(dateString);
         
         console.log(`終了処理開始 - 時刻: ${addTime}, 日付: ${dateString || '今日'}`);
         console.log(`読み込んだタスク数: ${tasks.length}`);
