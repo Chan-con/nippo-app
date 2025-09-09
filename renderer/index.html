@@ -307,6 +307,33 @@
                     </div>
                 </div>
                 <div class="settings-section">
+                    <h4>⏱️ 時刻の丸め</h4>
+                    <p class="settings-hint">タスクの開始/終了ボタンを押した時刻を、指定した単位で自動的に丸めます。</p>
+                    <div class="settings-grid-2col">
+                        <div class="settings-field">
+                            <label for="time-rounding-interval" class="settings-label">丸め単位</label>
+                            <select id="time-rounding-interval" class="edit-input">
+                                <option value="0">リアルタイム（丸めなし）</option>
+                                <option value="5">5分</option>
+                                <option value="10">10分</option>
+                                <option value="15">15分</option>
+                                <option value="30">30分</option>
+                            </select>
+                        </div>
+                        <div class="settings-field">
+                            <label for="time-rounding-mode" class="settings-label">丸め方法</label>
+                            <select id="time-rounding-mode" class="edit-input">
+                                <option value="nearest">最近接（四捨五入）</option>
+                                <option value="floor">切り捨て</option>
+                                <option value="ceil">切り上げ</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="time-rounding-preview" class="rounding-preview" aria-live="polite">
+                        例: 現在 10:12 → 丸め後 10:10
+                    </div>
+                </div>
+                <div class="settings-section">
                     <h4>🔗 報告先URL</h4>
                     <div class="url-list" id="url-list">
                         <!-- URL一覧が動的に挿入される -->

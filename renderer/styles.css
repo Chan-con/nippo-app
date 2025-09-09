@@ -2712,3 +2712,33 @@ body {
   transform: translateY(0);
   box-shadow: none;
 }
+
+/* 設定: 丸めUI改善 */
+.settings-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 6px 0 10px;
+}
+
+.settings-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.settings-field .settings-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.rounding-preview {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-small);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}

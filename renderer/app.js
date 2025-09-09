@@ -761,7 +761,20 @@ class NippoApp {
     }
 
     getTime() {
-        const now = new Date();
+        let now = new Date();
+        // 設定の丸めが有効なら、表示上も丸める（実際の保存はサーバ側でも丸め）
+        const interval = this.settings?.timeRounding?.interval || 0;
+        const mode = this.settings?.timeRounding?.mode || 'nearest';
+        if (interval > 0) {
+            const minutes = now.getMinutes();
+            const remainder = minutes % interval;
+            let adj = minutes;
+            if (mode === 'floor') adj = minutes - remainder;
+            else if (mode === 'ceil') adj = remainder === 0 ? minutes : minutes + (interval - remainder);
+            else adj = remainder < interval/2 ? minutes - remainder : minutes + (interval - remainder);
+            now.setSeconds(0,0);
+            now.setMinutes(adj);
+        }
         const hour = now.getHours();
         const minute = now.getMinutes();
         
@@ -777,7 +790,7 @@ class NippoApp {
             period = '午後';
         }
         
-        return `${period} ${displayHour}:${minute.toString().padStart(2, '0')}`;
+    return `${period} ${displayHour}:${minute.toString().padStart(2, '0')}`;
     }
 
     async handleDateChange() {
@@ -3379,6 +3392,18 @@ class NippoApp {
         // ダイアログを表示
         const dialog = document.getElementById('settings-dialog');
         dialog.classList.add('show');
+
+        // 丸めプレビューを初期化/更新
+        this.updateRoundingPreview();
+        const intervalEl = document.getElementById('time-rounding-interval');
+        const modeEl = document.getElementById('time-rounding-mode');
+        if (intervalEl && modeEl) {
+            const onChange = () => this.updateRoundingPreview();
+            intervalEl.removeEventListener('change', onChange);
+            modeEl.removeEventListener('change', onChange);
+            intervalEl.addEventListener('change', onChange);
+            modeEl.addEventListener('change', onChange);
+        }
     }
 
     closeSettingsDialog() {
@@ -3397,9 +3422,17 @@ class NippoApp {
             
             // UI要素に設定を反映
             const hotkeyToggle = document.getElementById('hotkey-toggle');
+            const roundingInterval = document.getElementById('time-rounding-interval');
+            const roundingMode = document.getElementById('time-rounding-mode');
             
             if (hotkeyToggle) {
                 hotkeyToggle.value = settings.globalHotkey?.toggleWindow || '';
+            }
+            if (roundingInterval) {
+                roundingInterval.value = String(settings.timeRounding?.interval ?? 0);
+            }
+            if (roundingMode) {
+                roundingMode.value = settings.timeRounding?.mode || 'nearest';
             }
             
         } catch (error) {
@@ -3411,11 +3444,17 @@ class NippoApp {
     async saveSettings() {
         try {
             const hotkeyToggle = document.getElementById('hotkey-toggle').value;
+            const roundingInterval = parseInt(document.getElementById('time-rounding-interval').value, 10);
+            const roundingMode = document.getElementById('time-rounding-mode').value;
             
             const settings = {
                 ...this.settings,
                 globalHotkey: {
                     toggleWindow: hotkeyToggle
+                },
+                timeRounding: {
+                    interval: isNaN(roundingInterval) ? 0 : roundingInterval,
+                    mode: roundingMode
                 }
             };
             
@@ -3423,6 +3462,7 @@ class NippoApp {
             if (result) {
                 this.settings = settings;
                 this.showToast('設定を保存しました');
+                this.updateRoundingPreview();
             } else {
                 this.showToast('設定の保存に失敗しました', 'error');
             }
@@ -3430,6 +3470,30 @@ class NippoApp {
             console.error('設定の保存エラー:', error);
             this.showToast('設定の保存に失敗しました', 'error');
         }
+    }
+
+    updateRoundingPreview() {
+        const preview = document.getElementById('time-rounding-preview');
+        const interval = parseInt(document.getElementById('time-rounding-interval')?.value || '0', 10);
+        const mode = document.getElementById('time-rounding-mode')?.value || 'nearest';
+        if (!preview) return;
+        const now = new Date();
+        const hh = now.getHours().toString().padStart(2, '0');
+        const mm = now.getMinutes().toString().padStart(2, '0');
+        let rounded = new Date(now);
+        if (interval > 0) {
+            const minutes = rounded.getMinutes();
+            const rem = minutes % interval;
+            let adj = minutes;
+            if (mode === 'floor') adj = minutes - rem;
+            else if (mode === 'ceil') adj = rem === 0 ? minutes : minutes + (interval - rem);
+            else adj = rem < interval/2 ? minutes - rem : minutes + (interval - rem);
+            rounded.setSeconds(0,0);
+            rounded.setMinutes(adj);
+        }
+        const rh = rounded.getHours().toString().padStart(2, '0');
+        const rm = rounded.getMinutes().toString().padStart(2, '0');
+        preview.textContent = `例: 現在 ${hh}:${mm} → 丸め後 ${rh}:${rm}`;
     }
     
     startHotkeyCapture(targetId) {
