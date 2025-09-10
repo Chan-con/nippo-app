@@ -664,6 +664,9 @@ class TaskManager {
             // 開始時刻を決定：指定された時刻があればそれを使用、なければ現在時刻
             const addTime = startTime || this.getTimeForDate(dateString);
             console.log(`使用する開始時刻: ${addTime} (指定時刻: ${startTime}, 現在時刻: ${startTime ? 'スキップ' : this.getTimeForDate(dateString)})`);
+
+        // この追加が属する日付（履歴同期用）を先に決定しておく
+        const taskDate = dateString || this.getTodayDateString();
             
             // 未終了のタスクがあれば終了時刻を設定
             for (const task of tasks) {
@@ -677,13 +680,12 @@ class TaskManager {
                     task.updatedAt = new Date().toISOString();
                     
                     // 未終了タスクの終了も履歴に同期
-                    await this.syncTaskToHistory(task, taskDate);
+            await this.syncTaskToHistory(task, taskDate);
                 }
             }
             
             // 新しいタスクを追加
             const now = new Date();
-            const taskDate = dateString || this.getTodayDateString();
             const newTask = {
                 id: `task-${tasks.length + 1}`, // 一貫した文字列ID形式
                 startTime: addTime,
