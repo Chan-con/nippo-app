@@ -580,17 +580,8 @@ class NippoApp {
         setTimeout(() => {
             const calendarInput = document.getElementById('calendar-date-input');
             if (calendarInput) {
-                // 未来の日付を選択できないように制限
-                const today = new Date();
-                // OSのローカル時間（日本時間）で今日の日付を取得
-                const localDateParts = today.toLocaleDateString('ja-JP', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit',
-                    timeZone: 'Asia/Tokyo'
-                }).split('/');
-                const todayStr = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
-                calendarInput.max = todayStr;
+                // 未来の日付を選択できないように最大値を設定（以後は自動更新）
+                this.updateCalendarMaxDate();
                 
                 calendarInput.addEventListener('change', (e) => {
                     console.log('日付変更イベントが発生しました:', e.target.value);
@@ -730,6 +721,9 @@ class NippoApp {
         });
         timeElement.textContent = timeStr;
 
+        // 日付ピッカーの最大値（=今日）を最新化しておく（起動中の日跨ぎ対応）
+        this.updateCalendarMaxDate();
+
         // 日付変更の検知（今日モードでのみ実行）
         if (this.currentMode !== 'history') {
             const currentDateString = now.toDateString(); // "Wed Jul 23 2025" 形式
@@ -757,6 +751,30 @@ class NippoApp {
                 weekday: 'long'
             });
             dateElement.textContent = dateStr;
+        }
+    }
+
+    // 履歴モードの日付ピッカーに設定する「選択可能な最大日付（=今日）」を更新
+    updateCalendarMaxDate() {
+        const calendarInput = document.getElementById('calendar-date-input');
+        if (!calendarInput) return;
+
+        const today = new Date();
+        const localDateParts = today.toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'Asia/Tokyo'
+        }).split('/');
+        const todayStr = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
+
+        if (calendarInput.max !== todayStr) {
+            calendarInput.max = todayStr;
+            // もし現在値が未来日になっていたら補正（保険）
+            if (calendarInput.value && calendarInput.value > todayStr) {
+                calendarInput.value = todayStr;
+            }
+            console.log('calendar-date-input.max を更新:', todayStr);
         }
     }
 
@@ -818,6 +836,9 @@ class NippoApp {
                 
                 // 履歴日付リストを更新
                 await this.loadHistoryDates();
+                
+                // カレンダーの最大日付（=今日）も更新
+                this.updateCalendarMaxDate();
                 
                 this.showToast('新しい日になりました。タスクデータを更新しました。');
                 console.log('日付変更処理完了');
