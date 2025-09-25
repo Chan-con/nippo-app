@@ -3445,6 +3445,7 @@ class NippoApp {
             const hotkeyToggle = document.getElementById('hotkey-toggle');
             const roundingInterval = document.getElementById('time-rounding-interval');
             const roundingMode = document.getElementById('time-rounding-mode');
+            const launchOnStartup = document.getElementById('launch-on-startup');
             
             if (hotkeyToggle) {
                 hotkeyToggle.value = settings.globalHotkey?.toggleWindow || '';
@@ -3454,6 +3455,9 @@ class NippoApp {
             }
             if (roundingMode) {
                 roundingMode.value = settings.timeRounding?.mode || 'nearest';
+            }
+            if (launchOnStartup) {
+                launchOnStartup.checked = !!settings.launchOnStartup;
             }
             
         } catch (error) {
@@ -3467,6 +3471,7 @@ class NippoApp {
             const hotkeyToggle = document.getElementById('hotkey-toggle').value;
             const roundingInterval = parseInt(document.getElementById('time-rounding-interval').value, 10);
             const roundingMode = document.getElementById('time-rounding-mode').value;
+            const launchOnStartup = document.getElementById('launch-on-startup')?.checked ?? false;
             
             const settings = {
                 ...this.settings,
@@ -3476,7 +3481,8 @@ class NippoApp {
                 timeRounding: {
                     interval: isNaN(roundingInterval) ? 0 : roundingInterval,
                     mode: roundingMode
-                }
+                },
+                launchOnStartup
             };
             
             const result = await window.electronAPI.saveSettings(settings);

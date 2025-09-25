@@ -335,6 +335,12 @@ app.whenReady().then(async () => {
   
   // 設定を読み込み
   await loadSettings();
+  // 自動起動設定を適用
+  try {
+    applyAutoLaunchSetting();
+  } catch (e) {
+    console.error('自動起動設定の適用に失敗:', e);
+  }
   // 時刻丸め設定をTaskManagerへ反映
   try {
     if (taskManager && settings && settings.timeRounding) {
@@ -443,7 +449,8 @@ async function loadSettings() {
         globalHotkey: {
           toggleWindow: ''
   },
-  timeRounding: { interval: 0, mode: 'nearest' }
+  timeRounding: { interval: 0, mode: 'nearest' },
+  launchOnStartup: false
       };
     }
     console.log('設定を読み込みました:', settings);
@@ -453,7 +460,8 @@ async function loadSettings() {
       globalHotkey: {
         toggleWindow: ''
       },
-      timeRounding: { interval: 0, mode: 'nearest' }
+      timeRounding: { interval: 0, mode: 'nearest' },
+      launchOnStartup: false
     };
   }
 }
@@ -480,6 +488,13 @@ async function saveSettings(newSettings) {
     
     // 新しいホットキーを登録
     registerHotkeys();
+
+    // 自動起動設定を適用
+    try {
+      applyAutoLaunchSetting();
+    } catch (e) {
+      console.error('自動起動設定の適用に失敗:', e);
+    }
     
     console.log('設定を保存しました:', settings);
     return true;
@@ -536,6 +551,36 @@ function showWindow() {
   
   if (!mainWindow.isVisible()) {
     restoreAndFocusWindow();
+  }
+}
+
+// PC起動時自動起動の設定適用（Windows/macOS対応。ここではWindowsを主に想定）
+function applyAutoLaunchSetting() {
+  const enable = !!(settings && settings.launchOnStartup);
+  try {
+    // Windows での一般的な設定。パッケージ版での利用を想定。
+    // 開発環境では electron.exe が登録されてしまうため、実際の動作確認はインストーラ経由の実行を推奨。
+    if (process.platform === 'win32') {
+      const options = { openAtLogin: enable };
+      // パッケージ版の場合は実行ファイルパスを指定（省略してもOKだが明示）
+      if (app.isPackaged) {
+        options.path = process.execPath;
+        options.args = [];
+      } else {
+        // 開発時は明示的に現在の実行ファイル（electron）とアプリパスを渡す
+        options.path = process.execPath;
+        // argv[1] にアプリのエントリ（ワークスペースパス）が入っているケースが多い
+        const appArg = process.argv[1] || path.resolve('.');
+        options.args = [appArg];
+      }
+      app.setLoginItemSettings(options);
+      const state = app.getLoginItemSettings();
+      console.log('自動起動設定を適用しました:', { requested: enable, actual: state.openAtLogin });
+    } else if (process.platform === 'darwin') {
+      app.setLoginItemSettings({ openAtLogin: enable, openAsHidden: true });
+    }
+  } catch (error) {
+    console.error('自動起動設定エラー:', error);
   }
 }
 
