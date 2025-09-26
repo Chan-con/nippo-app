@@ -373,6 +373,17 @@ body {
   padding-right: 24px;
 }
 
+/* 履歴モードでは日付入力をヘッダー中央に配置 */
+.main-header.history-mode {
+  position: sticky; /* 明示しておく */
+}
+
+.main-header.history-mode .date-selector {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .date-display h1 {
   font-size: 28px;
   font-weight: 700;
@@ -388,6 +399,11 @@ body {
 .status-indicators {
   display: flex;
   gap: 16px;
+}
+
+/* ヘッダーの実行中タスク（ステータスインジケータ）を非表示 */
+.main-header .status-indicators {
+  display: none !important;
 }
 
 .status-card {

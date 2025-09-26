@@ -4150,7 +4150,7 @@ class NippoApp {
             console.log('今日モードに切り替え時に日付入力フィールドをクリアしました');
         }
         
-        // UI更新
+    // UI更新
         document.getElementById('today-btn').classList.add('active');
         document.getElementById('history-btn').classList.remove('active');
         document.getElementById('date-selector').style.display = 'none';
@@ -4158,6 +4158,9 @@ class NippoApp {
         document.getElementById('create-report-btn').style.display = 'flex';
         document.getElementById('goal-stock-btn').style.display = 'flex';
         document.getElementById('break-btn').style.display = 'flex';
+    // ヘッダーの履歴モード用クラスを解除
+    const mainHeader = document.querySelector('.main-header');
+    if (mainHeader) mainHeader.classList.remove('history-mode');
         
         // 今日のタスクを再読み込み
         console.log('今日モード切り替え - 今日のタスクを読み込み中...');
@@ -4178,7 +4181,7 @@ class NippoApp {
             console.log('履歴モード切り替え時に日付入力フィールドをクリアしました');
         }
         
-        // UI更新
+    // UI更新
         document.getElementById('today-btn').classList.remove('active');
         document.getElementById('history-btn').classList.add('active');
         document.getElementById('date-selector').style.display = 'flex';
@@ -4186,6 +4189,9 @@ class NippoApp {
         document.getElementById('create-report-btn').style.display = 'none';
         document.getElementById('goal-stock-btn').style.display = 'none';
         document.getElementById('break-btn').style.display = 'none';
+    // ヘッダーに履歴モード用クラスを付与
+    const mainHeader2 = document.querySelector('.main-header');
+    if (mainHeader2) mainHeader2.classList.add('history-mode');
         
         // 履歴日付を読み込み
         this.loadHistoryDates();
