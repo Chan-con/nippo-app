@@ -96,7 +96,13 @@ function createWindow() {
   // レンダラープロセスからのコンソールログをメインプロセスに転送
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     const timestamp = new Date().toISOString();
-    const logLevel = level === 1 ? 'ERROR' : level === 2 ? 'WARN' : 'INFO';
+    // Electronのconsole-message levelは一般に 0:log/info, 1:warn, 2+:error 相当
+    let logLevel = 'INFO';
+    if (level === 1) {
+      logLevel = 'WARN';
+    } else if (level >= 2) {
+      logLevel = 'ERROR';
+    }
     console.log(`[RENDERER-${logLevel}] ${message}`);
   });
 
