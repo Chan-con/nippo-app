@@ -343,7 +343,8 @@ body {
 /* メインコンテンツ */
 .main-content {
   flex: 1;
-  padding: 24px;
+  /* 上側の余白はヘッダー内で持つため、topだけ0にする */
+  padding: 0 24px 24px;
   overflow-y: auto;
   background: var(--bg-primary);
 }
@@ -353,6 +354,20 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 32px;
+  /* 上部固定（タイムラインをスクロールしても見えるように） */
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  /* main-content から移設した上余白 */
+  padding-top: calc(12px + 24px);
+  padding-bottom: 12px;
+  /* 背景を左右端まで伸ばす（main-contentの左右パディング24pxと一致） */
+  margin-left: -24px;
+  margin-right: -24px;
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 .date-display h1 {
@@ -383,6 +398,11 @@ body {
   min-width: 200px;
 }
 
+/* フレックス子要素でellipsisを有効にするための最小幅リセット */
+.status-card > div {
+  min-width: 0;
+}
+
 .status-card .material-icons {
   font-size: 24px;
   color: var(--accent);
@@ -397,9 +417,21 @@ body {
 }
 
 .status-card p:last-child {
-  font-size: 14px;
+  /* 実行中タスク名は1行で省略表示（最大サイズ上限） */
+  font-size: 16px; /* 最大値 */
   font-weight: 500;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 念のためidセレクタでも省略を強制 */
+#current-task {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
 /* タイムライン */
