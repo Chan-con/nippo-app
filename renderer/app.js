@@ -4985,7 +4985,7 @@ class NippoApp {
         // 現在選択されている値を保持
         const currentValue = tagSelect.value;
 
-        tagSelect.innerHTML = '<option value="">未選択</option>';
+    tagSelect.innerHTML = '<option value="">タグを選択</option>';
         
         // タグストックから選択肢を追加
         this.tagStock.forEach(tag => {
@@ -5018,7 +5018,7 @@ class NippoApp {
         // 現在選択されている値を保持
         const currentValue = tagSelect.value;
 
-        tagSelect.innerHTML = '<option value="">未選択</option>';
+    tagSelect.innerHTML = '<option value="">タグを選択</option>';
         
         // タグストックから選択肢を追加
         this.tagStock.forEach(tag => {

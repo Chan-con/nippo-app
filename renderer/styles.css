@@ -156,9 +156,7 @@ body {
 }
 
 .tag-select-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
   margin-bottom: 12px;
 }
 
@@ -170,7 +168,7 @@ body {
 }
 
 .tag-select {
-  flex: 1;
+  width: 100%;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-small);
