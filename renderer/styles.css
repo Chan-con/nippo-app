@@ -348,8 +348,10 @@ body {
   flex: 1;
   /* 上側の余白はヘッダー内で持つため、topだけ0にする */
   padding: 0 24px 24px;
-  overflow-y: auto;
   background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* 子要素のスクロールを効かせる */
 }
 
 .main-header {
@@ -371,6 +373,12 @@ body {
   margin-right: -24px;
   padding-left: 24px;
   padding-right: 24px;
+}
+
+/* ヘッダーの下だけスクロールにするラッパー */
+.main-body {
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* 履歴モードでは日付入力をヘッダー中央に配置 */
