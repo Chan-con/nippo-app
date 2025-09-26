@@ -4154,7 +4154,11 @@ class NippoApp {
         document.getElementById('today-btn').classList.add('active');
         document.getElementById('history-btn').classList.remove('active');
         document.getElementById('date-selector').style.display = 'none';
-        document.getElementById('current-time').style.display = 'block';
+        // ヘッダー高さを一定に保つため、visibility で表示制御
+        const currentTimeEl = document.getElementById('current-time');
+        if (currentTimeEl) {
+            currentTimeEl.style.visibility = 'visible';
+        }
         document.getElementById('create-report-btn').style.display = 'flex';
         document.getElementById('goal-stock-btn').style.display = 'flex';
         document.getElementById('break-btn').style.display = 'flex';
@@ -4185,7 +4189,11 @@ class NippoApp {
         document.getElementById('today-btn').classList.remove('active');
         document.getElementById('history-btn').classList.add('active');
         document.getElementById('date-selector').style.display = 'flex';
-        document.getElementById('current-time').style.display = 'none';
+        // ヘッダー高さを一定に保つため、visibility で非表示（スペースは保持）
+        const currentTimeEl2 = document.getElementById('current-time');
+        if (currentTimeEl2) {
+            currentTimeEl2.style.visibility = 'hidden';
+        }
         document.getElementById('create-report-btn').style.display = 'none';
         document.getElementById('goal-stock-btn').style.display = 'none';
         document.getElementById('break-btn').style.display = 'none';
