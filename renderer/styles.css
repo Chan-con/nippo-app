@@ -902,6 +902,11 @@ body {
   color: var(--text-primary);
 }
 
+/* 要望により統計セクションは非表示 */
+.stats-section {
+  display: none !important;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
