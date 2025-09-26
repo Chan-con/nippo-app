@@ -134,6 +134,11 @@ body {
   display: inline-block;
 }
 
+/* 要望: サイドバー見出しと件数・下線を非表示 */
+.sidebar-header {
+  display: none !important;
+}
+
 .sidebar-content {
   flex: 1;
   padding: 20px;
