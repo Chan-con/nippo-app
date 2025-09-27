@@ -167,22 +167,49 @@ function restoreAndFocusWindow() {
     
     // 5. プラットフォーム別のフォーカス処理
     if (process.platform === 'win32') {
-      console.log('Windows用のフォーカス処理を実行します（リロードしない）');
-      // リロードせずに前面化とフォーカスのみ行う（ポップアップ/編集中内容を保持）
+      console.log('Windows用のフォーカス処理を実行します（一時的に最前面レベルを上げる）');
+      // 既存のalwaysOnTop状態を保持
+      const wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
+
+      // 一時的に最上位レベルに上げたうえで前面化してフォーカス
+      try {
+        // Windowsでは level='screen-saver' を使うとより確実に最上位
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      } catch (e) {
+        console.log('setAlwaysOnTop(level) でのレベル指定に失敗。フォールバックします:', e?.message || e);
+        mainWindow.setAlwaysOnTop(true);
+      }
+
+      // 仮想デスクトップ/全ワークスペースに一時的に可視化（未対応環境は無視）
+      try { mainWindow.setVisibleOnAllWorkspaces?.(true); } catch (_) {}
+
+  // 念のためフォーカス可能化
+  try { mainWindow.setFocusable?.(true); } catch (_) {}
+
+  // フォーカスと最前面化の順序を明示
       mainWindow.show();
-      mainWindow.setSkipTaskbar(false);
-      mainWindow.focus();
       try { mainWindow.moveTop(); } catch (_) {}
-      // フォーカスを確実にするため一時的に最前面指定
-      mainWindow.setAlwaysOnTop(true);
+      mainWindow.focus();
+      try { app.focus?.(); } catch (_) {}
+
+      // 必要なら視覚的な注意喚起（直後に解除）
+      try { mainWindow.flashFrame?.(true); setTimeout(() => { try { mainWindow.flashFrame?.(false); } catch {} }, 500); } catch {}
+
+      // 少し待ってから元の状態へ戻す
       setTimeout(() => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.setAlwaysOnTop(false);
+          try { mainWindow.setVisibleOnAllWorkspaces?.(false); } catch (_) {}
+          // もともとAlwaysOnTopでなければ解除
+          try {
+            mainWindow.setAlwaysOnTop(!!wasAlwaysOnTop, 'normal');
+          } catch (_) {
+            mainWindow.setAlwaysOnTop(!!wasAlwaysOnTop);
+          }
           // レンダラーに復元通知（必要に応じて再描画など）
           mainWindow.webContents.send('window-restored');
           console.log('フォーカス処理が完了しました（Windows）');
         }
-      }, 200);
+      }, 250);
     } else {
       // macOSやLinux用の処理
       mainWindow.focus();
