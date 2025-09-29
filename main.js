@@ -594,21 +594,24 @@ function applyAutoLaunchSetting() {
     // Windows での一般的な設定。パッケージ版での利用を想定。
     // 開発環境では electron.exe が登録されてしまうため、実際の動作確認はインストーラ経由の実行を推奨。
     if (process.platform === 'win32') {
-      const options = { openAtLogin: enable };
-      // パッケージ版の場合は実行ファイルパスを指定（省略してもOKだが明示）
-      if (app.isPackaged) {
-        options.path = process.execPath;
-        options.args = [];
-      } else {
-        // 開発時は明示的に現在の実行ファイル（electron）とアプリパスを渡す
-        options.path = process.execPath;
-        // argv[1] にアプリのエントリ（ワークスペースパス）が入っているケースが多い
-        const appArg = process.argv[1] || path.resolve('.');
-        options.args = [appArg];
+      if (!app.isPackaged) {
+        // 開発モードではスタートアップ登録を行わない（誤って system32 をアプリルートとして起動する事故を防止）
+        // もし過去に登録されていれば明示的に無効化しておく
+        app.setLoginItemSettings({ openAtLogin: false, path: process.execPath });
+        const state = app.getLoginItemSettings();
+        console.log('開発モードのため自動起動を無効化しました:', { actual: state.openAtLogin });
+        return;
       }
+
+      // パッケージ版のみ登録する（実行ファイルは process.execPath）
+      const options = {
+        openAtLogin: enable,
+        path: process.execPath,
+        args: []
+      };
       app.setLoginItemSettings(options);
       const state = app.getLoginItemSettings();
-      console.log('自動起動設定を適用しました:', { requested: enable, actual: state.openAtLogin });
+      console.log('自動起動設定を適用しました:', { requested: enable, actual: state.openAtLogin, execPath: process.execPath });
     } else if (process.platform === 'darwin') {
       app.setLoginItemSettings({ openAtLogin: enable, openAsHidden: true });
     }
