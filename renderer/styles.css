@@ -1452,7 +1452,8 @@ textarea {
   margin-bottom: 12px;
 }
 
-.task-summary {
+.task-summary,
+.goal-summary {
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-small);
