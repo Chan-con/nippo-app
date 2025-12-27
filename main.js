@@ -657,7 +657,7 @@ ipcMain.handle('get-tasks', async () => {
   }
 });
 
-ipcMain.handle('add-task', async (event, taskName, isBreak = false) => {
+ipcMain.handle('add-task', async (event, taskName) => {
   try {
     if (!taskManager) {
       const errorMsg = 'TaskManagerが初期化されていません';
@@ -668,8 +668,8 @@ ipcMain.handle('add-task', async (event, taskName, isBreak = false) => {
       }
       return { success: false, error: errorMsg };
     }
-    console.log('タスク追加リクエスト:', { taskName, isBreak });
-    writeDebugLog(`タスク追加リクエスト: ${taskName}, isBreak: ${isBreak}`);
+    console.log('タスク追加リクエスト:', { taskName });
+    writeDebugLog(`タスク追加リクエスト: ${taskName}`);
     
     // データディレクトリ情報をデバッグ出力
     if (app.isPackaged) {
@@ -678,7 +678,7 @@ ipcMain.handle('add-task', async (event, taskName, isBreak = false) => {
       writeDebugLog(`データディレクトリ: ${taskManager.dataDir}`);
     }
     
-    const newTask = await taskManager.addTask(taskName, isBreak);
+    const newTask = await taskManager.addTask(taskName, false);
     writeDebugLog(`タスク追加結果: ${newTask ? 'SUCCESS' : 'NULL'}`);
     console.log('タスク追加結果:', newTask);
     if (newTask) {

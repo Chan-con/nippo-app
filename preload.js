@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onWindowRestored: (callback) => ipcRenderer.on('window-restored', callback),
   onTasksUpdated: (callback) => ipcRenderer.on('tasks-updated', callback),
   getTasks: () => ipcRenderer.invoke('get-tasks'),
-  addTask: (taskName, isBreak = false) => ipcRenderer.invoke('add-task', taskName, isBreak),
+  addTask: (taskName) => ipcRenderer.invoke('add-task', taskName),
   endTask: () => ipcRenderer.invoke('end-task'),
   copyTimeline: () => ipcRenderer.invoke('copy-timeline'),
   clearAllTasks: () => ipcRenderer.invoke('clear-all-tasks'),

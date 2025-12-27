@@ -356,7 +356,6 @@ class NippoApp {
 
         this.updateDateTime();
         this.updateTaskCounter();
-        this.updateBreakButton(false); // 初期状態は休憩開始ボタン
 
         // 初期日付を記録
         const now = new Date();
@@ -642,9 +641,6 @@ class NippoApp {
 
         // タスク終了
         document.getElementById('end-task-btn').addEventListener('click', () => this.endTask());
-
-        // 休憩開始/終了
-        document.getElementById('break-btn').addEventListener('click', () => this.toggleBreak());
 
         // タイムラインコピー
         document.getElementById('copy-timeline-btn').addEventListener('click', () => this.copyTimeline());
@@ -935,7 +931,6 @@ class NippoApp {
                 this.tasks = [];
                 this.currentTaskId = null;
                 this.updateCurrentTask('タスクなし');
-                this.updateBreakButton(false);
                 
                 // UIを即座に更新（空の状態で表示）
                 this.updateTimeline();
@@ -1126,7 +1121,6 @@ class NippoApp {
             // 統一されたAPI呼び出し（日付パラメータ付き）
             const requestData = { 
                 name: taskName, 
-                isBreak: false,
                 tag: selectedTag || null,
                 dateString: this.currentDate, // null = 今日、文字列 = 指定日
                 startTime: startTime // 直前のタスクの終了時刻を開始時刻として設定
@@ -1184,90 +1178,6 @@ class NippoApp {
     }
 
 
-    async toggleBreak() {
-        // 現在実行中のタスクがあるかチェック
-        const currentRunningTask = this.tasks.find(task => this.isRunningTask(task));
-        
-        if (currentRunningTask && currentRunningTask.isBreak) {
-            // 休憩中の場合は休憩を終了
-            await this.endBreak();
-        } else {
-            // 休憩中でない場合は休憩を開始
-            await this.startBreak();
-        }
-    }
-
-    async startBreak() {
-        // 現在実行中のタスクがあるかチェック
-        const currentRunningTask = this.tasks.find(task => this.isRunningTask(task));
-        
-        // 直前のタスクの終了時刻を取得（新しい休憩タスクの開始時刻として使用）
-        let startTime = null;
-        
-        if (currentRunningTask) {
-            // 実行中のタスクがある場合は、現在時刻でそのタスクを終了させ、その時刻を休憩の開始時刻として使用
-            startTime = this.getTime(); // 現在時刻を取得
-            console.log(`実行中のタスクがあるため、現在時刻で直前のタスクを終了し、休憩の開始時刻に設定: ${startTime}`);
-        } else {
-            // 実行中のタスクがない場合は、最後に終了したタスクの終了時刻を使用
-            const lastCompletedTask = this.tasks
-                .filter(task => task.endTime) // 終了済みのタスクのみ
-                .sort((a, b) => new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) // 更新日時でソート
-                .pop(); // 最後のタスクを取得
-            
-            if (lastCompletedTask && lastCompletedTask.endTime) {
-                startTime = lastCompletedTask.endTime;
-                console.log(`直前の終了済みタスクの終了時刻を休憩の開始時刻に設定: ${startTime}`);
-            }
-        }
-        
-        try {
-            const requestData = { 
-                name: '休憩', 
-                isBreak: true,
-                startTime: startTime // 直前のタスクの終了時刻または現在時刻を開始時刻として設定
-            };
-            
-            const response = await fetch(`${this.apiBaseUrl}/api/tasks`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify(requestData) 
-            });
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
-                    await this.loadTasks();
-                    
-                    // 前のタスクが自動終了された場合の通知
-                    if (currentRunningTask) {
-                        this.showToast(`「${currentRunningTask.name}」を終了し、休憩を開始しました`);
-                    } else {
-                        this.showToast('休憩を開始しました');
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('休憩開始エラー:', error);
-            this.showToast('休憩の開始に失敗しました', 'error');
-        }
-    }
-
-    async endBreak() {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/api/tasks/end`, { method: 'POST' });
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
-                    await this.loadTasks();
-                    this.showToast('休憩を終了しました');
-                }
-            }
-        } catch (error) {
-            console.error('休憩終了エラー:', error);
-            this.showToast('休憩の終了に失敗しました', 'error');
-        }
-    }
-
     async endTask() {
         // 過去日付では今日のタスク操作を無効化
         if (this.currentDate) {
@@ -1318,18 +1228,8 @@ class NippoApp {
                 timelineText = sortedTasks.map(task => {
                     const startTime = task.startTime; // 午前/午後形式をそのまま使用
                     const endTime = this.isReservedTask(task) ? '予約' : (task.endTime ? task.endTime : '実行中');
-                    
-                    // 休憩タスクの表示名を整理
-                    let displayName = task.name;
-                    if (task.isBreak) {
-                        if (displayName === '[BREAK] 休憩' || displayName === '🔴 休憩' || displayName === '') {
-                            displayName = '休憩';
-                        } else if (displayName.startsWith('[BREAK] ')) {
-                            displayName = displayName.replace('[BREAK] ', '');
-                        } else if (displayName.startsWith('🔴 休憩: ')) {
-                            displayName = displayName.replace('🔴 休憩: ', '');
-                        }
-                    }
+
+                    const displayName = task.name;
                     
                     let line;
                     if (task.endTime) {
@@ -1422,18 +1322,11 @@ class NippoApp {
                     if (runningTask) {
                         console.log('実行中のタスク:', runningTask);
                         this.currentTaskId = runningTask.id;
-                        if (runningTask.isBreak) {
-                            this.updateCurrentTask('🔴 休憩中');
-                            this.updateBreakButton(true); // 休憩中の場合は終了ボタンに変更
-                        } else {
-                            this.updateCurrentTask(runningTask.name);
-                            this.updateBreakButton(false); // 通常タスクの場合は開始ボタンに変更
-                        }
+                        this.updateCurrentTask(runningTask.name);
                     } else {
                         console.log('実行中のタスクはありません');
                         this.currentTaskId = null;
                         this.updateCurrentTask('タスクなし');
-                        this.updateBreakButton(false); // タスクなしの場合は開始ボタン
                     }
 
                     console.log('タスクデータの読み込み完了');
@@ -1476,7 +1369,6 @@ class NippoApp {
             const endTime = isReserved ? '予約' : (task.endTime ? this.formatTime(task.endTime) : '実行中');
             const duration = (!isReserved && task.endTime) ? this.calculateDuration(task.startTime, task.endTime) : '';
             const isRunning = this.isRunningTask(task);
-            const isBreak = task.isBreak || false;
 
             const timeColumnHTML = (!isReserved && task.endTime)
                 ? `<div class="timeline-time range"><span class="time-start">${startTime}</span><span class="time-line" aria-hidden="true"></span><span class="time-end">${this.formatTime(task.endTime)}</span></div>`
@@ -1488,44 +1380,27 @@ class NippoApp {
                     name: task.name,
                     startTime: task.startTime,
                     endTime: task.endTime,
-                    duration: duration,
-                    isBreak: isBreak
+                    duration: duration
                 });
             }
             
             // クラスを動的に設定
             let itemClass = 'timeline-item';
-            if (isRunning && isBreak) {
-                // 実行中の休憩のみ特別なスタイル
-                itemClass += ' running break';
-            } else if (isRunning) {
+            if (isRunning) {
                 // 実行中の通常タスク
                 itemClass += ' running';
             } else if (isReserved) {
                 itemClass += ' reserved';
             }
-            // 終了した休憩タスクは通常のタスクと同じ表示にする
             
-            // タスク名を表示用に整形（休憩の場合は適切に表示）
+            // タスク名を表示用に整形
             let displayName = task.name;
-            if (isBreak) {
-                if (displayName === '[BREAK] 休憩' || displayName === '🔴 休憩' || displayName === '') {
-                    displayName = '休憩';
-                } else if (displayName.startsWith('[BREAK] ')) {
-                    displayName = displayName.replace('[BREAK] ', '');
-                } else if (displayName.startsWith('🔴 休憩: ')) {
-                    displayName = displayName.replace('🔴 休憩: ', '');
-                } else if (displayName.startsWith('🔴 休憩')) {
-                    displayName = displayName.replace('🔴 休憩', '').trim();
-                    if (!displayName) displayName = '休憩';
-                }
-            }
             
             // タグの表示
             const tagDisplay = task.tag ? `<span class="task-tag">${task.tag}</span>` : '';
             const statusChip = isReserved
                 ? `<span class="timeline-duration" style="background: var(--purple); color: var(--bg-primary);">予約</span>`
-                : (isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : '');
+                : (isRunning ? `<span class="timeline-duration" style="background: var(--accent); color: white;">実行中</span>` : '');
             
             return `
                 <div class="${itemClass}">
@@ -1551,8 +1426,7 @@ class NippoApp {
     }
 
     updateStats() {
-        // 休憩以外の完了したタスクのみをカウント
-        const completedWorkTasks = this.tasks.filter(task => task.endTime && !task.isBreak).length;
+        const completedWorkTasks = this.tasks.filter(task => task.endTime && !this.isReservedTask(task)).length;
         const totalWorkTime = this.calculateTotalWorkTime();
         const productivity = this.calculateProductivity();
 
@@ -1572,10 +1446,9 @@ class NippoApp {
     updateEndTaskButtonVisibility() {
         const endTaskBtn = document.getElementById('end-task-btn');
         const runningTasks = this.tasks.filter(task => this.isRunningTask(task));
-        const isOnBreak = runningTasks.some(task => task.isBreak);
-        
-        // 実行中のタスクがない、または休憩中の場合は非表示
-        if (runningTasks.length === 0 || isOnBreak) {
+
+        // 実行中のタスクがない場合は非表示
+        if (runningTasks.length === 0) {
             endTaskBtn.style.display = 'none';
         } else {
             endTaskBtn.style.display = 'flex';
@@ -1584,38 +1457,6 @@ class NippoApp {
 
     updateCurrentTask(taskName) {
         document.getElementById('current-task').textContent = taskName;
-    }
-
-    updateBreakButton(isOnBreak) {
-        const breakBtn = document.getElementById('break-btn');
-        const icon = breakBtn.querySelector('.material-icons');
-        const text = breakBtn.querySelector('span:not(.material-icons)') || breakBtn.childNodes[breakBtn.childNodes.length - 1];
-        
-        if (isOnBreak) {
-            // 休憩終了ボタンに変更
-            icon.textContent = 'stop_circle';
-            if (text.nodeType === Node.TEXT_NODE) {
-                text.textContent = '休憩終了';
-            } else {
-                breakBtn.innerHTML = '<span class="material-icons">stop_circle</span>休憩終了';
-            }
-            breakBtn.classList.remove('btn-break');
-            breakBtn.classList.add('btn-secondary');
-        } else {
-            // 休憩開始ボタンに変更
-            icon.textContent = 'coffee';
-            if (text.nodeType === Node.TEXT_NODE) {
-                text.textContent = '休憩開始';
-            }
-            else {
-                breakBtn.innerHTML = '<span class="material-icons">coffee</span>休憩開始';
-            }
-            breakBtn.classList.remove('btn-secondary');
-            breakBtn.classList.add('btn-break');
-        }
-        
-        // タスク終了ボタンの表示状態を更新
-        this.updateEndTaskButtonVisibility();
     }
 
     formatTime(timeString) {
@@ -1799,9 +1640,9 @@ class NippoApp {
     }
 
     calculateTotalWorkTime() {
-        // 休憩時間を除外して作業時間のみを計算
+        // 完了したタスクの合計時間を計算
         const totalMinutes = this.tasks.reduce((total, task) => {
-            if (task.endTime && task.startTime && !task.isBreak) {
+            if (task.endTime && task.startTime && !this.isReservedTask(task)) {
                 const duration = this.calculateDuration(task.startTime, task.endTime);
                 if (!duration) return total;
                 
@@ -1830,8 +1671,7 @@ class NippoApp {
     }
 
     calculateProductivity() {
-        // 休憩以外のタスクのみで生産性を計算
-        const workTasks = this.tasks.filter(task => !task.isBreak);
+        const workTasks = this.tasks.filter(task => !this.isReservedTask(task));
         if (workTasks.length === 0) return '-';
         const completedRatio = workTasks.filter(task => task.endTime).length / workTasks.length;
         return `${Math.round(completedRatio * 100)}%`;
@@ -1841,12 +1681,6 @@ class NippoApp {
         // 右クリックの場合のみコンテキストメニューを無効化
         if (event.type === 'contextmenu') {
             event.preventDefault();
-        }
-        
-        // 休憩タスクの場合はコピーしない
-        if (taskName === '休憩' || taskName.includes('休憩')) {
-            this.showToast('休憩タスクはコピーできません', 'warning');
-            return;
         }
         
         const taskInput = document.getElementById('task-input');
@@ -2819,7 +2653,7 @@ class NippoApp {
         const tagData = new Map();
         
         // 完了したタスクのみを対象とする
-        const completedTasks = allTasks.filter(task => task.endTime && !task.isBreak);
+        const completedTasks = allTasks.filter(task => task.endTime);
         
         // デバッグ用: 完了したタスクの詳細を確認
         console.log('完了したタスク数:', completedTasks.length);
@@ -2833,8 +2667,7 @@ class NippoApp {
                 tagType: typeof task.tag,
                 date: task.date,
                 taskKeys: Object.keys(task),
-                endTime: task.endTime,
-                isBreak: task.isBreak
+                endTime: task.endTime
             }, null, 2));
         });
         
@@ -3096,7 +2929,6 @@ class NippoApp {
                         tag: task.tag,
                         date: task.date,
                         endTime: task.endTime,
-                        isBreak: task.isBreak,
                         taskKeys: Object.keys(task)
                     }, null, 2));
                 }
@@ -4364,7 +4196,6 @@ class NippoApp {
         }
         document.getElementById('create-report-btn').style.display = 'flex';
         document.getElementById('goal-stock-btn').style.display = 'flex';
-        document.getElementById('break-btn').style.display = 'flex';
     // ヘッダーの履歴モード用クラスを解除
     const mainHeader = document.querySelector('.main-header');
     if (mainHeader) mainHeader.classList.remove('history-mode');
@@ -4399,7 +4230,6 @@ class NippoApp {
         }
         document.getElementById('create-report-btn').style.display = 'none';
         document.getElementById('goal-stock-btn').style.display = 'none';
-        document.getElementById('break-btn').style.display = 'none';
     // ヘッダーに履歴モード用クラスを付与
     const mainHeader2 = document.querySelector('.main-header');
     if (mainHeader2) mainHeader2.classList.add('history-mode');
@@ -4569,7 +4399,6 @@ class NippoApp {
             const startTime = this.formatTime(task.startTime);
             const endTime = task.endTime ? this.formatTime(task.endTime) : '未完了';
             const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '';
-            const isBreak = task.isBreak || false;
 
             const timeColumnHTML = task.endTime
                 ? `<div class="timeline-time range"><span class="time-start">${startTime}</span><span class="time-line" aria-hidden="true"></span><span class="time-end">${this.formatTime(task.endTime)}</span></div>`
@@ -4577,9 +4406,6 @@ class NippoApp {
             
             // タスク名を表示用に整形
             let displayName = task.name || task.title || '名称未設定';
-            if (isBreak) {
-                displayName = '休憩';
-            }
             
             // タグの表示
             const tagDisplay = task.tag ? `<span class="task-tag">${task.tag}</span>` : '';
@@ -4643,10 +4469,10 @@ class NippoApp {
     }
 
     updateHistoryStats(tasks) {
-        const completedWorkTasks = tasks.filter(task => task.endTime && !task.isBreak).length;
+        const completedWorkTasks = tasks.filter(task => task.endTime).length;
         
         const totalMinutes = tasks.reduce((total, task) => {
-            if (task.endTime && task.startTime && !task.isBreak) {
+            if (task.endTime && task.startTime) {
                 const duration = this.calculateDuration(task.startTime, task.endTime);
                 if (!duration) return total;
                 
@@ -4665,9 +4491,8 @@ class NippoApp {
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
         const totalWorkTime = `${hours}:${minutes.toString().padStart(2, '0')}`;
-        
-        const workTasks = tasks.filter(task => !task.isBreak);
-        const productivity = workTasks.length > 0 ? `${Math.round(completedWorkTasks / workTasks.length * 100)}%` : '-';
+
+        const productivity = tasks.length > 0 ? `${Math.round(completedWorkTasks / tasks.length * 100)}%` : '-';
         
         document.getElementById('completed-tasks').textContent = completedWorkTasks;
         document.getElementById('work-time').textContent = totalWorkTime;

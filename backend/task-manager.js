@@ -51,9 +51,84 @@ class TaskManager {
             } catch (error) {
                 console.error('履歴整合性チェックでエラーが発生しましたが、処理を継続します:', error);
             }
+
+            // 休憩機能は廃止：過去データに残る休憩タスク（isBreak:true / [BREAK]）を保存データから除去
+            try {
+                await this.purgeLegacyBreakTasks();
+            } catch (error) {
+                console.error('休憩タスクのクリーンアップでエラーが発生しましたが、処理を継続します:', error);
+            }
             
             this.initialized = true;
             console.log('TaskManager初期化完了 - データディレクトリ:', this.dataDir);
+        }
+    }
+
+    shouldRemoveBreakTask(task) {
+        if (!task) return false;
+        if (task.isBreak === true) return true;
+        const title = (task.name || task.title || '').toString();
+        const normalized = title.trim();
+        if (normalized === '休憩' || normalized === '休憩中') return true;
+        if (title.includes('[BREAK]')) return true;
+        return false;
+    }
+
+    async purgeLegacyBreakTasks() {
+        const filesToCheck = [];
+
+        // 今日のJSON（data_today.json）
+        filesToCheck.push(path.join(this.dataDir, 'data_today.json'));
+
+        // 履歴JSON（history/data_*.json）
+        const historyExists = await fs.access(this.historyDir).then(() => true).catch(() => false);
+        if (historyExists) {
+            const files = await fs.readdir(this.historyDir);
+            for (const filename of files) {
+                if (filename.startsWith('data_') && filename.endsWith('.json')) {
+                    filesToCheck.push(path.join(this.historyDir, filename));
+                }
+            }
+        }
+
+        let removedTotal = 0;
+        let touchedFiles = 0;
+
+        for (const filePath of filesToCheck) {
+            const exists = await fs.access(filePath).then(() => true).catch(() => false);
+            if (!exists) continue;
+
+            let data;
+            try {
+                const content = await fs.readFile(filePath, 'utf-8');
+                data = JSON.parse(content);
+            } catch (error) {
+                console.error(`休憩タスククリーンアップ: JSON読み込み失敗: ${filePath}`, error);
+                continue;
+            }
+
+            if (!data || !Array.isArray(data.tasks)) continue;
+
+            const before = data.tasks.length;
+            const filtered = data.tasks.filter(t => !this.shouldRemoveBreakTask(t));
+            const removed = before - filtered.length;
+            if (removed <= 0) continue;
+
+            data.tasks = filtered;
+            data.updatedAt = new Date().toISOString();
+
+            try {
+                await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+                removedTotal += removed;
+                touchedFiles += 1;
+                console.log(`休憩タスククリーンアップ: ${filePath} から ${removed} 件削除`);
+            } catch (error) {
+                console.error(`休憩タスククリーンアップ: 書き込み失敗: ${filePath}`, error);
+            }
+        }
+
+        if (removedTotal > 0) {
+            console.log(`休憩タスククリーンアップ完了: ${touchedFiles}ファイル / 合計${removedTotal}件削除`);
         }
     }
 
@@ -424,7 +499,6 @@ class TaskManager {
                 startTime: task.startTime,
                 endTime: task.endTime || null,
                 title: task.name || task.title,
-                isBreak: task.isBreak || false,
                 tag: task.tag || null,
                 createdAt: task.createdAt,
                 updatedAt: new Date().toISOString(),
@@ -518,7 +592,6 @@ class TaskManager {
                     startTime: task.startTime,
                     endTime: task.endTime,
                     name: task.title || task.name,
-                    isBreak: task.isBreak || false,
                     tag: task.tag,
                     status: task.status || null,
                     createdAt: task.createdAt,
@@ -558,7 +631,6 @@ class TaskManager {
                 startTime: task.startTime,
                 endTime: task.endTime,
                 name: task.title || task.name,
-                isBreak: task.isBreak || false,
                 tag: task.tag,
                 status: task.status || null,
                 createdAt: task.createdAt,
@@ -590,7 +662,6 @@ class TaskManager {
                         startTime: task.startTime || '',
                         endTime: task.endTime || null,
                         title: task.name || task.title || '',
-                        isBreak: task.isBreak || false,
                         tag: task.tag || null,
                         status: task.status || null,
                         createdAt: task.createdAt || new Date().toISOString(), // 既存作成日時を保持
@@ -653,7 +724,7 @@ class TaskManager {
                 endTime: task.endTime,
                 status: task.status || null,
                 name: task.title || task.name,
-                isBreak: task.isBreak || false
+                tag: task.tag || null
             }));
             
             console.log(`移行完了 - タスク数: ${compatibleTasks.length}`);
@@ -669,18 +740,26 @@ class TaskManager {
         /**タスクを追加 */
         await this.initialize();
         try {
-            console.log(`add_task開始: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}, startTime=${startTime}`);
-            
+            // 休憩機能は廃止：後方互換のため引数は受けるが常に通常タスクとして扱う
+            const requestedIsBreak = !!isBreak;
+            isBreak = false;
+
+            console.log(
+                `add_task開始: name='${taskName}', requestedIsBreak=${requestedIsBreak}, dateString=${dateString}, tag=${tag}, startTime=${startTime}`
+            );
+
             const tasks = await this.loadSchedule(dateString);
             console.log(`既存タスク数: ${tasks.length}`);
-            
+
             // 開始時刻を決定：指定された時刻があればそれを使用、なければ現在時刻
             const addTime = startTime || this.getTimeForDate(dateString);
-            console.log(`使用する開始時刻: ${addTime} (指定時刻: ${startTime}, 現在時刻: ${startTime ? 'スキップ' : this.getTimeForDate(dateString)})`);
+            console.log(
+                `使用する開始時刻: ${addTime} (指定時刻: ${startTime}, 現在時刻: ${startTime ? 'スキップ' : this.getTimeForDate(dateString)})`
+            );
 
-        // この追加が属する日付（履歴同期用）を先に決定しておく
-        const taskDate = dateString || this.getTodayDateString();
-            
+            // この追加が属する日付（履歴同期用）を先に決定しておく
+            const taskDate = dateString || this.getTodayDateString();
+
             // 未終了のタスクがあれば終了時刻を設定（予約は除外）
             for (const task of tasks) {
                 if (!task.endTime && !this.isReservedTask(task)) {
@@ -689,14 +768,15 @@ class TaskManager {
                     } catch (error) {
                         console.log(`未終了タスクを終了: [絵文字を含むタスク] ID=${task.id}`);
                     }
+
                     task.endTime = addTime;
                     task.updatedAt = new Date().toISOString();
-                    
+
                     // 未終了タスクの終了も履歴に同期
-            await this.syncTaskToHistory(task, taskDate);
+                    await this.syncTaskToHistory(task, taskDate);
                 }
             }
-            
+
             // 新しいタスクを追加
             const now = new Date();
             const newTask = {
@@ -704,28 +784,26 @@ class TaskManager {
                 startTime: addTime,
                 endTime: '',
                 name: taskName,
-                isBreak: isBreak,
                 tag: tag || '',
                 status: null,
                 createdAt: now.toISOString(),
                 updatedAt: now.toISOString(),
                 taskDate: taskDate // タスクが属する日付を明示的に記録
             };
-            
+
             tasks.push(newTask);
             try {
                 console.log(`新しいタスクを追加: ${JSON.stringify(newTask)}`);
             } catch (error) {
                 console.log(`新しいタスクを追加: [絵文字を含むタスク] ID=${newTask.id}`);
             }
-            
-            console.log(`saveSchedule開始 - タスク数: ${tasks.length}`);
+
             await this.saveSchedule(tasks, dateString);
-            
+
             // 履歴にもリアルタイム同期
             await this.syncTaskToHistory(newTask, taskDate);
-            
-            console.log("add_task完了");
+
+            console.log('add_task完了');
             return newTask;
         } catch (error) {
             console.error(`add_taskエラー: ${error}`);
@@ -805,7 +883,7 @@ class TaskManager {
     }
 
     async getTimelineText() {
-        /**タイムラインのテキストを取得（コピー用に[BREAK]プレフィックスを除去） */
+        /**タイムラインのテキストを取得 */
         try {
             const exists = await fs.access(this.dataFile).then(() => true).catch(() => false);
             if (!exists) {
@@ -813,21 +891,12 @@ class TaskManager {
             }
             
             const content = await fs.readFile(this.dataFile, 'utf-8');
-            
-            // コピー時は[BREAK]プレフィックスを除去
-            const lines = content.split('\n');
-            const cleanedLines = [];
-            for (const line of lines) {
-                if (line.startsWith('[BREAK]')) {
-                    // [BREAK]プレフィックスを除去
-                    const cleanedLine = line.replace('[BREAK]', '').trim();
-                    cleanedLines.push(cleanedLine);
-                } else {
-                    cleanedLines.push(line);
-                }
-            }
-            
-            return cleanedLines.join('\n');
+
+            // 休憩（[BREAK]）行は廃止済みのため除去
+            return content
+                .split('\n')
+                .filter(line => !line.trim().startsWith('[BREAK]'))
+                .join('\n');
         } catch (error) {
             console.error(`getTimelineTextエラー: ${error}`);
             return "";
@@ -855,6 +924,11 @@ class TaskManager {
                 }
                 
                 const timeRange = content.trim();
+                // 休憩（[BREAK]）は廃止：レガシーデータ移行時にスキップ
+                if (timeRange.includes('[BREAK]')) {
+                    currentTask = null;
+                    continue;
+                }
                 const [startTimeStr, endTimeStr] = timeRange.split('~').map(s => s.trim());
                 
                 currentTask = {
@@ -862,15 +936,17 @@ class TaskManager {
                     startTime: startTimeStr,
                     endTime: endTimeStr || null,
                     title: '',
-                    isBreak: false,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 };
             } else if (currentTask) {
                 // タスク名の行
-                const isBreak = content.includes('[BREAK]');
-                currentTask.title = isBreak ? content.replace('[BREAK]', '').trim() : content;
-                currentTask.isBreak = isBreak;
+                if (content.includes('[BREAK]')) {
+                    // 休憩は廃止：このタスク自体を破棄
+                    currentTask = null;
+                    continue;
+                }
+                currentTask.title = content;
             }
         }
 
@@ -1032,7 +1108,6 @@ class TaskManager {
             startTime: startTime,
             endTime: null,
             name: trimmedName,
-            isBreak: false,
             tag: tag || '',
             status: 'reserved',
             createdAt: now.toISOString(),
@@ -1487,7 +1562,6 @@ class TaskManager {
                 startTime: taskData.startTime,
                 endTime: taskData.endTime || null,
                 title: taskData.title,
-                isBreak: taskData.isBreak || false,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
@@ -1655,8 +1729,6 @@ class TaskManager {
             const taskIndex = tasks.findIndex(task => task.id == taskId);
 
             if (taskIndex !== -1) {
-                // 既存の休憩フラグを保持
-                const isBreak = tasks[taskIndex].isBreak || false;
                 const status = tasks[taskIndex].status || null;
                 
                 // 時間矛盾を調整
@@ -1668,7 +1740,6 @@ class TaskManager {
                 adjustedTasks[taskIndex].name = taskName;
                 adjustedTasks[taskIndex].startTime = startTime;
                 adjustedTasks[taskIndex].endTime = endTime && endTime.trim() ? endTime : null;
-                adjustedTasks[taskIndex].isBreak = isBreak;
                 adjustedTasks[taskIndex].tag = tag;
                 adjustedTasks[taskIndex].status = status;
                 adjustedTasks[taskIndex].updatedAt = new Date().toISOString();
@@ -1743,8 +1814,7 @@ class TaskManager {
                 return { success: false, message: '指定されたタスクが見つかりません' };
             }
             
-            // 既存の休憩フラグ/ステータスとIDを保持
-            const isBreak = tasks[taskIndex].isBreak || false;
+            // 既存のステータスとIDを保持
             const originalId = tasks[taskIndex].id;
             const status = tasks[taskIndex].status || null;
             
@@ -1754,7 +1824,6 @@ class TaskManager {
                 name: taskName,
                 startTime: startTime,
                 endTime: endTime && endTime.trim() ? endTime : null,
-                isBreak: isBreak,
                 tag: tag,
                 status: status,
                 createdAt: tasks[taskIndex].createdAt || new Date().toISOString(),
@@ -2208,18 +2277,19 @@ function createApp(taskManagerInstance) {
         try {
             const data = req.body;
             const taskName = (data.name || '').trim();
-            const isBreak = data.isBreak || false;
+            // 休憩機能は廃止：互換目的で受けても無視
+            const requestedIsBreak = !!data.isBreak;
             const dateString = data.dateString || null; // 日付パラメータ追加
             const tag = data.tag || null; // タグパラメータ追加
             const startTime = data.startTime || null; // 開始時刻パラメータ追加
             
-            console.log(`API - タスク追加リクエスト: name='${taskName}', isBreak=${isBreak}, dateString=${dateString}, tag=${tag}, startTime=${startTime}`);
+            console.log(`API - タスク追加リクエスト: name='${taskName}', requestedIsBreak=${requestedIsBreak}, dateString=${dateString}, tag=${tag}, startTime=${startTime}`);
             
             if (!taskName) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
             }
             
-            const newTask = await taskManager.addTask(taskName, isBreak, dateString, tag, startTime);
+            const newTask = await taskManager.addTask(taskName, false, dateString, tag, startTime);
             try {
                 console.log(`API - 追加されたタスク: ${JSON.stringify(newTask)}`);
             } catch (error) {
