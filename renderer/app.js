@@ -1433,6 +1433,10 @@ class NippoApp {
             const duration = (!isReserved && task.endTime) ? this.calculateDuration(task.startTime, task.endTime) : '';
             const isRunning = this.isRunningTask(task);
             const isBreak = task.isBreak || false;
+
+            const timeColumnHTML = (!isReserved && task.endTime)
+                ? `<div class="timeline-time range"><span class="time-start">${startTime}</span><span class="time-line" aria-hidden="true"></span><span class="time-end">${this.formatTime(task.endTime)}</span></div>`
+                : `<div class="timeline-time">${startTime}</div>`;
             
             // デバッグ情報
             if (task.endTime) {
@@ -1481,7 +1485,7 @@ class NippoApp {
             
             return `
                 <div class="${itemClass}">
-                    <div class="timeline-time">${startTime}</div>
+                    ${timeColumnHTML}
                     <div class="timeline-content">
                         <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" title="クリックでタスク名をコピー">
                             ${displayName}
@@ -1573,7 +1577,15 @@ class NippoApp {
     formatTime(timeString) {
         // "午前 10:30" -> "10:30"
         if (!timeString) return '';
-        return timeString.replace('午前 ', '').replace('午後 ', '');
+
+        const normalized = timeString.replace('午前 ', '').replace('午後 ', '').trim();
+        if (!normalized.includes(':')) return normalized;
+
+        const [rawHours, rawMinutes] = normalized.split(':');
+        const hours = String(parseInt(rawHours, 10)).padStart(2, '0');
+        const minutes = String(parseInt(rawMinutes, 10)).padStart(2, '0');
+        if (hours === 'NaN' || minutes === 'NaN') return normalized;
+        return `${hours}:${minutes}`;
     }
 
     // 12時間形式（午前/午後）を24時間形式（HH:mm）に変換
@@ -4514,6 +4526,10 @@ class NippoApp {
             const endTime = task.endTime ? this.formatTime(task.endTime) : '未完了';
             const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '';
             const isBreak = task.isBreak || false;
+
+            const timeColumnHTML = task.endTime
+                ? `<div class="timeline-time range"><span class="time-start">${startTime}</span><span class="time-line" aria-hidden="true"></span><span class="time-end">${this.formatTime(task.endTime)}</span></div>`
+                : `<div class="timeline-time">${startTime}</div>`;
             
             // タスク名を表示用に整形
             let displayName = task.name || task.title || '名称未設定';
@@ -4526,7 +4542,7 @@ class NippoApp {
             
             return `
                 <div class="timeline-item">
-                    <div class="timeline-time">${startTime}</div>
+                    ${timeColumnHTML}
                     <div class="timeline-content">
                         <div class="timeline-task" onclick="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" oncontextmenu="app.copyTaskToInput('${displayName.replace(/'/g, "\'")}', event)" title="クリックでタスク名をコピー">${displayName}</div>
                         <div class="timeline-meta">
