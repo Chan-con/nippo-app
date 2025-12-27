@@ -42,6 +42,12 @@ body {
   pointer-events: auto !important;
 }
 
+input,
+select,
+textarea {
+  user-select: text;
+}
+
 /* タイトルバー */
 .titlebar {
   display: flex;
@@ -155,6 +161,36 @@ body {
   border: 1px solid var(--border);
 }
 
+.task-add-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.task-add-tab {
+  flex: 1;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.task-add-tab:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.task-add-tab.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 .tag-select-group {
   display: block;
   margin-bottom: 12px;
@@ -192,6 +228,60 @@ body {
 .input-group {
   display: flex;
   gap: 8px;
+}
+
+.task-name-row {
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.btn-add-task {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  gap: 8px;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  min-height: 32px;
+}
+
+.btn-add-task .material-icons {
+  font-size: 18px;
+}
+
+.btn-add-task:hover:not(:disabled) {
+  transform: none;
+}
+
+.reserve-time-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.reserve-time-row[hidden] {
+  display: none !important;
+}
+
+.reserve-time-input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+  appearance: auto;
+}
+
+.reserve-time-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.1);
 }
 
 .task-input {
@@ -529,6 +619,12 @@ body {
 .timeline-item.running {
   background: rgba(137, 180, 250, 0.1);
   border-left: 4px solid var(--accent);
+  padding-left: 12px;
+}
+
+.timeline-item.reserved {
+  background: var(--bg-secondary);
+  border-left: 4px solid var(--purple);
   padding-left: 12px;
 }
 

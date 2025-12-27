@@ -2,6 +2,7 @@ class NippoApp {
     constructor() {
         this.tasks = [];
         this.currentTaskId = null;
+        this.taskAddMode = 'now';
         this.currentTabId = 'default';
         this.reportUrls = [];
         this.toastTimer = null;
@@ -28,6 +29,14 @@ class NippoApp {
         this.historyData = {}; // 履歴データの初期化
         this.lastKnownDate = null; // 日付変更検知用
         this.init();
+    }
+
+    isReservedTask(task) {
+        return !!task && task.status === 'reserved';
+    }
+
+    isRunningTask(task) {
+        return !!task && !task.endTime && !this.isReservedTask(task);
     }
 
     // アプリ初期化部分の終わりにドラッグ&ドロップ機能を初期化
@@ -337,6 +346,10 @@ class NippoApp {
     }
     async init() {
         this.setupEventListeners();
+
+        // 初期表示を確実に「今すぐ」に同期（予約時刻入力は非表示）
+        this.setTaskAddMode(this.taskAddMode);
+
         this.updateDateTime();
         this.updateTaskCounter();
         this.updateBreakButton(false); // 初期状態は休憩開始ボタン
@@ -364,6 +377,20 @@ class NippoApp {
             
             
             this.eventListenersInitialized = true;
+        }
+
+        // メインプロセス側で予約→実行に切り替わったら通知される
+        if (window.electronAPI?.onTasksUpdated) {
+            window.electronAPI.onTasksUpdated(async () => {
+                try {
+                    // 今日表示中のみ自動更新
+                    if (this.currentMode !== 'history' && !this.currentDate && this.apiBaseUrl) {
+                        await this.loadTasks();
+                    }
+                } catch (e) {
+                    console.error('tasks-updated ハンドラでエラー:', e);
+                }
+            });
         }
 
         // APIサーバーのポートを取得し、準備を待つ
@@ -552,6 +579,14 @@ class NippoApp {
     }
 
     setupEventListeners() {
+        // タスク追加モード切替
+        const tabNow = document.getElementById('task-add-tab-now');
+        const tabReserve = document.getElementById('task-add-tab-reserve');
+        if (tabNow && tabReserve) {
+            tabNow.addEventListener('click', () => this.setTaskAddMode('now'));
+            tabReserve.addEventListener('click', () => this.setTaskAddMode('reserve'));
+        }
+
         // タスク追加
         const addBtn = document.getElementById('add-task-btn');
         const taskInput = document.getElementById('task-input');
@@ -707,6 +742,39 @@ class NippoApp {
             // 少し遅延してからボタン状態を更新（レイアウト調整後）
             setTimeout(() => this.updateTagScrollButtons(), 100);
         });
+    }
+
+    setTaskAddMode(mode) {
+        this.taskAddMode = mode === 'reserve' ? 'reserve' : 'now';
+
+        const tabNow = document.getElementById('task-add-tab-now');
+        const tabReserve = document.getElementById('task-add-tab-reserve');
+        const reserveTimeRow = document.getElementById('reserve-time-row');
+        const reserveTimeInput = document.getElementById('reserve-time-input');
+        const taskInput = document.getElementById('task-input');
+
+        if (tabNow && tabReserve) {
+            const isReserve = this.taskAddMode === 'reserve';
+            tabNow.classList.toggle('active', !isReserve);
+            tabReserve.classList.toggle('active', isReserve);
+            tabNow.setAttribute('aria-selected', String(!isReserve));
+            tabReserve.setAttribute('aria-selected', String(isReserve));
+        }
+
+        if (reserveTimeRow) {
+            reserveTimeRow.hidden = this.taskAddMode !== 'reserve';
+        }
+
+        if (taskInput) {
+            taskInput.placeholder = this.taskAddMode === 'reserve' ? '予約するタスク名を入力...' : '新しいタスクを入力...';
+        }
+
+        if (this.taskAddMode === 'reserve') {
+            // まず時刻入力を促す
+            reserveTimeInput?.focus?.();
+        } else {
+            taskInput?.focus?.();
+        }
     }
 
     updateDateTime() {
@@ -960,6 +1028,10 @@ class NippoApp {
     }
 
     async addTask() {
+        if (this.taskAddMode === 'reserve') {
+            await this.addReservation();
+            return;
+        }
         const taskInput = document.getElementById('task-input');
         const taskTagSelect = document.getElementById('task-tag-select');
         const taskName = taskInput.value.trim();
@@ -984,7 +1056,7 @@ class NippoApp {
         }
 
         // 現在実行中のタスクがあるかチェック
-        const currentRunningTask = this.tasks.find(task => !task.endTime);
+        const currentRunningTask = this.tasks.find(task => this.isRunningTask(task));
         
         // 直前のタスクの終了時刻を取得（新しいタスクの開始時刻として使用）
         let startTime = null;
@@ -1070,7 +1142,7 @@ class NippoApp {
 
     async toggleBreak() {
         // 現在実行中のタスクがあるかチェック
-        const currentRunningTask = this.tasks.find(task => !task.endTime);
+        const currentRunningTask = this.tasks.find(task => this.isRunningTask(task));
         
         if (currentRunningTask && currentRunningTask.isBreak) {
             // 休憩中の場合は休憩を終了
@@ -1083,7 +1155,7 @@ class NippoApp {
 
     async startBreak() {
         // 現在実行中のタスクがあるかチェック
-        const currentRunningTask = this.tasks.find(task => !task.endTime);
+        const currentRunningTask = this.tasks.find(task => this.isRunningTask(task));
         
         // 直前のタスクの終了時刻を取得（新しい休憩タスクの開始時刻として使用）
         let startTime = null;
@@ -1160,7 +1232,7 @@ class NippoApp {
         }
         
         // 実行中のタスクがあるかチェック
-        const runningTask = this.tasks.find(task => !task.endTime);
+        const runningTask = this.tasks.find(task => this.isRunningTask(task));
         
         if (!runningTask) {
             this.showToast('終了するタスクがありません', 'warning');
@@ -1201,7 +1273,7 @@ class NippoApp {
 
                 timelineText = sortedTasks.map(task => {
                     const startTime = task.startTime; // 午前/午後形式をそのまま使用
-                    const endTime = task.endTime ? task.endTime : '実行中';
+                    const endTime = this.isReservedTask(task) ? '予約' : (task.endTime ? task.endTime : '実行中');
                     
                     // 休憩タスクの表示名を整理
                     let displayName = task.name;
@@ -1302,7 +1374,7 @@ class NippoApp {
                     this.updateTaskCounter();
 
                     // 現在実行中のタスクを更新
-                    const runningTask = this.tasks.find(task => !task.endTime);
+                    const runningTask = this.tasks.find(task => this.isRunningTask(task));
                     if (runningTask) {
                         console.log('実行中のタスク:', runningTask);
                         this.currentTaskId = runningTask.id;
@@ -1348,11 +1420,18 @@ class NippoApp {
             return;
         }
 
-        const timelineHTML = this.tasks.map(task => {
+        const sortedTasks = [...this.tasks].sort((a, b) => {
+            const timeA = this.convertTo24Hour(a.startTime);
+            const timeB = this.convertTo24Hour(b.startTime);
+            return timeA.localeCompare(timeB);
+        });
+
+        const timelineHTML = sortedTasks.map(task => {
             const startTime = this.formatTime(task.startTime);
-            const endTime = task.endTime ? this.formatTime(task.endTime) : '実行中';
-            const duration = task.endTime ? this.calculateDuration(task.startTime, task.endTime) : '';
-            const isRunning = !task.endTime;
+            const isReserved = this.isReservedTask(task);
+            const endTime = isReserved ? '予約' : (task.endTime ? this.formatTime(task.endTime) : '実行中');
+            const duration = (!isReserved && task.endTime) ? this.calculateDuration(task.startTime, task.endTime) : '';
+            const isRunning = this.isRunningTask(task);
             const isBreak = task.isBreak || false;
             
             // デバッグ情報
@@ -1374,6 +1453,8 @@ class NippoApp {
             } else if (isRunning) {
                 // 実行中の通常タスク
                 itemClass += ' running';
+            } else if (isReserved) {
+                itemClass += ' reserved';
             }
             // 終了した休憩タスクは通常のタスクと同じ表示にする
             
@@ -1394,6 +1475,9 @@ class NippoApp {
             
             // タグの表示
             const tagDisplay = task.tag ? `<span class="task-tag">${task.tag}</span>` : '';
+            const statusChip = isReserved
+                ? `<span class="timeline-duration" style="background: var(--purple); color: var(--bg-primary);">予約</span>`
+                : (isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : '');
             
             return `
                 <div class="${itemClass}">
@@ -1405,7 +1489,7 @@ class NippoApp {
                         <div class="timeline-meta">
                             ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
                             ${tagDisplay}
-                            ${isRunning ? `<span class="timeline-duration" style="background: ${isBreak ? 'var(--warning)' : 'var(--accent)'}; color: ${isBreak ? 'var(--bg-primary)' : 'white'};">${isBreak ? '休憩中' : '実行中'}</span>` : ''}
+                            ${statusChip}
                         </div>
                     </div>
                     <button class="timeline-edit" onclick="app.editTask('${task.id}')" title="編集">
@@ -1430,7 +1514,7 @@ class NippoApp {
     }
 
     updateTaskCounter() {
-        const activeTasks = this.tasks.filter(task => !task.endTime).length;
+        const activeTasks = this.tasks.filter(task => this.isRunningTask(task)).length;
         document.getElementById('task-count').textContent = activeTasks;
         
         // 実行中のタスクがない場合はタスク終了ボタンを非表示
@@ -1439,7 +1523,7 @@ class NippoApp {
 
     updateEndTaskButtonVisibility() {
         const endTaskBtn = document.getElementById('end-task-btn');
-        const runningTasks = this.tasks.filter(task => !task.endTime);
+        const runningTasks = this.tasks.filter(task => this.isRunningTask(task));
         const isOnBreak = runningTasks.some(task => task.isBreak);
         
         // 実行中のタスクがない、または休憩中の場合は非表示
@@ -2490,7 +2574,7 @@ class NippoApp {
         const timelineCopyButton = document.getElementById('copy-timeline-btn');
         if (timelineCopyButton) {
             // 終了していないタスクがあるかチェック
-            const hasRunningTasks = this.tasks.some(task => !task.endTime);
+            const hasRunningTasks = this.tasks.some(task => this.isRunningTask(task));
             
             if (hasRunningTasks) {
                 timelineCopyButton.disabled = true;
@@ -2559,7 +2643,7 @@ class NippoApp {
 
         // 完了したタスクと実行中のタスクを分ける
         const completedTasks = this.tasks.filter(task => task.endTime);
-        const runningTasks = this.tasks.filter(task => !task.endTime);
+        const runningTasks = this.tasks.filter(task => this.isRunningTask(task));
 
         let summaryHTML = '';
 
@@ -2599,6 +2683,69 @@ class NippoApp {
         }
 
         summaryContainer.innerHTML = summaryHTML;
+    }
+
+    async addReservation() {
+        // 予約は今日モードのみ
+        if (this.currentMode === 'history' || this.currentDate) {
+            this.showToast('予約は今日モードでのみ利用できます', 'warning');
+            return;
+        }
+
+        const taskInput = document.getElementById('task-input');
+        const taskTagSelect = document.getElementById('task-tag-select');
+        const reserveTimeInput = document.getElementById('reserve-time-input');
+
+        const taskName = (taskInput?.value || '').trim();
+        const time24 = (reserveTimeInput?.value || '').trim();
+        const selectedTag = taskTagSelect ? taskTagSelect.value : '';
+
+        if (!taskName) {
+            this.showToast('タスク名を入力してください', 'warning');
+            return;
+        }
+        if (!time24) {
+            this.showToast('開始時刻を指定してください', 'warning');
+            return;
+        }
+
+        const startTime = this.convertTo12Hour(time24);
+        if (!startTime) {
+            this.showToast('開始時刻の形式が不正です', 'error');
+            return;
+        }
+
+        try {
+            const requestData = {
+                name: taskName,
+                tag: selectedTag || null,
+                startTime: startTime
+            };
+
+            const response = await fetch(`${this.apiBaseUrl}/api/tasks/reserve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestData)
+            });
+
+            const result = await response.json().catch(() => null);
+
+            if (!response.ok || !result?.success) {
+                const message = result?.error || '予約の登録に失敗しました';
+                this.showToast(message, 'warning');
+                return;
+            }
+
+            // 入力をクリア
+            if (taskInput) taskInput.value = '';
+            if (taskTagSelect) taskTagSelect.selectedIndex = 0;
+
+            await this.loadTasks();
+            this.showToast(`${startTime} に「${taskName}」を予約しました`);
+        } catch (error) {
+            console.error('予約追加エラー:', error);
+            this.showToast('予約の登録に失敗しました', 'error');
+        }
     }
 
     async generateTagSummary() {

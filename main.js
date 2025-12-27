@@ -8,6 +8,7 @@ let taskManager;
 let tray;
 let settings = {};
 let registeredHotkeys = [];
+let reservationTimer;
 
 // デバッグログファイルのパスをグローバルに定義
 let debugLogPath;
@@ -401,6 +402,21 @@ app.whenReady().then(async () => {
     });
   });
 
+  // 予約タスクの監視（開始時刻になったら自動で切替）
+  reservationTimer = setInterval(async () => {
+    try {
+      if (!taskManager) return;
+      const result = await taskManager.processDueReservations();
+      if (result && result.changed) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('tasks-updated');
+        }
+      }
+    } catch (e) {
+      console.error('予約処理でエラー:', e);
+    }
+  }, 5000);
+
   console.log('アプリケーションの初期化が完了しました');
   
   app.on('activate', () => {
@@ -422,6 +438,11 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   // ホットキーを解除
   unregisterAllHotkeys();
+
+  if (reservationTimer) {
+    clearInterval(reservationTimer);
+    reservationTimer = null;
+  }
   
   if (tray && !tray.isDestroyed()) {
     tray.destroy();

@@ -20,6 +20,15 @@ class TaskManager {
     this.timeRounding = { interval: 0, mode: 'nearest' };
     }
 
+    isReservedTask(task) {
+        return !!task && task.status === 'reserved';
+    }
+
+    getNowMinutes() {
+        const now = new Date();
+        return now.getHours() * 60 + now.getMinutes();
+    }
+
     async initialize() {
         if (!this.initialized) {
             console.log('TaskManager初期化開始...');
@@ -511,6 +520,7 @@ class TaskManager {
                     name: task.title || task.name,
                     isBreak: task.isBreak || false,
                     tag: task.tag,
+                    status: task.status || null,
                     createdAt: task.createdAt,
                     updatedAt: task.updatedAt
                 }));
@@ -550,6 +560,7 @@ class TaskManager {
                 name: task.title || task.name,
                 isBreak: task.isBreak || false,
                 tag: task.tag,
+                status: task.status || null,
                 createdAt: task.createdAt,
                 updatedAt: task.updatedAt
             }));
@@ -581,6 +592,7 @@ class TaskManager {
                         title: task.name || task.title || '',
                         isBreak: task.isBreak || false,
                         tag: task.tag || null,
+                        status: task.status || null,
                         createdAt: task.createdAt || new Date().toISOString(), // 既存作成日時を保持
                         updatedAt: new Date().toISOString() // 更新日時のみ新しく設定
                     };
@@ -639,6 +651,7 @@ class TaskManager {
                 id: index,
                 startTime: task.startTime,
                 endTime: task.endTime,
+                status: task.status || null,
                 name: task.title || task.name,
                 isBreak: task.isBreak || false
             }));
@@ -668,9 +681,9 @@ class TaskManager {
         // この追加が属する日付（履歴同期用）を先に決定しておく
         const taskDate = dateString || this.getTodayDateString();
             
-            // 未終了のタスクがあれば終了時刻を設定
+            // 未終了のタスクがあれば終了時刻を設定（予約は除外）
             for (const task of tasks) {
-                if (!task.endTime) {
+                if (!task.endTime && !this.isReservedTask(task)) {
                     try {
                         console.log(`未終了タスクを終了: ${JSON.stringify(task)}`);
                     } catch (error) {
@@ -693,6 +706,7 @@ class TaskManager {
                 name: taskName,
                 isBreak: isBreak,
                 tag: tag || '',
+                status: null,
                 createdAt: now.toISOString(),
                 updatedAt: now.toISOString(),
                 taskDate: taskDate // タスクが属する日付を明示的に記録
@@ -768,11 +782,11 @@ class TaskManager {
         console.log(`終了処理開始 - 時刻: ${addTime}, 日付: ${dateString || '今日'}`);
         console.log(`読み込んだタスク数: ${tasks.length}`);
         
-        // 未終了のタスクを探して終了時刻を設定
+        // 未終了のタスクを探して終了時刻を設定（予約は除外）
         for (let i = 0; i < tasks.length; i++) {
             const task = tasks[i];
             console.log(`タスク${i}: ${JSON.stringify(task)}`);
-            if (!task.endTime) {
+            if (!task.endTime && !this.isReservedTask(task)) {
                 console.log(`未終了タスクを発見: ${task.name}`);
                 task.endTime = addTime;
                 task.updatedAt = new Date().toISOString();
@@ -969,6 +983,120 @@ class TaskManager {
             console.error(`全タイムラインデータ削除エラー: ${error}`);
             return false;
         }
+    }
+
+    async addReservation(taskName, startTime, tag = null) {
+        await this.initialize();
+
+        const trimmedName = (taskName || '').trim();
+        if (!trimmedName) {
+            throw new Error('タスク名が必要です');
+        }
+        if (!startTime) {
+            throw new Error('開始時間が必要です');
+        }
+
+        const tasks = await this.loadSchedule(null);
+        const reserveMinutes = this.parseTimeToMinutes(startTime);
+        if (reserveMinutes === null) {
+            throw new Error('開始時間の形式が不正です');
+        }
+
+        // 1) 同時刻の予約は不可
+        const hasSameReservation = tasks.some(t => this.isReservedTask(t) && this.parseTimeToMinutes(t.startTime) === reserveMinutes);
+        if (hasSameReservation) {
+            throw new Error('その時刻には既に予約があります');
+        }
+
+        // 2) 既存タスクの時間帯に被る場合は不可（終了時刻があるタスクのみ）
+        const conflicts = tasks.some(t => {
+            if (!t || !t.startTime) return false;
+            if (!t.endTime) return false; // 実行中タスクは未来の割当が確定しないためブロックしない
+
+            const start = this.parseTimeToMinutes(t.startTime);
+            const end = this.parseTimeToMinutes(t.endTime);
+            if (start === null || end === null) return false;
+            if (end <= start) return false;
+
+            return reserveMinutes >= start && reserveMinutes < end;
+        });
+
+        if (conflicts) {
+            throw new Error('その時刻には既にタスクが割り当てられています');
+        }
+
+        const now = new Date();
+        const taskDate = this.getTodayDateString();
+        const newReservation = {
+            id: `resv-${now.getTime()}`,
+            startTime: startTime,
+            endTime: null,
+            name: trimmedName,
+            isBreak: false,
+            tag: tag || '',
+            status: 'reserved',
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            taskDate: taskDate
+        };
+
+        tasks.push(newReservation);
+        await this.saveSchedule(tasks, null);
+        await this.syncTaskToHistory(newReservation, taskDate);
+        return newReservation;
+    }
+
+    async processDueReservations() {
+        await this.initialize();
+
+        const tasks = await this.loadSchedule(null);
+        const nowMinutes = this.getNowMinutes();
+
+        const dueReservations = tasks
+            .filter(t => this.isReservedTask(t))
+            .map(t => ({ task: t, minutes: this.parseTimeToMinutes(t.startTime) }))
+            .filter(x => x.minutes !== null && x.minutes <= nowMinutes)
+            .sort((a, b) => a.minutes - b.minutes);
+
+        if (dueReservations.length === 0) {
+            return { changed: false };
+        }
+
+        // 複数が同時刻/過去に溜まっていても、時系列で順に開始する
+        let changed = false;
+        const taskDate = this.getTodayDateString();
+
+        for (const due of dueReservations) {
+            const reservation = due.task;
+            const startTime = reservation.startTime;
+            if (!startTime) continue;
+
+            // 既に予約ステータスが外れている場合（他処理で開始済み）
+            if (!this.isReservedTask(reservation)) continue;
+
+            // 予約開始時刻で、実行中タスク（予約以外）を終了
+            for (const t of tasks) {
+                if (t && !t.endTime && !this.isReservedTask(t)) {
+                    t.endTime = startTime;
+                    t.updatedAt = new Date().toISOString();
+                    await this.syncTaskToHistory(t, taskDate);
+                    changed = true;
+                }
+            }
+
+            // 予約を通常の実行中タスクへ切り替え
+            reservation.status = null;
+            reservation.endTime = null;
+            reservation.updatedAt = new Date().toISOString();
+            await this.syncTaskToHistory(reservation, taskDate);
+            changed = true;
+        }
+
+        if (changed) {
+            await this.saveSchedule(tasks, null);
+        }
+
+        return { changed };
     }
 
     async getAllHistoryDates() {
@@ -1529,6 +1657,7 @@ class TaskManager {
             if (taskIndex !== -1) {
                 // 既存の休憩フラグを保持
                 const isBreak = tasks[taskIndex].isBreak || false;
+                const status = tasks[taskIndex].status || null;
                 
                 // 時間矛盾を調整
                 const { tasks: adjustedTasks, adjustments } = this.adjustConflictingTasks(
@@ -1541,6 +1670,7 @@ class TaskManager {
                 adjustedTasks[taskIndex].endTime = endTime && endTime.trim() ? endTime : null;
                 adjustedTasks[taskIndex].isBreak = isBreak;
                 adjustedTasks[taskIndex].tag = tag;
+                adjustedTasks[taskIndex].status = status;
                 adjustedTasks[taskIndex].updatedAt = new Date().toISOString();
                 
                 await this.saveSchedule(adjustedTasks);
@@ -1613,9 +1743,10 @@ class TaskManager {
                 return { success: false, message: '指定されたタスクが見つかりません' };
             }
             
-            // 既存の休憩フラグとIDを保持
+            // 既存の休憩フラグ/ステータスとIDを保持
             const isBreak = tasks[taskIndex].isBreak || false;
             const originalId = tasks[taskIndex].id;
+            const status = tasks[taskIndex].status || null;
             
             // タスクを更新
             tasks[taskIndex] = {
@@ -1625,6 +1756,7 @@ class TaskManager {
                 endTime: endTime && endTime.trim() ? endTime : null,
                 isBreak: isBreak,
                 tag: tag,
+                status: status,
                 createdAt: tasks[taskIndex].createdAt || new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
@@ -2101,6 +2233,32 @@ function createApp(taskManagerInstance) {
         } catch (error) {
             console.error(`API - タスク追加エラー: ${error}`);
             res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/tasks/reserve', async (req, res) => {
+        try {
+            const data = req.body;
+            const taskName = (data.name || '').trim();
+            const tag = data.tag || null;
+            const startTime = data.startTime || null;
+            const dateString = data.dateString || null;
+
+            // 予約は今日のみに限定（要件）
+            if (dateString) {
+                return res.status(400).json({ success: false, error: '予約は今日のみに対応しています' });
+            }
+            if (!taskName) {
+                return res.status(400).json({ success: false, error: 'タスク名が必要です' });
+            }
+            if (!startTime) {
+                return res.status(400).json({ success: false, error: '開始時間が必要です' });
+            }
+
+            const newReservation = await taskManager.addReservation(taskName, startTime, tag);
+            res.json({ success: true, task: newReservation, taskId: newReservation.id });
+        } catch (error) {
+            res.status(400).json({ success: false, error: error.message });
         }
     });
 

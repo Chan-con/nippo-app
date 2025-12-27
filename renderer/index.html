@@ -36,17 +36,25 @@
             
             <div class="sidebar-content">
                 <div class="task-input-section">
+                    <div class="task-add-tabs" role="tablist" aria-label="タスク追加モード">
+                        <button id="task-add-tab-now" class="task-add-tab active" role="tab" aria-selected="true" type="button">今すぐ</button>
+                        <button id="task-add-tab-reserve" class="task-add-tab" role="tab" aria-selected="false" type="button">予約</button>
+                    </div>
                     <div class="tag-select-group">
                         <select id="task-tag-select" class="tag-select" aria-label="タグを選択">
                             <option value="">タグを選択</option>
                         </select>
                     </div>
-                    <div class="input-group">
-                        <input type="text" id="task-input" placeholder="新しいタスクを入力..." class="task-input">
-                        <button id="add-task-btn" class="btn-primary">
-                            <span class="material-icons">add</span>
-                        </button>
+                    <div id="reserve-time-row" class="reserve-time-row" hidden>
+                        <input type="time" id="reserve-time-input" class="reserve-time-input" aria-label="開始時刻" />
                     </div>
+                    <div class="task-name-row">
+                        <input type="text" id="task-input" placeholder="新しいタスクを入力..." class="task-input">
+                    </div>
+                    <button id="add-task-btn" class="btn-primary btn-add-task" type="button">
+                        <span class="material-icons">add</span>
+                        追加
+                    </button>
                 </div>
                 
                 <div class="action-buttons">
