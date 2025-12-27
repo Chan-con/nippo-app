@@ -28,6 +28,10 @@ class NippoApp {
         this.historyDates = [];
         this.historyData = {}; // 履歴データの初期化
         this.lastKnownDate = null; // 日付変更検知用
+        this._timeTickInterval = null;
+        this._dateTimeInterval = null;
+        this._timeTickTimeout = null;
+        this._dateTimeTimeout = null;
         this.init();
     }
 
@@ -437,8 +441,8 @@ class NippoApp {
             }
         });
 
-        // 1分ごとに時刻を更新
-        setInterval(() => this.updateDateTime(), 60000);
+        // 時刻表示をリアルタイム寄りに更新（分境界に同期）
+        this.startClock();
         
         // デバッグ用のグローバル関数を設定
         window.app = this;
@@ -554,6 +558,46 @@ class NippoApp {
                 console.error('クリーンアップAPIエラー:', error);
             }
         };
+    }
+
+    startClock() {
+        // 既存タイマーをクリア（再初期化時の多重起動防止）
+        if (this._timeTickInterval) clearInterval(this._timeTickInterval);
+        if (this._dateTimeInterval) clearInterval(this._dateTimeInterval);
+        if (this._timeTickTimeout) clearTimeout(this._timeTickTimeout);
+        if (this._dateTimeTimeout) clearTimeout(this._dateTimeTimeout);
+
+        // 初回は即時反映
+        this.updateDateTime();
+
+        // 秒境界に合わせて「時刻だけ」を更新（分切り替わりも遅れない）
+        const nowMs = Date.now();
+        const msToNextSecond = 1000 - (nowMs % 1000);
+        this._timeTickTimeout = setTimeout(() => {
+            this.updateTimeOnly();
+            this._timeTickInterval = setInterval(() => this.updateTimeOnly(), 1000);
+        }, msToNextSecond);
+
+        // 分境界に合わせて日付/日跨ぎ判定などを更新
+        const msToNextMinute = 60000 - (nowMs % 60000);
+        this._dateTimeTimeout = setTimeout(() => {
+            this.updateDateTime();
+            this._dateTimeInterval = setInterval(() => this.updateDateTime(), 60000);
+        }, msToNextMinute);
+    }
+
+    updateTimeOnly() {
+        const timeElement = document.getElementById('current-time');
+        if (!timeElement) return;
+
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('ja-JP', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        if (timeElement.textContent !== timeStr) {
+            timeElement.textContent = timeStr;
+        }
     }
 
     async waitForAPI() {
