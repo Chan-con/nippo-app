@@ -57,24 +57,30 @@ class NippoApp {
             if (!root || !root.style) return;
 
             const vv = window.visualViewport;
-            const setHeight = () => {
+            const setViewportVars = () => {
                 const height = vv?.height || window.innerHeight;
+                const offsetTop = vv?.offsetTop || 0;
                 // 端末回転やキーボード開閉直後の一瞬の0を避ける
                 if (!height || height < 100) return;
-                root.style.setProperty('--app-height', `${Math.round(height)}px`);
+
+                // body側で offsetTop を padding-top として消費するため
+                // 高さは height + offsetTop にして「可視領域ぶん」を確保する
+                const effectiveHeight = Math.round(height + offsetTop);
+                root.style.setProperty('--app-height', `${effectiveHeight}px`);
+                root.style.setProperty('--app-offset-top', `${Math.round(offsetTop)}px`);
             };
 
             // 初回
-            setHeight();
+            setViewportVars();
 
             // 変化に追従（iOSのキーボード/URLバーの出入りは visualViewport が一番確実）
-            const onResize = () => setHeight();
-            const onScroll = () => setHeight();
+            const onResize = () => setViewportVars();
+            const onScroll = () => setViewportVars();
 
             window.addEventListener('resize', onResize);
             window.addEventListener('orientationchange', onResize);
             document.addEventListener('focusin', onResize);
-            document.addEventListener('focusout', () => setTimeout(setHeight, 50));
+            document.addEventListener('focusout', () => setTimeout(setViewportVars, 50));
 
             if (vv) {
                 vv.addEventListener('resize', onResize);
