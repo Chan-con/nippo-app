@@ -2274,6 +2274,19 @@ textarea {
     flex-direction: column;
     gap: 16px;
   }
+
+  /* スマホでは履歴モードの日付入力を通常フローに戻す（absolute配置だと誤タップ/即クローズが起きやすい） */
+  .main-header.history-mode .date-selector {
+    position: static;
+    left: auto;
+    transform: none;
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .main-header.history-mode .date-selector input[type="date"] {
+    width: 100%;
+  }
   
   .stats-grid {
     grid-template-columns: 1fr;
