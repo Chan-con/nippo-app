@@ -2220,6 +2220,21 @@ textarea {
 
 /* レスポンシブ */
 @media (max-width: 768px) {
+  /* iOS Safari: inputフォーカス時の自動ズームを防ぐ（font-size < 16px だとズームする） */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .edit-input,
+  .task-input,
+  .tag-select,
+  .reserve-time-input,
+  .report-textarea {
+    font-size: 16px;
+  }
+
   .mobile-menu-btn {
     display: inline-flex;
     width: 36px;
