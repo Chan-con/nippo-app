@@ -4568,17 +4568,19 @@ class NippoApp {
         const todayString = this.getTokyoTodayYmd();
         
         if (dateString === todayString) {
-            console.log('今日の日付が選択されたため、今日モードに切り替えます');
+            console.log('履歴モードで今日が選択されました（iOSの自動選択を含む可能性あり）');
             this.showToast('今日のデータは「今日」モードでご確認ください', 'warning');
-            
-            // 日付入力フィールドをクリア
+
+            // 履歴モードは維持したまま、未選択状態に戻す
+            this.currentDate = null;
+            this.selectedDate = null;
+
             const calendarInput = document.getElementById('calendar-date-input');
             if (calendarInput) {
                 calendarInput.value = '';
-                console.log('日付入力フィールドをクリアしました');
             }
-            
-            this.switchToTodayMode();
+
+            this.clearHistoryView();
             return;
         }
         
