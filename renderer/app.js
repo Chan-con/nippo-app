@@ -29,6 +29,7 @@ class NippoApp {
         this._calendarLastInteractAt = 0;
         this._calendarValueBeforeInteract = '';
         this._suppressTodayClickUntil = 0;
+        this._calendarInputWrap = null;
         this._timeTickInterval = null;
         this._dateTimeInterval = null;
         this._timeTickTimeout = null;
@@ -55,6 +56,13 @@ class NippoApp {
             timeZone: 'Asia/Tokyo'
         }).split('/');
         return `${parts[0]}-${parts[1]}-${parts[2]}`;
+    }
+
+    syncCalendarInputHint() {
+        const wrap = this._calendarInputWrap || document.getElementById('date-input-wrap');
+        const input = document.getElementById('calendar-date-input');
+        if (!wrap || !input) return;
+        wrap.classList.toggle('has-value', !!input.value);
     }
 
     isWebMode() {
@@ -986,8 +994,12 @@ class NippoApp {
         setTimeout(() => {
             const calendarInput = document.getElementById('calendar-date-input');
             if (calendarInput) {
+                this._calendarInputWrap = document.getElementById('date-input-wrap');
                 // 未来の日付を選択できないように最大値を設定（以後は自動更新）
                 this.updateCalendarMaxDate();
+
+                // 初期表示のガイド同期
+                this.syncCalendarInputHint();
 
                 // iOSで「開いた瞬間に今日が入ってchangeが走る」ことがあるため、開く直前の状態を記録
                 const snapshotBeforeOpen = () => {
@@ -1018,11 +1030,18 @@ class NippoApp {
                     if (wasEmpty && nextValue === todayStr) {
                         console.log('日付ピッカーの自動補完(今日)とみなし、選択処理をスキップします');
                         e.target.value = this._calendarValueBeforeInteract || '';
+                        this.syncCalendarInputHint();
                         return;
                     }
 
                     this.onDateSelected(nextValue);
+                    this.syncCalendarInputHint();
                 });
+
+                // iOSで表示が空欄に見えることがあるので、入力/フォーカスでも同期
+                calendarInput.addEventListener('input', () => this.syncCalendarInputHint());
+                calendarInput.addEventListener('focus', () => this.syncCalendarInputHint());
+                calendarInput.addEventListener('blur', () => this.syncCalendarInputHint());
                 calendarInput.setAttribute('data-has-listener', 'true');
                 console.log('日付入力イベントリスナーを追加しました');
                 
@@ -4468,6 +4487,7 @@ class NippoApp {
         if (calendarInput) {
             calendarInput.value = '';
             console.log('今日モードに切り替え時に日付入力フィールドをクリアしました');
+            this.syncCalendarInputHint();
         }
         
     // UI更新
@@ -4502,6 +4522,7 @@ class NippoApp {
         if (calendarInput) {
             calendarInput.value = '';
             console.log('履歴モード切り替え時に日付入力フィールドをクリアしました');
+            this.syncCalendarInputHint();
         }
         
     // UI更新
@@ -4597,6 +4618,8 @@ class NippoApp {
             if (calendarInput) {
                 calendarInput.value = '';
             }
+
+            this.syncCalendarInputHint();
 
             this.clearHistoryView();
             return;
