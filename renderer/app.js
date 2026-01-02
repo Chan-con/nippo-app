@@ -4684,6 +4684,25 @@ class NippoApp {
                     this.renderEmptyHistory(dateString, result.message || '履歴データを読み込めませんでした');
                 }
             } else {
+                // 404 は「その日のデータが無い」なので正常系として扱う
+                if (response.status === 404) {
+                    let message = '該当日にタスクが記録されていません';
+                    try {
+                        const result = await response.json();
+                        if (result?.message) message = result.message;
+                    } catch {
+                        // ignore
+                    }
+                    this.renderEmptyHistory(dateString, message);
+                    return;
+                }
+
+                // 401 は認証が必要
+                if (response.status === 401) {
+                    this.renderEmptyHistory(dateString, '未ログインです。右上からログインしてください');
+                    return;
+                }
+
                 console.error('履歴APIリクエストが失敗しました:', response.status, response.statusText);
                 this.renderEmptyHistory(dateString, `サーバーエラー (${response.status}): データを取得できませんでした`);
             }
