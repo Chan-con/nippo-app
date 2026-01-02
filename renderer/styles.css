@@ -2275,6 +2275,20 @@ textarea {
     gap: 16px;
   }
 
+  /* スマホ時は「今日/履歴」を左寄せ */
+  .history-controls {
+    align-items: flex-start;
+  }
+
+  .history-controls .view-mode-toggle {
+    justify-content: flex-start;
+  }
+
+  .history-controls .date-selector {
+    align-items: flex-start;
+    width: 100%;
+  }
+
   .main-header.history-mode {
     align-items: stretch;
   }
@@ -3067,5 +3081,21 @@ textarea {
   .task-stock-content {
     transform: none !important;
     transition: none !important;
+  }
+}
+
+/* 末尾で上書き（後続の通常ルールに負けないようにする） */
+@media (max-width: 768px) {
+  .history-controls {
+    align-items: flex-start;
+  }
+
+  .history-controls .view-mode-toggle {
+    justify-content: flex-start;
+  }
+
+  .history-controls .date-selector {
+    align-items: flex-start;
+    width: 100%;
   }
 }
