@@ -14,7 +14,16 @@
     <!-- カスタムタイトルバー -->
     <div class="titlebar">
         <div class="titlebar-drag">
-            <span class="app-title">SlackTracker</span>
+            <!-- Web版ログインUI（ヘッダー内に表示） -->
+            <div id="web-auth-bar" class="web-auth-bar" style="display:none;">
+                <div class="web-auth-left">
+                    <span id="web-auth-status">未ログイン</span>
+                </div>
+                <div class="web-auth-right">
+                    <button id="web-login-btn" class="btn-secondary" type="button">ログイン</button>
+                    <button id="web-logout-btn" class="btn-secondary" type="button" style="display:none;">ログアウト</button>
+                </div>
+            </div>
         </div>
         <div class="titlebar-controls">
             <button class="titlebar-button minimize">
@@ -23,17 +32,6 @@
             <button class="titlebar-button close">
                 <span class="material-icons">close</span>
             </button>
-        </div>
-    </div>
-
-    <!-- Web版ログインUI -->
-    <div id="web-auth-bar" class="web-auth-bar" style="display:none;">
-        <div class="web-auth-left">
-            <span id="web-auth-status">未ログイン</span>
-        </div>
-        <div class="web-auth-right">
-            <button id="web-login-btn" class="btn-secondary" type="button">Googleでログイン</button>
-            <button id="web-logout-btn" class="btn-secondary" type="button" style="display:none;">ログアウト</button>
         </div>
     </div>
 

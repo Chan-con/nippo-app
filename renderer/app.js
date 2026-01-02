@@ -121,8 +121,18 @@ class NippoApp {
             this._accessToken = session?.access_token || null;
             this.wrapFetchWithAuth();
 
-            const email = session?.user?.email || '';
-            if (statusEl) statusEl.textContent = this._accessToken ? `ログイン中: ${email}` : '未ログイン';
+            const user = session?.user;
+            const userMeta = user?.user_metadata || {};
+            const email = user?.email || '';
+            const nameCandidate =
+                userMeta.full_name ||
+                userMeta.name ||
+                userMeta.user_name ||
+                userMeta.preferred_username ||
+                '';
+            const emailLocal = typeof email === 'string' ? (email.split('@')[0] || '') : '';
+            const label = (nameCandidate || emailLocal || 'ログイン中').toString();
+            if (statusEl) statusEl.textContent = this._accessToken ? label : '未ログイン';
             if (loginBtn) loginBtn.style.display = this._accessToken ? 'none' : 'inline-flex';
             if (logoutBtn) logoutBtn.style.display = this._accessToken ? 'inline-flex' : 'none';
 
