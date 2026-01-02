@@ -1248,22 +1248,29 @@ textarea {
 
 .confirm-buttons {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
 }
 
 .confirm-buttons button {
-  padding: 12px 24px;
+  padding: 0;
   border-radius: var(--radius-small);
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
-  min-width: 100px;
+  min-width: 44px;
+  width: 44px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0;
+}
+
+.confirm-buttons button .material-icons {
+  font-size: 20px;
 }
 
 .confirm-buttons .btn-confirm {
@@ -1402,9 +1409,9 @@ textarea {
 }
 
 .edit-footer {
-  padding: 16px 24px 24px;
+  padding: 10px 16px 12px;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: flex-end;
   flex-shrink: 0;
 }
@@ -1423,19 +1430,29 @@ textarea {
   }
 
   .edit-footer {
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
 
 .edit-footer button {
-  padding: 10px 16px;
+  padding: 0;
   border-radius: var(--radius-small);
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
-  min-width: 70px;
+  min-width: 44px;
+  width: 44px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.edit-footer button .material-icons {
+  font-size: 20px;
 }
 
 .edit-footer .btn-primary {
@@ -1663,23 +1680,33 @@ textarea {
 }
 
 .report-footer {
-  padding: 16px 24px 24px;
+  padding: 10px 16px 12px;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: flex-end;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .report-footer button {
-  padding: 10px 20px;
+  padding: 0;
   border-radius: var(--radius-small);
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
-  min-width: 100px;
+  min-width: 44px;
+  width: 44px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.report-footer button .material-icons {
+  font-size: 20px;
 }
 
 .report-footer .btn-primary {
@@ -2096,23 +2123,33 @@ textarea {
 }
 
 .settings-footer {
-  padding: 16px 24px 24px;
+  padding: 10px 16px 12px;
   display: flex;
   justify-content: flex-end;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
-  gap: 12px;
+  gap: 8px;
 }
 
 .settings-footer button {
-  padding: 10px 20px;
+  padding: 0;
   border-radius: var(--radius-small);
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
-  min-width: 100px;
+  min-width: 44px;
+  width: 44px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.settings-footer button .material-icons {
+  font-size: 20px;
 }
 
 .settings-footer .btn-cancel {
@@ -2709,14 +2746,14 @@ textarea {
 .task-stock-footer {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 24px 24px;
+  padding: 10px 16px 12px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .task-stock-footer-buttons {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
 /* 目標作成画面の項目は選択不可 */
@@ -2731,14 +2768,24 @@ textarea {
 }
 
 .task-stock-footer button {
-  padding: 10px 20px;
+  padding: 0;
   border-radius: var(--radius-small);
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
-  min-width: 100px;
+  min-width: 44px;
+  width: 44px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.task-stock-footer button .material-icons {
+  font-size: 20px;
 }
 
 .task-stock-footer .btn-cancel {
