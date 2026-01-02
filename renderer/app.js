@@ -28,6 +28,7 @@ class NippoApp {
         this.lastKnownDate = null; // 日付変更検知用
         this._calendarLastInteractAt = 0;
         this._calendarValueBeforeInteract = '';
+        this._suppressTodayClickUntil = 0;
         this._timeTickInterval = null;
         this._dateTimeInterval = null;
         this._timeTickTimeout = null;
@@ -971,7 +972,14 @@ class NippoApp {
         // すべてクリア（設定画面で初期化される）
 
         // 履歴機能
-        document.getElementById('today-btn').addEventListener('click', () => this.switchToTodayMode());
+        document.getElementById('today-btn').addEventListener('click', () => {
+            // iOS(PWA含む): dateピッカー開閉の副作用で「今日」クリックが入ることがあるため抑止
+            if (this.currentMode === 'history' && Date.now() < (this._suppressTodayClickUntil || 0)) {
+                console.log('日付ピッカー操作直後のため「今日」クリックを抑止しました');
+                return;
+            }
+            this.switchToTodayMode();
+        });
         document.getElementById('history-btn').addEventListener('click', () => this.switchToHistoryMode());
         
         // 日付入力イベントリスナーを遅延追加（DOM確実に存在する状態で）
@@ -985,14 +993,24 @@ class NippoApp {
                 const snapshotBeforeOpen = () => {
                     this._calendarLastInteractAt = Date.now();
                     this._calendarValueBeforeInteract = calendarInput.value || '';
+                    // ピッカー開閉の前後は誤クリックが出やすいので、一定時間「今日」クリックを抑止
+                    this._suppressTodayClickUntil = Date.now() + 2000;
                 };
                 calendarInput.addEventListener('pointerdown', snapshotBeforeOpen);
                 calendarInput.addEventListener('touchstart', snapshotBeforeOpen, { passive: true });
                 calendarInput.addEventListener('focus', snapshotBeforeOpen);
+
+                // ピッカーが閉じた直後にも誤クリックが入ることがあるため、focusoutでも少し延長
+                calendarInput.addEventListener('focusout', () => {
+                    this._suppressTodayClickUntil = Math.max(this._suppressTodayClickUntil || 0, Date.now() + 600);
+                });
                 
                 calendarInput.addEventListener('change', (e) => {
                     const nextValue = e.target.value;
                     console.log('日付変更イベントが発生しました:', nextValue);
+
+                    // change後もしばらく誤クリック抑止
+                    this._suppressTodayClickUntil = Math.max(this._suppressTodayClickUntil || 0, Date.now() + 600);
 
                     // iOS Safari/PWA: 未選択('')→今日 に自動補完されて即change、のようなケースは無視する
                     const todayStr = this.getTokyoTodayYmd();
