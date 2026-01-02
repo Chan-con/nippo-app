@@ -27,7 +27,7 @@
   --radius-large: 16px;
 
   /* レイアウト */
-  --titlebar-height: 28px;
+  --titlebar-height: 40px;
 }
 
 * {
@@ -2220,10 +2220,6 @@ textarea {
 
 /* レスポンシブ */
 @media (max-width: 768px) {
-  :root {
-    --titlebar-height: 40px;
-  }
-
   .mobile-menu-btn {
     display: inline-flex;
     width: 36px;
