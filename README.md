@@ -65,7 +65,7 @@ Cloudflare Pagesでは、静的ファイル配信 + Pages Functionsで `/api/*` 
 
 - **Framework preset**: None
 - **Build command**: `npm run build`
-- **Build output directory**: `dist`
+- **Build output directory**: `out`
 - **Functions directory**: `functions`
 
 ### Pagesの環境変数

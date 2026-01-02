@@ -6,7 +6,7 @@ package-lock.json
 datas/
 
 # Build outputs
-dist/
+out/
 *.exe
 *.dmg
 *.pkg

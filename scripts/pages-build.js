@@ -40,7 +40,7 @@ async function copyDir(src, dst) {
 async function main() {
   const root = path.join(__dirname, '..');
   const src = path.join(root, 'renderer');
-  const out = path.join(root, 'dist');
+  const out = path.join(root, 'out');
 
   if (!(await exists(path.join(src, 'index.html')))) {
     console.error('[pages-build] renderer/index.html が見つかりません');
