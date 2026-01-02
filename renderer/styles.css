@@ -2231,7 +2231,8 @@ textarea {
   .task-input,
   .tag-select,
   .reserve-time-input,
-  .report-textarea {
+  .report-textarea,
+  .tab-textarea {
     font-size: 16px;
   }
 
@@ -3020,4 +3021,11 @@ textarea {
   border-radius: var(--radius-small);
   color: var(--text-secondary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* iOS Safari は画面幅により max-width:768px を外れることがあるため、iOS では常に16px以上にする */
+@supports (-webkit-touch-callout: none) {
+  .tab-textarea {
+    font-size: 16px !important;
+  }
 }
