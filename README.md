@@ -69,6 +69,31 @@ npm run web:start
 
 ブラウザで `http://localhost:3000` を開き、上部の「Googleでログイン」からログインしてください。
 
+## ☁️ Cloudflare Pages 対応
+
+Cloudflare Pagesでは、静的ファイル配信 + Pages Functionsで `/api/*` を提供します。
+
+### デプロイ設定（Pages）
+
+- **Framework preset**: None
+- **Build command**: （空でOK）
+- **Build output directory**: `renderer`
+- **Functions directory**: `functions`
+
+### Pagesの環境変数
+
+Pagesプロジェクトの Settings → Environment variables に以下を設定します。
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`（サーバー専用。絶対にクライアントへ出さない）
+
+### SupabaseのRedirect URL
+
+Authentication → URL Configuration の Redirect URLs に、PagesのURLを追加してください。
+
+- 例: `https://<your-project>.pages.dev/`
+
 ## 🔐 データの保存と分離
 
 Web版では、Supabase Auth のユーザーID（`auth.uid()`）をキーにデータを保存します。

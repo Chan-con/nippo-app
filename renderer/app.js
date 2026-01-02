@@ -3351,6 +3351,12 @@ class NippoApp {
 
     async openReportUrl(url) {
         try {
+            if (this.isWebMode()) {
+                window.open(url, '_blank', 'noopener');
+                this.showToast('ブラウザで開きました');
+                return;
+            }
+
             const result = await (await fetch(`${this.apiBaseUrl}/api/open-url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })).json();
             if (result.success) {
                 this.showToast('ブラウザで開きました');

@@ -52,14 +52,19 @@ const { app } = createApp(taskManager, {
     });
 
     // 静的配信（先に登録しても /api は後続ルートに流れる）
-    app.get('/env.js', (req, res) => {
+    // Cloudflare Pages Functions互換で /env を提供（旧: /env.js も互換のため残す）
+    const sendEnv = (res) => {
       res.type('application/javascript');
+      res.set('Cache-Control', 'no-store');
       res.send(
         `window.__ENV = window.__ENV || {};\n` +
           `window.__ENV.SUPABASE_URL = ${JSON.stringify(SUPABASE_URL)};\n` +
           `window.__ENV.SUPABASE_ANON_KEY = ${JSON.stringify(SUPABASE_ANON_KEY)};\n`
       );
-    });
+    };
+
+    app.get('/env', (req, res) => sendEnv(res));
+    app.get('/env.js', (req, res) => sendEnv(res));
 
     app.use(express.static(rendererDir));
 
