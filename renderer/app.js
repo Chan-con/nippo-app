@@ -753,6 +753,8 @@ class NippoApp {
             sidebar.addEventListener('click', (e) => {
                 // モバイル時はサイドバー内の操作後に閉じる
                 if (!mq || !mq.matches) return;
+                // タスク追加モードの切替は閉じない
+                if (e.target?.closest?.('.task-add-tabs')) return;
                 if (e.target?.closest?.('button, a')) {
                     closeSidebar();
                 }
