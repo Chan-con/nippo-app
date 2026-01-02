@@ -537,9 +537,9 @@ textarea {
 }
 
 .main-header.history-mode .date-selector {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
+  left: auto;
+  transform: none;
 }
 
 .date-display h1 {
@@ -2899,6 +2899,8 @@ textarea {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s ease;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .date-selector input[type="date"]:hover {
