@@ -1317,6 +1317,8 @@ textarea {
   max-width: 550px;
   max-height: 80vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   transform: scale(0.9);
   transition: transform 0.3s ease;
 }
@@ -1331,6 +1333,7 @@ textarea {
   align-items: center;
   padding: 24px 24px 16px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .edit-header h3 {
@@ -1360,6 +1363,10 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  min-height: 0;
 }
 
 .edit-field {
@@ -1399,6 +1406,25 @@ textarea {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .edit-content {
+    width: calc(100% - 24px);
+    max-height: 92vh;
+  }
+
+  .edit-header,
+  .edit-body,
+  .edit-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .edit-footer {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
 }
 
 .edit-footer button {
