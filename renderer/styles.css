@@ -28,6 +28,15 @@
 
   /* レイアウト */
   --titlebar-height: 40px;
+
+  /* iOSキーボード表示時の100vhズレ対策: 実表示領域の高さをJS/モダンCSSで上書きする */
+  --app-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
 }
 
 * {
@@ -36,10 +45,16 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
+  height: var(--app-height);
   overflow: hidden;
   user-select: none;
   pointer-events: auto !important;
@@ -60,6 +75,9 @@ textarea {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
 }
 
 .titlebar-drag {
@@ -111,7 +129,7 @@ textarea {
 /* アプリコンテナ */
 .app-container {
   display: flex;
-  height: calc(100vh - var(--titlebar-height));
+  height: calc(var(--app-height) - var(--titlebar-height));
 }
 
 /* Web版ログインUI（ヘッダー内） */

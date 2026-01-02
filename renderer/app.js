@@ -45,7 +45,54 @@ class NippoApp {
         this._realtimeRefreshTimer = null;
         this._realtimePendingTypes = new Set();
         this._realtimePendingKeys = new Set();
+        this._viewportHeightCleanup = null;
         this.init();
+    }
+
+    // iOS Safari/PWA: キーボード表示時に100vhが縮まずヘッダーが見切れる問題の回避
+    // visualViewport の実高さをCSS変数 --app-height に反映してレイアウト計算を安定させる
+    setupViewportHeightFix() {
+        try {
+            const root = document.documentElement;
+            if (!root || !root.style) return;
+
+            const vv = window.visualViewport;
+            const setHeight = () => {
+                const height = vv?.height || window.innerHeight;
+                // 端末回転やキーボード開閉直後の一瞬の0を避ける
+                if (!height || height < 100) return;
+                root.style.setProperty('--app-height', `${Math.round(height)}px`);
+            };
+
+            // 初回
+            setHeight();
+
+            // 変化に追従（iOSのキーボード/URLバーの出入りは visualViewport が一番確実）
+            const onResize = () => setHeight();
+            const onScroll = () => setHeight();
+
+            window.addEventListener('resize', onResize);
+            window.addEventListener('orientationchange', onResize);
+            document.addEventListener('focusin', onResize);
+            document.addEventListener('focusout', () => setTimeout(setHeight, 50));
+
+            if (vv) {
+                vv.addEventListener('resize', onResize);
+                vv.addEventListener('scroll', onScroll);
+            }
+
+            this._viewportHeightCleanup = () => {
+                window.removeEventListener('resize', onResize);
+                window.removeEventListener('orientationchange', onResize);
+                document.removeEventListener('focusin', onResize);
+                if (vv) {
+                    vv.removeEventListener('resize', onResize);
+                    vv.removeEventListener('scroll', onScroll);
+                }
+            };
+        } catch (_e) {
+            // no-op
+        }
     }
 
     // 文字列の「今日(YYYY-MM-DD)」を Asia/Tokyo 基準で返す（iOSの日時/タイムゾーン差異対策）
@@ -716,6 +763,7 @@ class NippoApp {
         });
     }
     async init() {
+        this.setupViewportHeightFix();
         this.setupEventListeners();
 
         // 初期表示を確実に「今すぐ」に同期（予約時刻入力は非表示）
