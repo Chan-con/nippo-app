@@ -545,6 +545,51 @@
         }
     </script>
 
+    <script>
+        // iOS(PWA含む): input/textarea フォーカス時の自動ズームを抑止（font-size 16pxでも残るケース向け）
+        (function () {
+            const ua = navigator.userAgent || '';
+            const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (!isIOS) return;
+
+            const meta = document.querySelector('meta[name="viewport"]');
+            if (!meta) return;
+
+            const original = meta.getAttribute('content') || 'width=device-width, initial-scale=1.0';
+            let restoreTimer = null;
+
+            const forceNoZoom = () => {
+                if (restoreTimer) {
+                    clearTimeout(restoreTimer);
+                    restoreTimer = null;
+                }
+
+                const stripped = original
+                    .replace(/\s*,\s*maximum-scale\s*=\s*[^,]+/gi, '')
+                    .replace(/\s*,\s*user-scalable\s*=\s*[^,]+/gi, '');
+                meta.setAttribute('content', `${stripped}, maximum-scale=1.0, user-scalable=no`);
+            };
+
+            const restore = () => {
+                if (restoreTimer) clearTimeout(restoreTimer);
+                restoreTimer = setTimeout(() => {
+                    meta.setAttribute('content', original);
+                }, 250);
+            };
+
+            document.addEventListener('focusin', (e) => {
+                const t = e.target;
+                if (!(t instanceof HTMLElement)) return;
+                if (t.matches('input, textarea, select')) forceNoZoom();
+            });
+            document.addEventListener('focusout', (e) => {
+                const t = e.target;
+                if (!(t instanceof HTMLElement)) return;
+                if (t.matches('input, textarea, select')) restore();
+            });
+        })();
+    </script>
+
     <script src="app.js"></script>
 </body>
 </html>

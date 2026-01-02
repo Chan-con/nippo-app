@@ -3025,6 +3025,12 @@ textarea {
 
 /* iOS Safari は画面幅により max-width:768px を外れることがあるため、iOS では常に16px以上にする */
 @supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
   .tab-textarea {
     font-size: 16px !important;
   }
