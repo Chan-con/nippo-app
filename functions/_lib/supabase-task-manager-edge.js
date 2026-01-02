@@ -17,6 +17,41 @@ function isReservedTask(task) {
   return !!task && task.status === 'reserved';
 }
 
+function getNowMinutesJST() {
+  const now = new Date();
+  const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  return jst.getHours() * 60 + jst.getMinutes();
+}
+
+function parseTimeToMinutesFlexible(timeStr) {
+  if (!timeStr) return null;
+  const raw = String(timeStr).trim();
+  if (!raw.includes(':')) return null;
+
+  // 24時間形式: HH:mm / H:mm
+  const hhmmMatch = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (hhmmMatch) {
+    return parseInt(hhmmMatch[1], 10) * 60 + parseInt(hhmmMatch[2], 10);
+  }
+
+  // 12時間形式(日本語): 午前/午後
+  const hasAm = raw.includes('午前');
+  const hasPm = raw.includes('午後');
+  if (!hasAm && !hasPm) return null;
+
+  const timeOnly = raw.replace('午前', '').replace('午後', '').trim();
+  const parts = timeOnly.split(':');
+  if (parts.length !== 2) return null;
+
+  let hour = parseInt(parts[0], 10);
+  const minute = parseInt(parts[1], 10);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+
+  if (hasPm && hour !== 12) hour += 12;
+  if (hasAm && hour === 12) hour = 0;
+  return hour * 60 + minute;
+}
+
 function safeRandomId(prefix = 'id') {
   if (typeof crypto?.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -187,6 +222,52 @@ export class SupabaseTaskManagerEdge {
     tasks.push(reservation);
     await this._saveSchedule(tasks, dateKey, userId);
     return reservation;
+  }
+
+  async processDueReservations(userId) {
+    await this.initialize();
+    if (!userId) throw new Error('userId is required');
+
+    const dateKey = getTodayDateStringJST();
+    const tasks = await this.loadSchedule(dateKey, userId);
+    const nowMinutes = getNowMinutesJST();
+
+    const due = tasks
+      .filter((t) => isReservedTask(t))
+      .map((t) => ({ task: t, minutes: parseTimeToMinutesFlexible(t.startTime) }))
+      .filter((x) => x.minutes !== null && x.minutes <= nowMinutes)
+      .sort((a, b) => a.minutes - b.minutes);
+
+    if (due.length === 0) return { changed: false };
+
+    const nowIso = new Date().toISOString();
+    let changed = false;
+
+    for (const item of due) {
+      const reservation = item.task;
+      const startTime = reservation?.startTime;
+      if (!startTime) continue;
+      if (!isReservedTask(reservation)) continue;
+
+      for (const t of tasks) {
+        if (t && !t.endTime && !isReservedTask(t)) {
+          t.endTime = startTime;
+          t.updatedAt = nowIso;
+          changed = true;
+        }
+      }
+
+      reservation.status = null;
+      reservation.endTime = null;
+      reservation.updatedAt = nowIso;
+      changed = true;
+    }
+
+    if (changed) {
+      await this._saveSchedule(tasks, dateKey, userId);
+    }
+
+    return { changed };
   }
 
   async endCurrentTask(dateString = null, userId) {

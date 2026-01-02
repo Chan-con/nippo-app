@@ -51,6 +51,17 @@ export async function onRequest(context) {
     // /api/tasks
     if (request.method === 'GET' && parts.length === 1 && parts[0] === 'tasks') {
       const dateString = url.searchParams.get('dateString') || null;
+
+      // 予約は「今日のみ」要件のため、今日の取得時だけ予約の期限到来を処理
+      if (!dateString && typeof taskManager.processDueReservations === 'function') {
+        try {
+          await taskManager.processDueReservations(userId);
+        } catch (e) {
+          // 取得自体は継続（表示を壊さない）
+          console.warn('processDueReservations failed (ignored):', e);
+        }
+      }
+
       const tasks = await taskManager.loadSchedule(dateString, userId);
       return jsonResponse({ success: true, tasks });
     }

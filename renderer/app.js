@@ -38,6 +38,8 @@ class NippoApp {
         this._accessToken = null;
         this._userId = null;
         this._fetchWrapped = false;
+        this._dueReservationRefreshInFlight = false;
+        this._dueReservationRefreshTimeout = null;
         this._webBootstrapped = false;
         this._realtimeChannel = null;
         this._realtimeRefreshTimer = null;
@@ -733,6 +735,14 @@ class NippoApp {
 
         // 時刻表示をリアルタイム寄りに更新（分境界に同期）
         this.startClock();
+
+        // タブが非アクティブだとタイマーが抑制されるため、復帰時に予約到来を再チェック
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                this.maybeRefreshDueReservations();
+            }
+        });
+        window.addEventListener('focus', () => this.maybeRefreshDueReservations());
         
         // デバッグ用のグローバル関数を設定
         window.app = this;
@@ -1227,7 +1237,92 @@ class NippoApp {
                 weekday: 'long'
             });
             dateElement.textContent = dateStr;
+
+            // 予約開始時刻を過ぎたら表示を自動更新（サーバ側で予約→通常タスクへ切替される）
+            this.maybeRefreshDueReservations();
         }
+    }
+
+    getTokyoNowMinutes() {
+        const now = new Date();
+        const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+        return jst.getHours() * 60 + jst.getMinutes();
+    }
+
+    parseTimeToMinutesFlexible(timeString) {
+        if (!timeString) return null;
+        const raw = String(timeString).trim();
+        if (!raw.includes(':')) return null;
+
+        const hhmmMatch = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+        if (hhmmMatch) {
+            return parseInt(hhmmMatch[1], 10) * 60 + parseInt(hhmmMatch[2], 10);
+        }
+
+        const hasAm = raw.includes('午前');
+        const hasPm = raw.includes('午後');
+        if (!hasAm && !hasPm) return null;
+
+        const timeOnly = raw.replace('午前', '').replace('午後', '').trim();
+        const parts = timeOnly.split(':');
+        if (parts.length !== 2) return null;
+
+        let hour = parseInt(parts[0], 10);
+        const minute = parseInt(parts[1], 10);
+        if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+
+        if (hasPm && hour !== 12) hour += 12;
+        if (hasAm && hour === 12) hour = 0;
+        return hour * 60 + minute;
+    }
+
+    maybeRefreshDueReservations() {
+        if (this._dueReservationRefreshInFlight) return;
+        if (this.currentMode === 'history') return;
+        if (!Array.isArray(this.tasks) || this.tasks.length === 0) return;
+
+        const nowMinutes = this.getTokyoNowMinutes();
+        const hasDue = this.tasks.some((t) => {
+            if (!this.isReservedTask(t)) return false;
+            const minutes = this.parseTimeToMinutesFlexible(t.startTime);
+            return minutes !== null && minutes <= nowMinutes;
+        });
+
+        if (!hasDue) return;
+
+        this._dueReservationRefreshInFlight = true;
+        Promise.resolve()
+            .then(() => this.loadTasks())
+            .catch((e) => console.warn('due reservation refresh failed:', e))
+            .finally(() => {
+                this._dueReservationRefreshInFlight = false;
+            });
+    }
+
+    scheduleNextDueReservationRefresh() {
+        if (this._dueReservationRefreshTimeout) {
+            clearTimeout(this._dueReservationRefreshTimeout);
+            this._dueReservationRefreshTimeout = null;
+        }
+
+        if (this.currentMode === 'history') return;
+        if (!Array.isArray(this.tasks) || this.tasks.length === 0) return;
+
+        const nowMinutes = this.getTokyoNowMinutes();
+        const futureReservedMinutes = this.tasks
+            .filter((t) => this.isReservedTask(t))
+            .map((t) => this.parseTimeToMinutesFlexible(t.startTime))
+            .filter((m) => m !== null && m > nowMinutes)
+            .sort((a, b) => a - b);
+
+        const nextMinutes = futureReservedMinutes[0];
+        if (nextMinutes === undefined) return;
+
+        const delayMs = Math.max(0, (nextMinutes - nowMinutes) * 60 * 1000 + 250);
+        this._dueReservationRefreshTimeout = setTimeout(() => {
+            this._dueReservationRefreshTimeout = null;
+            this.maybeRefreshDueReservations();
+        }, delayMs);
     }
 
     // 履歴モードの日付ピッカーに設定する「選択可能な最大日付（=今日）」を更新
@@ -1677,6 +1772,9 @@ class NippoApp {
                     this.updateTimeline();
                     this.updateStats();
                     this.updateTaskCounter();
+
+                    // 次の予約開始時刻に合わせて自動更新（表示の取りこぼし防止）
+                    this.scheduleNextDueReservationRefresh();
 
                     // 現在実行中のタスクを更新
                     const runningTask = this.tasks.find(task => this.isRunningTask(task));

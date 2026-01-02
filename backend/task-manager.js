@@ -25,8 +25,10 @@ class TaskManager {
     }
 
     getNowMinutes() {
+        // 予約は「今日(JST)」前提の仕様のため、比較もJSTに寄せる
         const now = new Date();
-        return now.getHours() * 60 + now.getMinutes();
+        const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+        return jst.getHours() * 60 + jst.getMinutes();
     }
 
     async initialize() {
@@ -1616,26 +1618,34 @@ class TaskManager {
             if (!timeStr) {
                 return null;
             }
-            
-            // "午前 10:30" -> 分に変換
-            const isAm = timeStr.includes('午前');
-            const timeOnly = timeStr.replace('午前 ', '').replace('午後 ', '').trim();
-            
-            if (!timeOnly.includes(':')) {
-                return null;
+
+            const raw = String(timeStr).trim();
+            if (!raw.includes(':')) return null;
+
+            // 24時間形式: "HH:mm" / "H:mm"
+            const hhmmMatch = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+            if (hhmmMatch) {
+                const hour = parseInt(hhmmMatch[1], 10);
+                const minute = parseInt(hhmmMatch[2], 10);
+                return hour * 60 + minute;
             }
-                
-            const [hours, minutes] = timeOnly.split(':');
-            let hour = parseInt(hours);
-            const minute = parseInt(minutes);
-            
+
+            // 12時間形式(日本語): "午前 10:30" / "午後 3:05"
+            const hasAm = raw.includes('午前');
+            const hasPm = raw.includes('午後');
+            if (!hasAm && !hasPm) return null;
+
+            const timeOnly = raw.replace('午前', '').replace('午後', '').trim();
+            const parts = timeOnly.split(':');
+            if (parts.length !== 2) return null;
+            let hour = parseInt(parts[0], 10);
+            const minute = parseInt(parts[1], 10);
+            if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+
             // 12時間形式を24時間形式に変換
-            if (!isAm && hour !== 12) {
-                hour += 12;
-            } else if (isAm && hour === 12) {
-                hour = 0;
-            }
-                
+            if (hasPm && hour !== 12) hour += 12;
+            if (hasAm && hour === 12) hour = 0;
+
             return hour * 60 + minute;
         } catch (error) {
             return null;
@@ -2261,6 +2271,16 @@ function createApp(taskManagerInstance, options = {}) {
     app.get('/api/tasks', async (req, res) => {
         try {
             const dateString = req.query.dateString || null; // クエリパラメータから日付取得
+
+            // 予約は「今日のみ」要件のため、今日の取得時だけ予約の期限到来を処理してから返す
+            if (!dateString && typeof taskManager.processDueReservations === 'function') {
+                try {
+                    await taskManager.processDueReservations(req.userId);
+                } catch (e) {
+                    console.warn('processDueReservations failed (ignored):', e);
+                }
+            }
+
             const tasks = await taskManager.loadSchedule(dateString, req.userId);
             console.log(`API - 取得したタスク数: ${tasks.length}, 日付: ${dateString || '今日'}`);
             tasks.forEach(task => {
