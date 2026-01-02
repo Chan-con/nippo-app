@@ -996,9 +996,8 @@ class NippoApp {
 
                     // iOS Safari/PWA: 未選択('')→今日 に自動補完されて即change、のようなケースは無視する
                     const todayStr = this.getTokyoTodayYmd();
-                    const elapsed = Date.now() - (this._calendarLastInteractAt || 0);
                     const wasEmpty = !this._calendarValueBeforeInteract;
-                    if (wasEmpty && nextValue === todayStr && elapsed >= 0 && elapsed < 800) {
+                    if (wasEmpty && nextValue === todayStr) {
                         console.log('日付ピッカーの自動補完(今日)とみなし、選択処理をスキップします');
                         e.target.value = this._calendarValueBeforeInteract || '';
                         return;
