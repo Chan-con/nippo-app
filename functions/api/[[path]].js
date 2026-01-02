@@ -268,7 +268,7 @@ export async function onRequest(context) {
       return jsonResponse({ success: false, error: '報告内容の保存に失敗しました' }, 500);
     }
 
-    // open-url (Electron互換: Pagesではサーバー側で開けない)
+    // open-url (Web版ではサーバー側で開けない)
     if (parts.length === 1 && parts[0] === 'open-url' && request.method === 'POST') {
       return jsonResponse({ success: true, message: 'Web版ではクライアントでURLを開きます' });
     }

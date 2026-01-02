@@ -2704,24 +2704,8 @@ function createApp(taskManagerInstance, options = {}) {
                 const os = require('os');
                 const platform = os.platform();
                 
-                // メインウィンドウの位置を取得
-                let windowArgs = [];
-                try {
-                    const { BrowserWindow } = require('electron');
-                    const mainWindow = BrowserWindow.getAllWindows()[0];
-                    if (mainWindow) {
-                        const bounds = mainWindow.getBounds();
-                        // ブラウザウィンドウを少し右にずらして配置
-                        const offsetX = bounds.x + 50;
-                        const offsetY = bounds.y + 50;
-                        windowArgs = [
-                            `--window-position=${offsetX},${offsetY}`,
-                            `--window-size=1200,800`
-                        ];
-                    }
-                } catch (error) {
-                    console.log('ウィンドウ位置の取得に失敗:', error);
-                }
+                // Webアプリ前提: Electronのウィンドウ位置連携は行わない
+                const windowArgs = [];
                 
                 let command;
                 let args;

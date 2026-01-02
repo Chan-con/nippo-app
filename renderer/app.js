@@ -40,7 +40,7 @@ class NippoApp {
     }
 
     isWebMode() {
-        return !window.electronAPI;
+        return true;
     }
 
     wrapFetchWithAuth() {
@@ -530,91 +530,9 @@ class NippoApp {
         this.lastKnownDate = now.toDateString();
         console.log('アプリ初期化時の日付記録:', this.lastKnownDate);
 
-        // タスク入力フォーカスのイベントリスナーを追加（重複防止）
-        if (!this.eventListenersInitialized) {
-            if (window.electronAPI?.onFocusTaskInput) {
-                window.electronAPI.onFocusTaskInput(() => {
-                    const taskInput = document.getElementById('task-input');
-                    if (taskInput) {
-                        taskInput.focus();
-                    }
-                });
-            }
-
-            // ウィンドウ復元時の処理を追加（Electronのみ）
-            if (window.electronAPI?.onWindowRestored) {
-                window.electronAPI.onWindowRestored(() => {
-                    console.log('ウィンドウが復元されました - DOM状態を確認中...');
-                    this.handleWindowRestored();
-                });
-            }
-            
-            
-            
-            this.eventListenersInitialized = true;
-        }
-
-        // メインプロセス側で予約→実行に切り替わったら通知される
-        if (window.electronAPI?.onTasksUpdated) {
-            window.electronAPI.onTasksUpdated(async () => {
-                try {
-                    // 今日表示中のみ自動更新
-                    if (this.currentMode !== 'history' && !this.currentDate && this.apiBaseUrl) {
-                        await this.loadTasks();
-                    }
-                } catch (e) {
-                    console.error('tasks-updated ハンドラでエラー:', e);
-                }
-            });
-        }
-
-        if (this.isWebMode()) {
-            this.apiBaseUrl = window.location.origin;
-            await this.initSupabaseAuth();
-        } else {
-            // APIサーバーのポートを取得し、準備を待つ
-            window.electronAPI.onApiPort(async (port) => {
-                console.log(`APIポートを受信: ${port}`);
-                this.apiPort = port;
-                this.apiBaseUrl = `http://localhost:${port}`;
-
-                console.log('APIサーバーの準備を待機中...');
-                const isApiReady = await this.waitForAPI();
-
-                if (isApiReady) {
-                    // 起動時に既存データを読み込み
-                    console.log('アプリ起動時のデータ読み込み開始...');
-                    await this.loadTasks();
-                    
-                    // 履歴データを読み込み
-                    await this.loadHistoryDates();
-                    
-                    // 目標ストックを読み込み
-                    await this.loadGoalStock();
-                    
-                    // タスクストックを読み込み
-                    await this.loadTaskStock();
-                    
-                    // タグストックを読み込み
-                    await this.loadTagStock();
-                    
-                    // タグの整合性をチェックして自動修正
-                    await this.checkAndFixTagIntegrity();
-                    
-                    // タグドロップダウンを初期化
-                    this.updateTagDropdown();
-                    
-                    // 設定を読み込み
-                    try {
-                        await this.loadSettings();
-                    } catch (error) {
-                        console.error('設定の読み込みに失敗しました:', error);
-                    }
-                } else {
-                    console.error('APIの準備が完了しなかったため、タスクを読み込めません。');
-                }
-            });
-        }
+        // Webアプリ前提: ローカルの /api を利用し、Supabaseログイン後にbootstrapする
+        this.apiBaseUrl = window.location.origin;
+        await this.initSupabaseAuth();
 
         // 時刻表示をリアルタイム寄りに更新（分境界に同期）
         this.startClock();
@@ -3665,14 +3583,9 @@ class NippoApp {
     
     async loadSettings() {
         try {
-            let settings;
-            if (this.isWebMode()) {
-                const response = await fetch(`${this.apiBaseUrl}/api/settings`);
-                const result = await response.json();
-                settings = result?.settings || {};
-            } else {
-                settings = await window.electronAPI.getSettings();
-            }
+            const response = await fetch(`${this.apiBaseUrl}/api/settings`);
+            const result = await response.json();
+            const settings = result?.settings || {};
             this.settings = settings;
             
             // UI要素に設定を反映
@@ -3719,18 +3632,13 @@ class NippoApp {
                 launchOnStartup
             };
             
-            let ok;
-            if (this.isWebMode()) {
-                const response = await fetch(`${this.apiBaseUrl}/api/settings`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ settings })
-                });
-                const result = await response.json();
-                ok = !!result?.success;
-            } else {
-                ok = await window.electronAPI.saveSettings(settings);
-            }
+            const response = await fetch(`${this.apiBaseUrl}/api/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings })
+            });
+            const result = await response.json();
+            const ok = !!result?.success;
 
             if (ok) {
                 this.settings = settings;
@@ -3798,7 +3706,7 @@ class NippoApp {
             return;
         }
         
-        // キー名をElectronのAccelerator形式に変換
+        // キー名をAccelerator形式に変換
         if (key.length === 1) {
             key = key.toUpperCase();
         } else if (key.startsWith('Arrow')) {
