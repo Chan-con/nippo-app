@@ -26,6 +26,8 @@ class NippoApp {
         this.historyDates = [];
         this.historyData = {}; // 履歴データの初期化
         this.lastKnownDate = null; // 日付変更検知用
+        this._calendarLastInteractAt = 0;
+        this._calendarValueBeforeInteract = '';
         this._timeTickInterval = null;
         this._dateTimeInterval = null;
         this._timeTickTimeout = null;
@@ -40,6 +42,18 @@ class NippoApp {
         this._realtimePendingTypes = new Set();
         this._realtimePendingKeys = new Set();
         this.init();
+    }
+
+    // 文字列の「今日(YYYY-MM-DD)」を Asia/Tokyo 基準で返す（iOSの日時/タイムゾーン差異対策）
+    getTokyoTodayYmd() {
+        const today = new Date();
+        const parts = today.toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'Asia/Tokyo'
+        }).split('/');
+        return `${parts[0]}-${parts[1]}-${parts[2]}`;
     }
 
     isWebMode() {
@@ -966,10 +980,31 @@ class NippoApp {
             if (calendarInput) {
                 // 未来の日付を選択できないように最大値を設定（以後は自動更新）
                 this.updateCalendarMaxDate();
+
+                // iOSで「開いた瞬間に今日が入ってchangeが走る」ことがあるため、開く直前の状態を記録
+                const snapshotBeforeOpen = () => {
+                    this._calendarLastInteractAt = Date.now();
+                    this._calendarValueBeforeInteract = calendarInput.value || '';
+                };
+                calendarInput.addEventListener('pointerdown', snapshotBeforeOpen);
+                calendarInput.addEventListener('touchstart', snapshotBeforeOpen, { passive: true });
+                calendarInput.addEventListener('focus', snapshotBeforeOpen);
                 
                 calendarInput.addEventListener('change', (e) => {
-                    console.log('日付変更イベントが発生しました:', e.target.value);
-                    this.onDateSelected(e.target.value);
+                    const nextValue = e.target.value;
+                    console.log('日付変更イベントが発生しました:', nextValue);
+
+                    // iOS Safari/PWA: 未選択('')→今日 に自動補完されて即change、のようなケースは無視する
+                    const todayStr = this.getTokyoTodayYmd();
+                    const elapsed = Date.now() - (this._calendarLastInteractAt || 0);
+                    const wasEmpty = !this._calendarValueBeforeInteract;
+                    if (wasEmpty && nextValue === todayStr && elapsed >= 0 && elapsed < 800) {
+                        console.log('日付ピッカーの自動補完(今日)とみなし、選択処理をスキップします');
+                        e.target.value = this._calendarValueBeforeInteract || '';
+                        return;
+                    }
+
+                    this.onDateSelected(nextValue);
                 });
                 calendarInput.setAttribute('data-has-listener', 'true');
                 console.log('日付入力イベントリスナーを追加しました');
@@ -1164,14 +1199,7 @@ class NippoApp {
         const calendarInput = document.getElementById('calendar-date-input');
         if (!calendarInput) return;
 
-        const today = new Date();
-        const localDateParts = today.toLocaleDateString('ja-JP', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            timeZone: 'Asia/Tokyo'
-        }).split('/');
-        const todayStr = `${localDateParts[0]}-${localDateParts[1]}-${localDateParts[2]}`;
+        const todayStr = this.getTokyoTodayYmd();
 
         if (calendarInput.max !== todayStr) {
             calendarInput.max = todayStr;
@@ -4538,8 +4566,7 @@ class NippoApp {
         }
         
         // 今日の日付が選択された場合は今日モードに戻す
-        const now = new Date();
-        const todayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const todayString = this.getTokyoTodayYmd();
         
         if (dateString === todayString) {
             console.log('今日の日付が選択されたため、今日モードに切り替えます');
