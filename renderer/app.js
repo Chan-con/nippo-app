@@ -19,8 +19,6 @@ class NippoApp {
         this.hasTaskStockChanges = false;
         this.hasTagStockChanges = false;
         this.eventListenersInitialized = false;
-        this.currentHotkeyTarget = null;
-        this.isCapturingHotkey = false;
         this.settings = {};
         this.currentMode = 'today';
         this.selectedDate = null;
@@ -825,21 +823,6 @@ class NippoApp {
         document.getElementById('settings-save').addEventListener('click', () => this.saveSettings());
         document.getElementById('add-url-btn').addEventListener('click', () => this.addReportUrl());
         document.getElementById('clear-all-btn').addEventListener('click', () => this.showClearConfirmation());
-        
-        // ホットキー入力フィールドのイベントリスナー（Web版では意味がないので無効化）
-        const hotkeyToggle = document.getElementById('hotkey-toggle');
-        if (!this.isWebMode() && hotkeyToggle) {
-            hotkeyToggle.addEventListener('click', () => this.startHotkeyCapture('hotkey-toggle'));
-        }
-        
-        // クリアボタンのイベントリスナー
-        document.querySelectorAll('.clear-hotkey').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const target = e.target.closest('.clear-hotkey').dataset.target;
-                this.clearHotkey(target);
-            });
-        });
-        
 
         // 目標ストックダイアログのイベントリスナー
         document.getElementById('goal-stock-close').addEventListener('click', () => this.hideGoalStockDialog());
@@ -874,13 +857,6 @@ class NippoApp {
             if (e.key === 'Enter') this.addTagStock();
         });
         
-        // ホットキーキャプチャ用のキーボードイベントリスナー
-        document.addEventListener('keydown', (e) => {
-            if (this.isCapturingHotkey) {
-                this.captureHotkey(e);
-            }
-        });
-
         // ウィンドウリサイズ時にタグスクロールボタンの状態を更新
         window.addEventListener('resize', () => {
             // 少し遅延してからボタン状態を更新（レイアウト調整後）
@@ -3575,10 +3551,6 @@ class NippoApp {
     closeSettingsDialog() {
         const dialog = document.getElementById('settings-dialog');
         dialog.classList.remove('show');
-        
-        // ホットキーキャプチャを停止
-        this.isCapturingHotkey = false;
-        this.currentHotkeyTarget = null;
     }
     
     async loadSettings() {
@@ -3589,22 +3561,14 @@ class NippoApp {
             this.settings = settings;
             
             // UI要素に設定を反映
-            const hotkeyToggle = document.getElementById('hotkey-toggle');
             const roundingInterval = document.getElementById('time-rounding-interval');
             const roundingMode = document.getElementById('time-rounding-mode');
-            const launchOnStartup = document.getElementById('launch-on-startup');
-            
-            if (hotkeyToggle) {
-                hotkeyToggle.value = settings.globalHotkey?.toggleWindow || '';
-            }
+
             if (roundingInterval) {
                 roundingInterval.value = String(settings.timeRounding?.interval ?? 0);
             }
             if (roundingMode) {
                 roundingMode.value = settings.timeRounding?.mode || 'nearest';
-            }
-            if (launchOnStartup) {
-                launchOnStartup.checked = !!settings.launchOnStartup;
             }
             
         } catch (error) {
@@ -3615,22 +3579,20 @@ class NippoApp {
     
     async saveSettings() {
         try {
-            const hotkeyToggle = document.getElementById('hotkey-toggle').value;
-            const roundingInterval = parseInt(document.getElementById('time-rounding-interval').value, 10);
-            const roundingMode = document.getElementById('time-rounding-mode').value;
-            const launchOnStartup = document.getElementById('launch-on-startup')?.checked ?? false;
+            const roundingInterval = parseInt(document.getElementById('time-rounding-interval')?.value ?? '0', 10);
+            const roundingMode = document.getElementById('time-rounding-mode')?.value || 'nearest';
             
             const settings = {
                 ...this.settings,
-                globalHotkey: {
-                    toggleWindow: hotkeyToggle
-                },
                 timeRounding: {
                     interval: isNaN(roundingInterval) ? 0 : roundingInterval,
                     mode: roundingMode
-                },
-                launchOnStartup
+                }
             };
+
+            // Electron由来の設定はWebでは無効のため、保存時に削除してクリーンアップ
+            delete settings.globalHotkey;
+            delete settings.launchOnStartup;
             
             const response = await fetch(`${this.apiBaseUrl}/api/settings`, {
                 method: 'POST',
@@ -3668,71 +3630,13 @@ class NippoApp {
             let adj = minutes;
             if (mode === 'floor') adj = minutes - rem;
             else if (mode === 'ceil') adj = rem === 0 ? minutes : minutes + (interval - rem);
-            else adj = rem < interval/2 ? minutes - rem : minutes + (interval - rem);
-            rounded.setSeconds(0,0);
+            else adj = rem < interval / 2 ? minutes - rem : minutes + (interval - rem);
+            rounded.setSeconds(0, 0);
             rounded.setMinutes(adj);
         }
         const rh = rounded.getHours().toString().padStart(2, '0');
         const rm = rounded.getMinutes().toString().padStart(2, '0');
         preview.textContent = `例: 現在 ${hh}:${mm} → 丸め後 ${rh}:${rm}`;
-    }
-    
-    startHotkeyCapture(targetId) {
-        this.currentHotkeyTarget = targetId;
-        this.isCapturingHotkey = true;
-        
-        const input = document.getElementById(targetId);
-        if (input) {
-            input.value = '';
-            input.placeholder = 'キーの組み合わせを押してください...';
-            input.focus();
-        }
-    }
-    
-    captureHotkey(event) {
-        if (!this.isCapturingHotkey || !this.currentHotkeyTarget) return;
-        
-        event.preventDefault();
-        const modifiers = [];
-        if (event.ctrlKey) modifiers.push('Control');
-        if (event.altKey) modifiers.push('Alt');
-        if (event.shiftKey) modifiers.push('Shift');
-        if (event.metaKey) modifiers.push('Super'); // Windowsキー or Commandキー
-
-        let key = event.key;
-        
-        // 修飾キーのみの場合は何もしない
-        if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
-            return;
-        }
-        
-        // キー名をAccelerator形式に変換
-        if (key.length === 1) {
-            key = key.toUpperCase();
-        } else if (key.startsWith('Arrow')) {
-            key = key.replace('Arrow', '');
-        } else if (key === ' ') {
-            key = 'Space';
-        }
-        
-        const hotkeyString = [...modifiers, key].join('+');
-        
-        const input = document.getElementById(this.currentHotkeyTarget);
-        if (input) {
-            input.value = hotkeyString;
-            input.placeholder = '';
-        }
-        
-        this.isCapturingHotkey = false;
-        this.currentHotkeyTarget = null;
-    }
-    
-    clearHotkey(targetId) {
-        const input = document.getElementById(targetId);
-
-        if (input) {
-            input.value = '';
-        }
     }
 
     async loadReportUrls() {
