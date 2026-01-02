@@ -14,30 +14,39 @@
     <!-- カスタムタイトルバー -->
     <div class="titlebar">
         <div class="titlebar-drag">
+            <button id="mobile-menu-btn" class="mobile-menu-btn" type="button" aria-label="メニュー" aria-controls="mobile-sidebar" aria-expanded="false">
+                <span class="material-icons">menu</span>
+            </button>
             <!-- Web版ログインUI（ヘッダー内に表示） -->
             <div id="web-auth-bar" class="web-auth-bar" style="display:none;">
                 <div class="web-auth-left">
                     <span id="web-auth-status">未ログイン</span>
                 </div>
                 <div class="web-auth-right">
-                    <button id="web-login-btn" class="btn-secondary" type="button">ログイン</button>
-                    <button id="web-logout-btn" class="btn-secondary" type="button" style="display:none;">ログアウト</button>
+                    <button id="web-login-btn" class="btn-secondary" type="button" title="ログイン" aria-label="ログイン">
+                        <span class="material-icons">login</span>
+                    </button>
+                    <button id="web-logout-btn" class="btn-secondary" type="button" style="display:none;" title="ログアウト" aria-label="ログアウト">
+                        <span class="material-icons">logout</span>
+                    </button>
                 </div>
             </div>
         </div>
         <div class="titlebar-controls">
-            <button class="titlebar-button minimize">
+            <button class="titlebar-button minimize" title="最小化" aria-label="最小化">
                 <span class="material-icons">remove</span>
             </button>
-            <button class="titlebar-button close">
+            <button class="titlebar-button close" title="閉じる" aria-label="閉じる">
                 <span class="material-icons">close</span>
             </button>
         </div>
     </div>
 
+    <div id="mobile-overlay" class="mobile-overlay" aria-hidden="true"></div>
+
     <div class="app-container">
         <!-- サイドバー -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="mobile-sidebar">
             <div class="sidebar-header">
                 <h2>📋 今日のタスク</h2>
                 <div class="task-counter">
@@ -48,8 +57,12 @@
             <div class="sidebar-content">
                 <div class="task-input-section">
                     <div class="task-add-tabs" role="tablist" aria-label="タスク追加モード">
-                        <button id="task-add-tab-now" class="task-add-tab active" role="tab" aria-selected="true" type="button">今すぐ</button>
-                        <button id="task-add-tab-reserve" class="task-add-tab" role="tab" aria-selected="false" type="button">予約</button>
+                        <button id="task-add-tab-now" class="task-add-tab active" role="tab" aria-selected="true" type="button" title="今すぐ" aria-label="今すぐ">
+                            <span class="material-icons">play_arrow</span>
+                        </button>
+                        <button id="task-add-tab-reserve" class="task-add-tab" role="tab" aria-selected="false" type="button" title="予約" aria-label="予約">
+                            <span class="material-icons">schedule</span>
+                        </button>
                     </div>
                     <div class="tag-select-group">
                         <select id="task-tag-select" class="tag-select" aria-label="タグを選択">
@@ -62,34 +75,33 @@
                     <div class="task-name-row">
                         <input type="text" id="task-input" placeholder="新しいタスクを入力..." class="task-input">
                     </div>
-                    <button id="add-task-btn" class="btn-primary btn-add-task" type="button">
+                    <button id="add-task-btn" class="btn-primary btn-add-task" type="button" title="追加" aria-label="追加">
                         <span class="material-icons">add</span>
-                        追加
                     </button>
                 </div>
                 
                 <div class="action-buttons">
-                    <button id="end-task-btn" class="btn-secondary">
+                    <button id="end-task-btn" class="btn-secondary" title="タスク終了" aria-label="タスク終了">
                         <span class="material-icons">check_circle</span>
                         タスク終了
                     </button>
-                    <button id="create-report-btn" class="btn-secondary">
+                    <button id="create-report-btn" class="btn-secondary" title="報告書作成" aria-label="報告書作成">
                         <span class="material-icons">description</span>
                         報告書作成
                     </button>
-                    <button id="goal-stock-btn" class="btn-secondary">
+                    <button id="goal-stock-btn" class="btn-secondary" title="目標" aria-label="目標">
                         <span class="material-icons">flag</span>
-                        目標作成
+                        目標
                     </button>
-                    <button id="task-stock-btn" class="btn-secondary">
+                    <button id="task-stock-btn" class="btn-secondary" title="タスクストック" aria-label="タスクストック">
                         <span class="material-icons">bookmark</span>
                         タスクストック
                     </button>
-                    <button id="tag-stock-btn" class="btn-secondary">
+                    <button id="tag-stock-btn" class="btn-secondary" title="タグ" aria-label="タグ">
                         <span class="material-icons">label</span>
                         タグ
                     </button>
-                    <button id="settings-btn" class="btn-secondary">
+                    <button id="settings-btn" class="btn-secondary" title="設定" aria-label="設定">
                         <span class="material-icons" style="font-size: 18px;">settings</span>
                         設定
                     </button>
@@ -105,8 +117,12 @@
                     <p id="current-time">15:30</p>
                 </div>
                 <div class="view-mode-toggle">
-                    <button id="today-btn" class="mode-btn active">今日</button>
-                    <button id="history-btn" class="mode-btn">履歴</button>
+                    <button id="today-btn" class="mode-btn active" title="今日" aria-label="今日">
+                        <span class="material-icons">today</span>
+                    </button>
+                    <button id="history-btn" class="mode-btn" title="履歴" aria-label="履歴">
+                        <span class="material-icons">history</span>
+                    </button>
                 </div>
                 <div class="date-selector" id="date-selector" style="display: none;">
                     <input type="date" id="calendar-date-input" />
@@ -184,8 +200,12 @@
             <h3 id="confirm-title">確認</h3>
             <p id="confirm-message">この操作を実行しますか？</p>
             <div class="confirm-buttons">
-                <button class="btn-cancel" id="confirm-cancel">キャンセル</button>
-                <button class="btn-confirm" id="confirm-ok">実行</button>
+                <button class="btn-cancel" id="confirm-cancel" title="キャンセル" aria-label="キャンセル">
+                    <span class="material-icons">close</span>
+                </button>
+                <button class="btn-confirm" id="confirm-ok" title="実行" aria-label="実行">
+                    <span class="material-icons">check</span>
+                </button>
             </div>
         </div>
     </div>
@@ -195,7 +215,7 @@
         <div class="edit-content">
             <div class="edit-header">
                 <h3>タスクを編集</h3>
-                <button class="edit-close" id="edit-close">
+                <button class="edit-close" id="edit-close" title="閉じる" aria-label="閉じる">
                     <span class="material-icons">close</span>
                 </button>
             </div>
@@ -204,8 +224,8 @@
                     <label for="edit-task-name">タスク名</label>
                     <div class="input-with-button">
                         <input type="text" id="edit-task-name" class="edit-input" placeholder="タスク名を入力">
-                        <button type="button" id="add-to-stock-btn" class="icon-btn" title="このタスクをタスクストックに追加">
-                            📚
+                        <button type="button" id="add-to-stock-btn" class="icon-btn" title="このタスクをタスクストックに追加" aria-label="タスクストックに追加">
+                            <span class="material-icons">library_add</span>
                         </button>
                     </div>
                 </div>
@@ -226,9 +246,15 @@
                 </div>
             </div>
             <div class="edit-footer">
-                <button class="btn-cancel" id="edit-cancel">戻る</button>
-                <button class="btn-primary" id="edit-save">保存</button>
-                <button class="btn-danger" id="edit-delete">削除</button>
+                <button class="btn-cancel" id="edit-cancel" title="戻る" aria-label="戻る">
+                    <span class="material-icons">arrow_back</span>
+                </button>
+                <button class="btn-primary" id="edit-save" title="保存" aria-label="保存">
+                    <span class="material-icons">save</span>
+                </button>
+                <button class="btn-danger" id="edit-delete" title="削除" aria-label="削除">
+                    <span class="material-icons">delete</span>
+                </button>
             </div>
         </div>
     </div>
@@ -238,7 +264,7 @@
         <div class="report-content">
             <div class="report-header">
                 <h3>📋 報告書作成</h3>
-                <button class="report-close" id="report-close">
+                <button class="report-close" id="report-close" title="閉じる" aria-label="閉じる">
                     <span class="material-icons">close</span>
                 </button>
             </div>
@@ -280,20 +306,21 @@
                 </div>
             </div>
             <div class="report-footer">
-                <button class="btn-cancel" id="report-cancel">戻る</button>
-                <button class="btn-secondary" id="copy-timeline-btn">
-                    <span class="material-icons">content_copy</span>
-                    タイムライン
+                <button class="btn-cancel" id="report-cancel" title="戻る" aria-label="戻る">
+                    <span class="material-icons">arrow_back</span>
                 </button>
-                <button class="btn-secondary" id="copy-goals-btn">
+                <button class="btn-secondary" id="copy-timeline-btn" title="タイムラインをコピー" aria-label="タイムラインをコピー">
                     <span class="material-icons">content_copy</span>
-                    目標
                 </button>
-                <button class="btn-secondary" id="report-copy">
+                <button class="btn-secondary" id="copy-goals-btn" title="目標をコピー" aria-label="目標をコピー">
                     <span class="material-icons">content_copy</span>
-                    テキスト
                 </button>
-                <button class="btn-primary" id="report-save">保存</button>
+                <button class="btn-secondary" id="report-copy" title="テキストをコピー" aria-label="テキストをコピー">
+                    <span class="material-icons">content_copy</span>
+                </button>
+                <button class="btn-primary" id="report-save" title="保存" aria-label="保存">
+                    <span class="material-icons">save</span>
+                </button>
             </div>
         </div>
     </div>
@@ -303,7 +330,7 @@
         <div class="settings-content">
             <div class="settings-header">
                 <h3>⚙️ 設定</h3>
-                <button class="settings-close" id="settings-close">
+                <button class="settings-close" id="settings-close" title="閉じる" aria-label="閉じる">
                     <span class="material-icons">close</span>
                 </button>
             </div>
@@ -345,7 +372,7 @@
                         <div class="input-row">
                             <input type="text" id="url-name-input" class="edit-input" placeholder="表示名（例：Slack、Teams）" />
                             <input type="url" id="url-address-input" class="edit-input" placeholder="URL（例：https://hooks.slack.com/...）" />
-                            <button id="add-url-btn" class="btn-primary">
+                            <button id="add-url-btn" class="btn-primary" title="追加" aria-label="追加">
                                 <span class="material-icons">add</span>
                             </button>
                         </div>
@@ -357,16 +384,19 @@
                         <div class="warning-text" style="color: var(--danger); margin-bottom: 12px; font-size: 14px;">
                             ⚠️ この操作は元に戻せません
                         </div>
-                        <button id="clear-all-btn" class="btn-danger">
+                        <button id="clear-all-btn" class="btn-danger" title="全データ削除" aria-label="全データ削除">
                             <span class="material-icons">delete_forever</span>
-                            すべてのタイムラインデータを削除
                         </button>
                     </div>
                 </div>
             </div>
             <div class="settings-footer">
-                <button class="btn-cancel" id="settings-cancel">戻る</button>
-                <button class="btn-primary" id="settings-save">保存</button>
+                <button class="btn-cancel" id="settings-cancel" title="戻る" aria-label="戻る">
+                    <span class="material-icons">arrow_back</span>
+                </button>
+                <button class="btn-primary" id="settings-save" title="保存" aria-label="保存">
+                    <span class="material-icons">save</span>
+                </button>
             </div>
         </div>
     </div>
@@ -376,7 +406,7 @@
         <div class="task-stock-content">
             <div class="task-stock-header">
                 <h3>🎯 目標管理</h3>
-                <button class="task-stock-close" id="goal-stock-close">
+                <button class="task-stock-close" id="goal-stock-close" title="閉じる" aria-label="閉じる">
                     <span class="material-icons">close</span>
                 </button>
             </div>
@@ -391,19 +421,19 @@
                     <h4>➕ 新しい目標を追加</h4>
                     <div class="task-stock-input">
                         <input type="text" id="goal-stock-input" class="edit-input" placeholder="目標を入力してください">
-                        <button id="add-goal-stock-btn" class="btn-primary">
+                        <button id="add-goal-stock-btn" class="btn-primary" title="追加" aria-label="追加">
                             <span class="material-icons">add</span>
-                            追加
                         </button>
                     </div>
                 </div>
             </div>
             <div class="task-stock-footer">
                 <div class="task-stock-footer-buttons">
-                    <button class="btn-cancel" id="goal-stock-cancel">戻る</button>
+                    <button class="btn-cancel" id="goal-stock-cancel" title="戻る" aria-label="戻る">
+                        <span class="material-icons">arrow_back</span>
+                    </button>
                     <button class="btn-primary" id="save-goal-stock-btn">
                         <span class="material-icons">save</span>
-                        保存
                     </button>
                 </div>
             </div>
@@ -415,7 +445,7 @@
         <div class="task-stock-content">
             <div class="task-stock-header">
                 <h3>📚 タスクストック</h3>
-                <button class="task-stock-close" id="task-stock-close">
+                <button class="task-stock-close" id="task-stock-close" title="閉じる" aria-label="閉じる">
                     <span class="material-icons">close</span>
                 </button>
             </div>
@@ -431,19 +461,19 @@
                     <h4>➕ 新しいタスクを追加</h4>
                     <div class="task-stock-input">
                         <input type="text" id="task-stock-input" class="edit-input" placeholder="タスク名を入力してください">
-                        <button id="add-task-stock-btn" class="btn-primary">
+                        <button id="add-task-stock-btn" class="btn-primary" title="追加" aria-label="追加">
                             <span class="material-icons">add</span>
-                            追加
                         </button>
                     </div>
                 </div>
             </div>
             <div class="task-stock-footer">
                 <div class="task-stock-footer-buttons">
-                    <button class="btn-cancel" id="task-stock-cancel">戻る</button>
+                    <button class="btn-cancel" id="task-stock-cancel" title="戻る" aria-label="戻る">
+                        <span class="material-icons">arrow_back</span>
+                    </button>
                     <button class="btn-primary" id="save-task-stock-btn">
                         <span class="material-icons">save</span>
-                        保存
                     </button>
                 </div>
             </div>
@@ -455,7 +485,7 @@
         <div class="task-stock-content">
             <div class="task-stock-header">
                 <h3>🏷️ タグ管理</h3>
-                <button class="task-stock-close" id="tag-stock-close">
+                <button class="task-stock-close" id="tag-stock-close" title="閉じる" aria-label="閉じる">
                     <span class="material-icons">close</span>
                 </button>
             </div>
@@ -470,19 +500,19 @@
                     <h4>➕ 新しいタグを追加</h4>
                     <div class="task-stock-input">
                         <input type="text" id="tag-stock-input" class="edit-input" placeholder="タグ名を入力してください">
-                        <button id="add-tag-stock-btn" class="btn-primary">
+                        <button id="add-tag-stock-btn" class="btn-primary" title="追加" aria-label="追加">
                             <span class="material-icons">add</span>
-                            追加
                         </button>
                     </div>
                 </div>
             </div>
             <div class="task-stock-footer">
                 <div class="task-stock-footer-buttons">
-                    <button class="btn-cancel" id="tag-stock-cancel">戻る</button>
+                    <button class="btn-cancel" id="tag-stock-cancel" title="戻る" aria-label="戻る">
+                        <span class="material-icons">arrow_back</span>
+                    </button>
                     <button class="btn-primary" id="save-tag-stock-btn">
                         <span class="material-icons">save</span>
-                        保存
                     </button>
                 </div>
             </div>

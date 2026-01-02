@@ -724,6 +724,45 @@ class NippoApp {
     }
 
     setupEventListeners() {
+        // モバイル: サイドバーをハンバーガーで開閉
+        const menuBtn = document.getElementById('mobile-menu-btn');
+        const overlay = document.getElementById('mobile-overlay');
+        const sidebar = document.getElementById('mobile-sidebar') || document.querySelector('.sidebar');
+        const mq = window.matchMedia ? window.matchMedia('(max-width: 768px)') : null;
+
+        const closeSidebar = () => {
+            document.body.classList.remove('sidebar-open');
+            if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
+        };
+
+        const toggleSidebar = () => {
+            const isOpen = document.body.classList.toggle('sidebar-open');
+            if (menuBtn) menuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        };
+
+        if (menuBtn) {
+            menuBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                toggleSidebar();
+            });
+        }
+        if (overlay) {
+            overlay.addEventListener('click', () => closeSidebar());
+        }
+        if (sidebar) {
+            sidebar.addEventListener('click', (e) => {
+                // モバイル時はサイドバー内の操作後に閉じる
+                if (!mq || !mq.matches) return;
+                if (e.target?.closest?.('button, a')) {
+                    closeSidebar();
+                }
+            });
+        }
+        window.addEventListener('resize', () => {
+            // デスクトップに戻ったら閉じる
+            if (!mq || !mq.matches) closeSidebar();
+        });
+
         // タスク追加モード切替
         const tabNow = document.getElementById('task-add-tab-now');
         const tabReserve = document.getElementById('task-add-tab-reserve');
