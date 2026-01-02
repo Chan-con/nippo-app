@@ -40,6 +40,42 @@
 npm install
 ```
 
+## 🌐 Web版（Supabase + Googleログイン）
+
+このリポジトリは元々Electronアプリですが、Webとして動かすための最小構成も同梱しています。
+
+### 1) Supabase側の準備
+
+1. Supabaseで新規プロジェクトを作成
+2. SQL Editorで [supabase/schema.sql](supabase/schema.sql) を実行（`nippo_docs`テーブル + RLS）
+3. Authentication → Providers → Google を有効化
+4. Authentication → URL Configuration の Redirect URLs に以下を追加
+	- 開発: `http://localhost:3000/`
+
+### 2) 環境変数
+
+`.env.example` をコピーして `.env` を作成し、値を設定します。
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`（ブラウザへ公開してOK）
+- `SUPABASE_SERVICE_ROLE_KEY`（サーバー専用。絶対にクライアントへ出さない）
+
+### 3) 起動
+
+```bash
+npm install
+npm run web:start
+```
+
+ブラウザで `http://localhost:3000` を開き、上部の「Googleでログイン」からログインしてください。
+
+## 🔐 データの保存と分離
+
+Web版では、Supabase Auth のユーザーID（`auth.uid()`）をキーにデータを保存します。
+
+- DB: `nippo_docs (user_id, doc_type, doc_key, content)`
+- RLS: `auth.uid() = user_id` のみ操作可能
+
 ## 🏃‍♂️ 使用方法
 
 ### 基本機能

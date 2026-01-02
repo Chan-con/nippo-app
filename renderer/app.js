@@ -32,7 +32,175 @@ class NippoApp {
         this._dateTimeInterval = null;
         this._timeTickTimeout = null;
         this._dateTimeTimeout = null;
+        this._supabase = null;
+        this._accessToken = null;
+        this._fetchWrapped = false;
+        this._webBootstrapped = false;
         this.init();
+    }
+
+    isWebMode() {
+        return !window.electronAPI;
+    }
+
+    wrapFetchWithAuth() {
+        if (!this.isWebMode()) return;
+        if (this._fetchWrapped) return;
+        if (typeof window.fetch !== 'function') return;
+
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input, init = {}) => {
+            try {
+                const token = this._accessToken;
+                if (!token) {
+                    return originalFetch(input, init);
+                }
+
+                const addAuthHeader = (headers) => {
+                    if (!headers) headers = {};
+                    if (headers instanceof Headers) {
+                        if (!headers.has('Authorization')) {
+                            headers.set('Authorization', `Bearer ${token}`);
+                        }
+                        return headers;
+                    }
+                    const normalized = { ...headers };
+                    if (!('Authorization' in normalized) && !('authorization' in normalized)) {
+                        normalized.Authorization = `Bearer ${token}`;
+                    }
+                    return normalized;
+                };
+
+                // string URL or Request
+                if (typeof input === 'string') {
+                    // /api へのリクエストにだけ付与
+                    const url = input;
+                    const isApi = url.startsWith('/api/') || url.includes('/api/');
+                    if (!isApi) return originalFetch(input, init);
+                    return originalFetch(input, { ...init, headers: addAuthHeader(init.headers) });
+                }
+
+                if (input instanceof Request) {
+                    const url = input.url || '';
+                    const isApi = url.includes('/api/');
+                    if (!isApi) return originalFetch(input, init);
+
+                    const mergedHeaders = addAuthHeader(init.headers || input.headers);
+                    const req = new Request(input, { ...init, headers: mergedHeaders });
+                    return originalFetch(req);
+                }
+
+                return originalFetch(input, init);
+            } catch (e) {
+                return originalFetch(input, init);
+            }
+        };
+
+        this._fetchWrapped = true;
+    }
+
+    async initSupabaseAuth() {
+        if (!this.isWebMode()) return;
+
+        const url = window.__SUPABASE__?.url;
+        const anonKey = window.__SUPABASE__?.anonKey;
+        if (!url || !anonKey || !window.supabase) {
+            console.error('Supabase設定が不足しています。/env.js と @supabase/supabase-js の読み込みを確認してください');
+            this.showToast('Supabase設定が不足しています', 'error');
+            return;
+        }
+
+        this._supabase = window.supabase.createClient(url, anonKey);
+
+        const authBar = document.getElementById('web-auth-bar');
+        const statusEl = document.getElementById('web-auth-status');
+        const loginBtn = document.getElementById('web-login-btn');
+        const logoutBtn = document.getElementById('web-logout-btn');
+
+        if (authBar) authBar.style.display = 'flex';
+
+        const applySession = async (session) => {
+            this._accessToken = session?.access_token || null;
+            this.wrapFetchWithAuth();
+
+            const email = session?.user?.email || '';
+            if (statusEl) statusEl.textContent = this._accessToken ? `ログイン中: ${email}` : '未ログイン';
+            if (loginBtn) loginBtn.style.display = this._accessToken ? 'none' : 'inline-flex';
+            if (logoutBtn) logoutBtn.style.display = this._accessToken ? 'inline-flex' : 'none';
+
+            if (this._accessToken && !this._webBootstrapped) {
+                await this.bootstrapWeb();
+            }
+        };
+
+        const { data } = await this._supabase.auth.getSession();
+        await applySession(data?.session);
+
+        this._supabase.auth.onAuthStateChange(async (_event, session) => {
+            await applySession(session);
+        });
+
+        if (loginBtn) {
+            loginBtn.addEventListener('click', async () => {
+                try {
+                    const redirectTo = `${window.location.origin}/`;
+                    const { error } = await this._supabase.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: { redirectTo },
+                    });
+                    if (error) throw error;
+                } catch (e) {
+                    console.error('ログイン失敗:', e);
+                    this.showToast('ログインに失敗しました', 'error');
+                }
+            });
+        }
+
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    await this._supabase.auth.signOut();
+                    this._webBootstrapped = false;
+                } catch (e) {
+                    console.error('ログアウト失敗:', e);
+                    this.showToast('ログアウトに失敗しました', 'error');
+                }
+            });
+        }
+    }
+
+    async bootstrapWeb() {
+        if (!this.isWebMode()) return;
+        if (this._webBootstrapped) return;
+        if (!this._accessToken) {
+            this.showToast('Googleでログインしてください', 'warning');
+            return;
+        }
+
+        this.apiBaseUrl = window.location.origin;
+
+        console.log('APIサーバーの準備を待機中...');
+        const isApiReady = await this.waitForAPI();
+        if (!isApiReady) {
+            this.showToast('APIに接続できません', 'error');
+            return;
+        }
+
+        console.log('アプリ起動時のデータ読み込み開始...');
+        await this.loadTasks();
+        await this.loadHistoryDates();
+        await this.loadGoalStock();
+        await this.loadTaskStock();
+        await this.loadTagStock();
+        await this.checkAndFixTagIntegrity();
+        this.updateTagDropdown();
+        try {
+            await this.loadSettings();
+        } catch (error) {
+            console.error('設定の読み込みに失敗しました:', error);
+        }
+
+        this._webBootstrapped = true;
     }
 
     isReservedTask(task) {
@@ -364,18 +532,22 @@ class NippoApp {
 
         // タスク入力フォーカスのイベントリスナーを追加（重複防止）
         if (!this.eventListenersInitialized) {
-            window.electronAPI.onFocusTaskInput(() => {
-                const taskInput = document.getElementById('task-input');
-                if (taskInput) {
-                    taskInput.focus();
-                }
-            });
-            
-            // ウィンドウ復元時の処理を追加
-            window.electronAPI.onWindowRestored(() => {
-                console.log('ウィンドウが復元されました - DOM状態を確認中...');
-                this.handleWindowRestored();
-            });
+            if (window.electronAPI?.onFocusTaskInput) {
+                window.electronAPI.onFocusTaskInput(() => {
+                    const taskInput = document.getElementById('task-input');
+                    if (taskInput) {
+                        taskInput.focus();
+                    }
+                });
+            }
+
+            // ウィンドウ復元時の処理を追加（Electronのみ）
+            if (window.electronAPI?.onWindowRestored) {
+                window.electronAPI.onWindowRestored(() => {
+                    console.log('ウィンドウが復元されました - DOM状態を確認中...');
+                    this.handleWindowRestored();
+                });
+            }
             
             
             
@@ -396,49 +568,53 @@ class NippoApp {
             });
         }
 
-        // APIサーバーのポートを取得し、準備を待つ
-        window.electronAPI.onApiPort(async (port) => {
-            console.log(`APIポートを受信: ${port}`);
-            this.apiPort = port;
-            this.apiBaseUrl = `http://localhost:${port}`;
+        if (this.isWebMode()) {
+            this.apiBaseUrl = window.location.origin;
+            await this.initSupabaseAuth();
+        } else {
+            // APIサーバーのポートを取得し、準備を待つ
+            window.electronAPI.onApiPort(async (port) => {
+                console.log(`APIポートを受信: ${port}`);
+                this.apiPort = port;
+                this.apiBaseUrl = `http://localhost:${port}`;
 
-            console.log('APIサーバーの準備を待機中...');
-            const isApiReady = await this.waitForAPI();
+                console.log('APIサーバーの準備を待機中...');
+                const isApiReady = await this.waitForAPI();
 
-            if (isApiReady) {
-                // 起動時に既存データを読み込み
-                console.log('アプリ起動時のデータ読み込み開始...');
-                await this.loadTasks();
-                
-                // 履歴データを読み込み
-                await this.loadHistoryDates();
-                
-                // 目標ストックを読み込み
-                await this.loadGoalStock();
-                
-                // タスクストックを読み込み
-                await this.loadTaskStock();
-                
-                // タグストックを読み込み
-                await this.loadTagStock();
-                
-                // タグの整合性をチェックして自動修正
-                await this.checkAndFixTagIntegrity();
-                
-                // タグドロップダウンを初期化
-                this.updateTagDropdown();
-                
-                // 設定を読み込み
-                try {
-                    await this.loadSettings();
-                } catch (error) {
-                    console.error('設定の読み込みに失敗しました:', error);
+                if (isApiReady) {
+                    // 起動時に既存データを読み込み
+                    console.log('アプリ起動時のデータ読み込み開始...');
+                    await this.loadTasks();
+                    
+                    // 履歴データを読み込み
+                    await this.loadHistoryDates();
+                    
+                    // 目標ストックを読み込み
+                    await this.loadGoalStock();
+                    
+                    // タスクストックを読み込み
+                    await this.loadTaskStock();
+                    
+                    // タグストックを読み込み
+                    await this.loadTagStock();
+                    
+                    // タグの整合性をチェックして自動修正
+                    await this.checkAndFixTagIntegrity();
+                    
+                    // タグドロップダウンを初期化
+                    this.updateTagDropdown();
+                    
+                    // 設定を読み込み
+                    try {
+                        await this.loadSettings();
+                    } catch (error) {
+                        console.error('設定の読み込みに失敗しました:', error);
+                    }
+                } else {
+                    console.error('APIの準備が完了しなかったため、タスクを読み込めません。');
                 }
-            } else {
-                console.error('APIの準備が完了しなかったため、タスクを読み込めません。');
-                // ここでユーザーにエラーメッセージを表示するなどの処理を追加できます
-            }
-        });
+            });
+        }
 
         // 時刻表示をリアルタイム寄りに更新（分境界に同期）
         this.startClock();
@@ -691,14 +867,21 @@ class NippoApp {
         // タグストック
         document.getElementById('tag-stock-btn').addEventListener('click', () => this.showTagStockDialog());
 
-        // タイトルバーボタン
-        document.querySelector('.titlebar-button.minimize').addEventListener('click', () => {
-            window.close(); // 最小化はcloseイベントで処理されタスクトレイに格納される
-        });
+        // タイトルバーボタン（Web版ではタブが閉じるので無効化）
+        const minimizeBtn = document.querySelector('.titlebar-button.minimize');
+        const closeBtn = document.querySelector('.titlebar-button.close');
 
-        document.querySelector('.titlebar-button.close').addEventListener('click', () => {
-            window.close();
-        });
+        if (this.isWebMode()) {
+            const controls = document.querySelector('.titlebar-controls');
+            if (controls) controls.style.display = 'none';
+        } else {
+            minimizeBtn?.addEventListener('click', () => {
+                window.close(); // 最小化はcloseイベントで処理されタスクトレイに格納される
+            });
+            closeBtn?.addEventListener('click', () => {
+                window.close();
+            });
+        }
 
         // 確認ダイアログのイベントリスナー
         document.getElementById('confirm-cancel').addEventListener('click', () => this.hideConfirmDialog());
@@ -725,8 +908,11 @@ class NippoApp {
         document.getElementById('add-url-btn').addEventListener('click', () => this.addReportUrl());
         document.getElementById('clear-all-btn').addEventListener('click', () => this.showClearConfirmation());
         
-        // ホットキー入力フィールドのイベントリスナー
-        document.getElementById('hotkey-toggle').addEventListener('click', () => this.startHotkeyCapture('hotkey-toggle'));
+        // ホットキー入力フィールドのイベントリスナー（Web版では意味がないので無効化）
+        const hotkeyToggle = document.getElementById('hotkey-toggle');
+        if (!this.isWebMode() && hotkeyToggle) {
+            hotkeyToggle.addEventListener('click', () => this.startHotkeyCapture('hotkey-toggle'));
+        }
         
         // クリアボタンのイベントリスナー
         document.querySelectorAll('.clear-hotkey').forEach(btn => {
@@ -3473,7 +3659,14 @@ class NippoApp {
     
     async loadSettings() {
         try {
-            const settings = await window.electronAPI.getSettings();
+            let settings;
+            if (this.isWebMode()) {
+                const response = await fetch(`${this.apiBaseUrl}/api/settings`);
+                const result = await response.json();
+                settings = result?.settings || {};
+            } else {
+                settings = await window.electronAPI.getSettings();
+            }
             this.settings = settings;
             
             // UI要素に設定を反映
@@ -3520,8 +3713,20 @@ class NippoApp {
                 launchOnStartup
             };
             
-            const result = await window.electronAPI.saveSettings(settings);
-            if (result) {
+            let ok;
+            if (this.isWebMode()) {
+                const response = await fetch(`${this.apiBaseUrl}/api/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings })
+                });
+                const result = await response.json();
+                ok = !!result?.success;
+            } else {
+                ok = await window.electronAPI.saveSettings(settings);
+            }
+
+            if (ok) {
                 this.settings = settings;
                 this.showToast('設定を保存しました');
                 this.updateRoundingPreview();

@@ -2246,18 +2246,22 @@ class TaskManager {
 }
 
 // Express app setup
-function createApp(taskManagerInstance) {
+function createApp(taskManagerInstance, options = {}) {
     const app = express();
     const taskManager = taskManagerInstance;
 
     app.use(cors());
     app.use(express.json());
 
+    if (typeof options.beforeRoutes === 'function') {
+        options.beforeRoutes(app);
+    }
+
     // API endpoints
     app.get('/api/tasks', async (req, res) => {
         try {
             const dateString = req.query.dateString || null; // クエリパラメータから日付取得
-            const tasks = await taskManager.loadSchedule(dateString);
+            const tasks = await taskManager.loadSchedule(dateString, req.userId);
             console.log(`API - 取得したタスク数: ${tasks.length}, 日付: ${dateString || '今日'}`);
             tasks.forEach(task => {
                 try {
@@ -2289,7 +2293,7 @@ function createApp(taskManagerInstance) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
             }
             
-            const newTask = await taskManager.addTask(taskName, false, dateString, tag, startTime);
+            const newTask = await taskManager.addTask(taskName, false, dateString, tag, startTime, req.userId);
             try {
                 console.log(`API - 追加されたタスク: ${JSON.stringify(newTask)}`);
             } catch (error) {
@@ -2325,7 +2329,7 @@ function createApp(taskManagerInstance) {
                 return res.status(400).json({ success: false, error: '開始時間が必要です' });
             }
 
-            const newReservation = await taskManager.addReservation(taskName, startTime, tag);
+            const newReservation = await taskManager.addReservation(taskName, startTime, tag, req.userId);
             res.json({ success: true, task: newReservation, taskId: newReservation.id });
         } catch (error) {
             res.status(400).json({ success: false, error: error.message });
@@ -2334,7 +2338,7 @@ function createApp(taskManagerInstance) {
 
     app.post('/api/tasks/end', async (req, res) => {
         try {
-            const endedTask = await taskManager.endCurrentTask();
+            const endedTask = await taskManager.endCurrentTask(null, req.userId);
             if (endedTask) {
                 res.json({ success: true, task: endedTask });
             } else {
@@ -2347,7 +2351,7 @@ function createApp(taskManagerInstance) {
 
     app.post('/api/timeline/copy', async (req, res) => {
         try {
-            const timelineText = await taskManager.getTimelineText();
+            const timelineText = await taskManager.getTimelineText(null, req.userId);
             if (timelineText) {
                 // Note: このHTTP APIは使用されなくなったが、互換性のため残す
                 res.json({ success: true, message: 'タイムラインをコピーしました' });
@@ -2361,7 +2365,7 @@ function createApp(taskManagerInstance) {
 
     app.post('/api/tasks/clear', async (req, res) => {
         try {
-            const success = await taskManager.clearAllTasks();
+            const success = await taskManager.clearAllTasks(req.userId);
             if (success) {
                 res.json({ success: true, message: 'すべてのタスクをクリアしました' });
             } else {
@@ -2374,7 +2378,7 @@ function createApp(taskManagerInstance) {
 
     app.post('/api/timeline/clear-all', async (req, res) => {
         try {
-            const success = await taskManager.clearAllTimelineData();
+            const success = await taskManager.clearAllTimelineData(req.userId);
             if (success) {
                 res.json({ success: true, message: 'すべてのタイムラインデータを削除しました' });
             } else {
@@ -2389,7 +2393,7 @@ function createApp(taskManagerInstance) {
     app.get('/api/history/dates', async (req, res) => {
         try {
             console.log('履歴日付一覧取得リクエストを受信');
-            const result = await taskManager.getAllHistoryDates();
+            const result = await taskManager.getAllHistoryDates(req.userId);
             res.json(result);
         } catch (error) {
             console.error('履歴日付取得エラー:', error);
@@ -2401,7 +2405,7 @@ function createApp(taskManagerInstance) {
         try {
             const dateString = req.params.date;
             console.log(`履歴取得リクエストを受信: ${dateString}`);
-            const result = await taskManager.loadHistoryByDate(dateString);
+            const result = await taskManager.loadHistoryByDate(dateString, req.userId);
             
             if (result.success) {
                 res.json(result);
@@ -2420,7 +2424,7 @@ function createApp(taskManagerInstance) {
             const data = req.body;
             console.log(`履歴更新リクエストを受信: ${dateString}`);
             
-            const result = await taskManager.updateHistoryByDate(dateString, data);
+            const result = await taskManager.updateHistoryByDate(dateString, data, req.userId);
             
             if (result.success) {
                 res.json(result);
@@ -2438,7 +2442,7 @@ function createApp(taskManagerInstance) {
             const dateString = req.params.date;
             console.log(`新しい履歴作成リクエストを受信: ${dateString}`);
             
-            const result = await taskManager.createNewHistoryForDate(dateString);
+            const result = await taskManager.createNewHistoryForDate(dateString, req.userId);
             
             if (result.success) {
                 res.json(result);
@@ -2466,7 +2470,7 @@ function createApp(taskManagerInstance) {
                 });
             }
             
-            const result = await taskManager.addTaskToHistory(dateString, taskData);
+            const result = await taskManager.addTaskToHistory(dateString, taskData, req.userId);
             
             if (result.success) {
                 res.json(result);
@@ -2505,7 +2509,7 @@ function createApp(taskManagerInstance) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag);
+            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, req.userId);
             if (result.success) {
                 res.json(result);
             } else {
@@ -2530,7 +2534,7 @@ function createApp(taskManagerInstance) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag);
+            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, req.userId);
             if (result) {
                 const responseData = { success: true, task: result.task };
                 if (result.adjustments) {
@@ -2549,7 +2553,7 @@ function createApp(taskManagerInstance) {
         try {
             const taskId = req.params.taskId; // 文字列IDも受け入れる
             console.log(`タスク削除リクエスト - ID: ${taskId} (${typeof taskId})`);
-            const deletedTask = await taskManager.deleteTask(taskId);
+            const deletedTask = await taskManager.deleteTask(taskId, req.userId);
             if (deletedTask) {
                 console.log(`タスク削除成功: ${JSON.stringify(deletedTask)}`);
                 res.json({ success: true, task: deletedTask });
@@ -2570,7 +2574,7 @@ function createApp(taskManagerInstance) {
             const taskId = req.params.taskId;
             console.log(`履歴タスク削除リクエスト - Date: ${dateString}, ID: ${taskId}`);
             
-            const result = await taskManager.deleteHistoryTask(dateString, taskId);
+            const result = await taskManager.deleteHistoryTask(dateString, taskId, req.userId);
             if (result.success) {
                 console.log(`履歴タスク削除成功: ${JSON.stringify(result.task)}`);
                 res.json(result);
@@ -2586,7 +2590,7 @@ function createApp(taskManagerInstance) {
 
     app.get('/api/report', async (req, res) => {
         try {
-            const content = await taskManager.loadReport();
+            const content = await taskManager.loadReport(req.userId);
             res.json({ success: true, content: content });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
@@ -2598,7 +2602,7 @@ function createApp(taskManagerInstance) {
             const data = req.body;
             const content = data.content || '';
             
-            const success = await taskManager.saveReport(content);
+            const success = await taskManager.saveReport(content, req.userId);
             if (success) {
                 res.json({ success: true, message: '報告書を保存しました' });
             } else {
@@ -2611,7 +2615,7 @@ function createApp(taskManagerInstance) {
 
     app.get('/api/report-urls', async (req, res) => {
         try {
-            const urls = await taskManager.loadReportUrls();
+            const urls = await taskManager.loadReportUrls(req.userId);
             res.json({ success: true, urls: urls });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
@@ -2628,7 +2632,7 @@ function createApp(taskManagerInstance) {
                 return res.status(400).json({ success: false, error: '名前とURLは必須です' });
             }
             
-            const newUrl = await taskManager.addReportUrl(name, url);
+            const newUrl = await taskManager.addReportUrl(name, url, req.userId);
             if (newUrl) {
                 res.json({ success: true, url: newUrl });
             } else {
@@ -2642,7 +2646,7 @@ function createApp(taskManagerInstance) {
     app.delete('/api/report-urls/:urlId', async (req, res) => {
         try {
             const urlId = parseInt(req.params.urlId);
-            const deletedUrl = await taskManager.deleteReportUrl(urlId);
+            const deletedUrl = await taskManager.deleteReportUrl(urlId, req.userId);
             if (deletedUrl) {
                 res.json({ success: true, url: deletedUrl });
             } else {
@@ -2656,9 +2660,9 @@ function createApp(taskManagerInstance) {
     app.get('/api/report-tabs', async (req, res) => {
         try {
             // データ移行を確認
-            await taskManager.migrateLegacyReportData();
+            await taskManager.migrateLegacyReportData?.(req.userId);
             
-            const tabData = await taskManager.loadReportTabs();
+            const tabData = await taskManager.loadReportTabs(req.userId);
             res.json({ success: true, tabs: tabData });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
@@ -2668,7 +2672,7 @@ function createApp(taskManagerInstance) {
     app.get('/api/report-tabs/:tabId', async (req, res) => {
         try {
             const tabId = req.params.tabId;
-            const content = await taskManager.getReportTabContent(tabId);
+            const content = await taskManager.getReportTabContent(tabId, req.userId);
             res.json({ success: true, content: content });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
@@ -2681,7 +2685,7 @@ function createApp(taskManagerInstance) {
             const data = req.body;
             const content = data.content || '';
             
-            const success = await taskManager.saveReportTabContent(tabId, content);
+            const success = await taskManager.saveReportTabContent(tabId, content, req.userId);
             if (success) {
                 res.json({ success: true, message: '報告内容を保存しました' });
             } else {
@@ -2845,7 +2849,7 @@ function createApp(taskManagerInstance) {
     // Goal stock API endpoints
     app.get('/api/goals', async (req, res) => {
         try {
-            const goals = await taskManager.loadGoalStock();
+            const goals = await taskManager.loadGoalStock(req.userId);
             res.json({ success: true, goals: goals });
         } catch (error) {
             console.error('Goal stock load error:', error);
@@ -2856,7 +2860,7 @@ function createApp(taskManagerInstance) {
     app.post('/api/goals', async (req, res) => {
         try {
             const { goals } = req.body;
-            await taskManager.saveGoalStock(goals);
+            await taskManager.saveGoalStock(goals, req.userId);
             res.json({ success: true, message: 'Goal stock saved successfully' });
         } catch (error) {
             console.error('Goal stock save error:', error);
@@ -2867,7 +2871,7 @@ function createApp(taskManagerInstance) {
     // Task stock API endpoints
     app.get('/api/task-stock', async (req, res) => {
         try {
-            const tasks = await taskManager.loadTaskStock();
+            const tasks = await taskManager.loadTaskStock(req.userId);
             res.json({ success: true, tasks: tasks });
         } catch (error) {
             console.error('Task stock load error:', error);
@@ -2878,7 +2882,7 @@ function createApp(taskManagerInstance) {
     app.post('/api/task-stock', async (req, res) => {
         try {
             const { tasks } = req.body;
-            await taskManager.saveTaskStock(tasks);
+            await taskManager.saveTaskStock(tasks, req.userId);
             res.json({ success: true, message: 'Task stock saved successfully' });
         } catch (error) {
             console.error('Task stock save error:', error);
@@ -2889,7 +2893,7 @@ function createApp(taskManagerInstance) {
     // Tag stock API endpoints
     app.get('/api/tags', async (req, res) => {
         try {
-            const tags = await taskManager.loadTagStock();
+            const tags = await taskManager.loadTagStock(req.userId);
             res.json({ success: true, tags: tags });
         } catch (error) {
             console.error('Tag stock load error:', error);
@@ -2900,7 +2904,7 @@ function createApp(taskManagerInstance) {
     app.post('/api/tags', async (req, res) => {
         try {
             const { tags } = req.body;
-            await taskManager.saveTagStock(tags);
+            await taskManager.saveTagStock(tags, req.userId);
             res.json({ success: true, message: 'Tag stock saved successfully' });
         } catch (error) {
             console.error('Tag stock save error:', error);
@@ -2916,11 +2920,37 @@ function createApp(taskManagerInstance) {
     app.post('/api/history/cleanup', async (req, res) => {
         try {
             const { targetDate } = req.body;
-            const result = await taskManager.cleanupHistoryByDate(targetDate);
+            const result = await taskManager.cleanupHistoryByDate(targetDate, req.userId);
             res.json(result);
         } catch (error) {
             console.error('履歴クリーンアップエラー:', error);
             res.status(500).json({ success: false, message: '履歴クリーンアップに失敗しました' });
+        }
+    });
+
+    // Web版用: 設定API（Electron版はIPCで扱うが、WebではこのAPIを使う）
+    app.get('/api/settings', async (req, res) => {
+        try {
+            if (typeof taskManager.loadSettings !== 'function') {
+                return res.json({ success: true, settings: {} });
+            }
+            const settings = await taskManager.loadSettings(req.userId);
+            res.json({ success: true, settings });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/settings', async (req, res) => {
+        try {
+            if (typeof taskManager.saveSettings !== 'function') {
+                return res.status(501).json({ success: false, error: 'settings API is not supported' });
+            }
+            const settings = req.body.settings;
+            const ok = await taskManager.saveSettings(settings, req.userId);
+            res.json({ success: !!ok });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
         }
     });
 

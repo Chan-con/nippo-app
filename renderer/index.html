@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="/env.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <!-- カスタムタイトルバー -->
@@ -21,6 +23,17 @@
             <button class="titlebar-button close">
                 <span class="material-icons">close</span>
             </button>
+        </div>
+    </div>
+
+    <!-- Web版ログインUI（Electron版では非表示にする） -->
+    <div id="web-auth-bar" class="web-auth-bar" style="display:none;">
+        <div class="web-auth-left">
+            <span id="web-auth-status">未ログイン</span>
+        </div>
+        <div class="web-auth-right">
+            <button id="web-login-btn" class="btn-secondary" type="button">Googleでログイン</button>
+            <button id="web-logout-btn" class="btn-secondary" type="button" style="display:none;">ログアウト</button>
         </div>
     </div>
 
@@ -499,6 +512,13 @@
             </div>
         </div>
     </div>
+    
+    <script>
+        // Web版のみ: Supabase設定をwindowに配置
+        window.__SUPABASE__ = window.__SUPABASE__ || {};
+        window.__SUPABASE__.url = window.__ENV?.SUPABASE_URL || '';
+        window.__SUPABASE__.anonKey = window.__ENV?.SUPABASE_ANON_KEY || '';
+    </script>
 
     <script src="app.js"></script>
 </body>
