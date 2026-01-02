@@ -89,6 +89,26 @@ Web版では、Supabase Auth のユーザーID（`auth.uid()`）をキーにデ�
 - DB: `nippo_docs (user_id, doc_type, doc_key, content)`
 - RLS: `auth.uid() = user_id` のみ操作可能
 
+## 🔄 他端末へ即時反映（リアルタイム同期）
+
+同じアカウントでログインしている別端末（例: スマホ→PC）に、更新内容を「即時に」反映させたい場合は Supabase Realtime を有効化してください。
+
+### 1) Supabase Realtime を有効化
+
+Supabase Dashboard で **Database → Replication**（または Realtime/Replication 設定）を開き、テーブル `nippo_docs` を有効化します。
+
+SQLで有効化する場合の例:
+
+```sql
+alter publication supabase_realtime add table public.nippo_docs;
+```
+
+### 2) ポリシー（RLS）
+
+Realtimeで受信するためにも、`nippo_docs` に対する `SELECT` を含むRLSポリシーが必要です（本リポジトリの [supabase/schema.sql](supabase/schema.sql) に含まれます）。
+
+> Realtimeを有効化しない場合でもアプリは動作しますが、他端末への反映は手動リロードになります。
+
 ## 🏃‍♂️ 使用方法
 
 ### 基本機能

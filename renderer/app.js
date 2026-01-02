@@ -32,8 +32,13 @@ class NippoApp {
         this._dateTimeTimeout = null;
         this._supabase = null;
         this._accessToken = null;
+        this._userId = null;
         this._fetchWrapped = false;
         this._webBootstrapped = false;
+        this._realtimeChannel = null;
+        this._realtimeRefreshTimer = null;
+        this._realtimePendingTypes = new Set();
+        this._realtimePendingKeys = new Set();
         this.init();
     }
 
@@ -119,6 +124,7 @@ class NippoApp {
 
         const applySession = async (session) => {
             this._accessToken = session?.access_token || null;
+            this._userId = session?.user?.id || null;
             this.wrapFetchWithAuth();
 
             const user = session?.user;
@@ -138,6 +144,11 @@ class NippoApp {
 
             if (this._accessToken && !this._webBootstrapped) {
                 await this.bootstrapWeb();
+            }
+
+            if (!this._accessToken) {
+                this._webBootstrapped = false;
+                this.teardownRealtimeSync();
             }
         };
 
@@ -169,6 +180,7 @@ class NippoApp {
                 try {
                     await this._supabase.auth.signOut();
                     this._webBootstrapped = false;
+                    this.teardownRealtimeSync();
                 } catch (e) {
                     console.error('ログアウト失敗:', e);
                     this.showToast('ログアウトに失敗しました', 'error');
@@ -209,6 +221,160 @@ class NippoApp {
         }
 
         this._webBootstrapped = true;
+
+        // 他端末更新を即時反映（Supabase Realtime）
+        this.setupRealtimeSync();
+    }
+
+    isDialogOpen(dialogId) {
+        const el = document.getElementById(dialogId);
+        return !!el && el.classList.contains('show');
+    }
+
+    teardownRealtimeSync() {
+        try {
+            if (this._realtimeRefreshTimer) {
+                clearTimeout(this._realtimeRefreshTimer);
+                this._realtimeRefreshTimer = null;
+            }
+            this._realtimePendingTypes.clear();
+            this._realtimePendingKeys.clear();
+
+            if (this._realtimeChannel && this._supabase?.removeChannel) {
+                this._supabase.removeChannel(this._realtimeChannel);
+            }
+        } catch (_e) {
+            // no-op
+        } finally {
+            this._realtimeChannel = null;
+        }
+    }
+
+    setupRealtimeSync() {
+        if (!this.isWebMode()) return;
+        if (!this._supabase) return;
+        if (!this._accessToken || !this._userId) return;
+        if (this._realtimeChannel) return;
+
+        try {
+            const channelName = `nippo_docs_${this._userId}`;
+            this._realtimeChannel = this._supabase
+                .channel(channelName)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'nippo_docs',
+                        filter: `user_id=eq.${this._userId}`,
+                    },
+                    (payload) => {
+                        const row = payload?.new || payload?.old || {};
+                        const docType = row.doc_type;
+                        const docKey = row.doc_key;
+
+                        // doc_type/doc_key が取れない場合は広めに再読み込み
+                        this.scheduleRealtimeRefresh(docType || 'unknown', docKey || 'unknown');
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('[realtime] subscribed');
+                    }
+                });
+        } catch (e) {
+            console.warn('[realtime] setup failed:', e);
+        }
+    }
+
+    scheduleRealtimeRefresh(docType, docKey) {
+        // 連続イベントをまとめる（スマホ→PCで一気に複数APIが走らないように）
+        if (docType) this._realtimePendingTypes.add(String(docType));
+        if (docKey) this._realtimePendingKeys.add(String(docKey));
+
+        if (this._realtimeRefreshTimer) return;
+        this._realtimeRefreshTimer = setTimeout(async () => {
+            this._realtimeRefreshTimer = null;
+            const types = Array.from(this._realtimePendingTypes);
+            const keys = Array.from(this._realtimePendingKeys);
+            this._realtimePendingTypes.clear();
+            this._realtimePendingKeys.clear();
+
+            await this.refreshFromServerRealtime(types, keys);
+        }, 350);
+    }
+
+    async refreshFromServerRealtime(types, keys) {
+        if (!this._webBootstrapped || !this._accessToken) return;
+
+        // 変更が来たら、画面表示中のデータは基本的に追従させる
+        const wantsTasks = types.includes('tasks') || types.includes('unknown');
+        const wantsHistoryDates = types.includes('tasks');
+        const wantsTagStock = types.includes('tag_stock') || types.includes('unknown');
+        const wantsTaskStock = types.includes('task_stock') || types.includes('unknown');
+        const wantsGoalStock = types.includes('goal_stock') || types.includes('unknown');
+        const wantsSettings = types.includes('settings') || types.includes('report_urls') || types.includes('unknown');
+
+        // 報告書や設定など、編集途中の上書きを避けたいものは控えめに
+        const reportOpen = this.isDialogOpen('report-dialog');
+        const settingsOpen = this.isDialogOpen('settings-dialog');
+        const editOpen = this.isDialogOpen('edit-dialog');
+
+        if (editOpen) {
+            // 編集モーダルが開いている間に tasks が動くと混乱しやすいので、トーストだけ出す
+            if (wantsTasks) this.showToast('他端末で更新されました（編集後に再読込されます）');
+            return;
+        }
+
+        try {
+            if (wantsHistoryDates) {
+                await this.loadHistoryDates();
+            }
+
+            // タスク（タイムライン）
+            if (wantsTasks) {
+                if (this.currentMode === 'today') {
+                    await this.loadTasks();
+                } else if (this.currentMode === 'history' && this.currentDate) {
+                    // 更新された日付が現在表示中の履歴と一致しないなら、表示は維持しつつ日付一覧だけ更新
+                    const shouldReload = keys.includes(this.currentDate) || keys.includes('unknown');
+                    if (shouldReload) {
+                        await this.loadHistoryData(this.currentDate);
+                    }
+                }
+            }
+
+            // ストック/タグ/目標
+            if (wantsGoalStock && !this.hasGoalStockChanges) {
+                await this.loadGoalStock();
+            }
+            if (wantsTaskStock && !this.hasTaskStockChanges) {
+                await this.loadTaskStock();
+            }
+            if (wantsTagStock && !this.hasTagStockChanges) {
+                await this.loadTagStock();
+                await this.checkAndFixTagIntegrity();
+                this.updateTagDropdown();
+            }
+
+            // 設定/報告先（開いている時は上書きしない）
+            if (wantsSettings) {
+                if (settingsOpen) {
+                    this.showToast('他端末で設定が更新されました（閉じた後に反映されます）');
+                } else {
+                    await this.loadSettings();
+                }
+
+                if (reportOpen) {
+                    this.showToast('他端末で報告先が更新されました');
+                } else {
+                    // reportUrls は報告書作成/設定の双方で使うため、閉じていても更新しておく
+                    await this.loadReportUrls();
+                }
+            }
+        } catch (e) {
+            console.warn('[realtime] refresh failed:', e);
+        }
     }
 
     isReservedTask(task) {
