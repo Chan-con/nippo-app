@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "description": "Productivity tracker for lazy people - effortless task and time management",
   "scripts": {
-    "build": "node scripts/pages-build.js",
-    "start": "node web-server.js",
-    "dev": "nodemon web-server.js"
+    "dev": "next dev",
+    "clean": "node -e \"const fs=require('fs'); for (const p of ['.next','node_modules/.cache']) { try { fs.rmSync(p,{recursive:true,force:true}); } catch {} }\"",
+    "dev:clean": "npm run clean && next dev",
+    "build": "next build",
+    "build:clean": "npm run clean && next build",
+    "start": "next start",
+    "build:legacy": "node scripts/pages-build.js",
+    "start:legacy": "node web-server.js",
+    "dev:legacy": "nodemon web-server.js"
   },
   "keywords": [
     "productivity",
@@ -16,9 +22,19 @@
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
-    "nodemon": "^3.0.0"
+    "@types/node": "^22.10.7",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "nodemon": "^3.0.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3"
   },
   "dependencies": {
+    "next": "^14.2.25",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.18.0",
