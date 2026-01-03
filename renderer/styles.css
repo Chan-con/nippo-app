@@ -2809,7 +2809,6 @@ textarea {
 }
 
 .holiday-cal-day.holiday {
-  color: inherit;
   background-image:
     linear-gradient(45deg, transparent 48%, var(--error) 49.5%, var(--error) 50.5%, transparent 52%),
     linear-gradient(-45deg, transparent 48%, var(--error) 49.5%, var(--error) 50.5%, transparent 52%);
