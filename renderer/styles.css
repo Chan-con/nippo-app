@@ -3050,11 +3050,13 @@ textarea {
   flex-direction: column;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
 .date-input-wrap {
   position: relative;
   max-width: 100%;
+  min-width: 0;
 }
 
 .date-input-wrap::before {
@@ -3083,6 +3085,7 @@ textarea {
   cursor: pointer;
   transition: all 0.3s ease;
   max-width: 100%;
+  min-width: 0;
   box-sizing: border-box;
 }
 
@@ -3295,5 +3298,18 @@ textarea {
   .history-controls .date-selector {
     align-items: flex-start;
     width: 100%;
+  }
+
+  .history-controls .date-input-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .history-controls .date-selector input[type="date"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 }
