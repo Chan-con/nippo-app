@@ -252,6 +252,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     void loadReportUrls();
     void loadReportSingle();
     void loadTagStock();
+    void loadGoalStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
@@ -1442,7 +1443,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function formatDateISOToJaShort(date: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    const todayIso = formatDateISO(new Date());
+    if (date === todayIso) return '今日';
     return date;
+  }
+
+  function formatDateISOToSlash(date: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    return date.replace(/-/g, '/');
+  }
+
+  function formatDateYYYYMMDD(d: Date) {
+    return formatDateISO(d).replace(/-/g, '');
   }
 
   async function loadTagWorkSummary() {
@@ -1450,22 +1462,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setTagWorkLoading(true);
     setTagWorkError(null);
     try {
-      const resDates = await apiFetch('/api/history/dates', { method: 'GET' });
-      const bodyDates = await resDates.json().catch(() => null as any);
-      const dates: string[] = Array.isArray(bodyDates?.dates)
-        ? bodyDates.dates
-        : Array.isArray(bodyDates?.data)
-          ? bodyDates.data
-          : [];
-
       const tagMap = new Map<string, { totalMinutes: number; byDate: Map<string, TagWorkTask[]> }>();
 
-      for (const date of dates) {
-        const res = await apiFetch(`/api/history/${encodeURIComponent(date)}`, { method: 'GET' });
-        if (!res.ok) continue;
-        const body = await res.json().catch(() => null as any);
-        const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
-
+      const addTasksToMap = (date: string, tasksInDay: any[]) => {
         for (const t of tasksInDay) {
           const tag = typeof t?.tag === 'string' ? t.tag.trim() : '';
           const startTime = typeof t?.startTime === 'string' ? t.startTime : '';
@@ -1486,6 +1485,31 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           if (!entry.byDate.has(date)) entry.byDate.set(date, []);
           entry.byDate.get(date)!.push({ date, name, startTime, endTime, minutes });
         }
+      };
+
+      // 今日のタスクも含める（/api/history/dates は今日を含まないため）
+      const todayIso = formatDateISO(new Date());
+      const resToday = await apiFetch('/api/tasks', { method: 'GET' });
+      const bodyToday = await resToday.json().catch(() => null as any);
+      const todayTasks: any[] = Array.isArray(bodyToday?.tasks) ? bodyToday.tasks : [];
+      addTasksToMap(todayIso, todayTasks);
+
+      // 履歴日付
+      const resDates = await apiFetch('/api/history/dates', { method: 'GET' });
+      const bodyDates = await resDates.json().catch(() => null as any);
+      const dates: string[] = Array.isArray(bodyDates?.dates)
+        ? bodyDates.dates
+        : Array.isArray(bodyDates?.data)
+          ? bodyDates.data
+          : [];
+
+      for (const date of dates) {
+        const res = await apiFetch(`/api/history/${encodeURIComponent(date)}`, { method: 'GET' });
+        if (!res.ok) continue;
+        const body = await res.json().catch(() => null as any);
+        const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
+
+        addTasksToMap(date, tasksInDay);
       }
 
       const summaries: TagWorkSummary[] = Array.from(tagMap.entries())
@@ -2072,7 +2096,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                       <div>
                                         <div className="task-item-name">{t.name}</div>
                                         <div className="task-item-time">
-                                          {t.startTime} - {t.endTime}
+                                          {formatTimeDisplay(t.startTime)} - {formatTimeDisplay(t.endTime)}
                                         </div>
                                       </div>
                                       <div className="task-item-duration">{formatDurationJa(t.minutes)}</div>
@@ -2090,16 +2114,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                   className="tag-copy-btn"
                                   onClick={async () => {
                                     try {
-                                      const lines: string[] = [];
-                                      lines.push(`合計: ${formatDurationJa(s.totalMinutes)}（履歴含む）`);
-                                      for (const g of s.groups) {
-                                        lines.push('');
-                                        lines.push(g.date);
-                                        for (const t of g.tasks) {
-                                          lines.push(`- ${t.startTime} - ${t.endTime} ${t.name} (${formatDurationJa(t.minutes)})`);
-                                        }
-                                      }
-                                      await navigator.clipboard.writeText(lines.join('\n'));
+                                      await navigator.clipboard.writeText(`${s.tag} - ${formatDurationJa(s.totalMinutes)}`);
                                     } catch {
                                       // ignore
                                     }
@@ -2112,12 +2127,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                   type="button"
                                   className="tag-copy-btn tag-csv-btn"
                                   onClick={() => {
-                                    const rows: string[] = ['date,start,end,task,minutes'];
+                                    const rows: string[] = ['作業日,作業内容,作業開始時刻,作業終了時刻'];
                                     for (const g of s.groups) {
                                       for (const t of g.tasks) {
                                         const safe = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+                                        const dateCell = formatDateISOToSlash(g.date);
+                                        const start = formatTimeDisplay(t.startTime);
+                                        const end = formatTimeDisplay(t.endTime);
                                         rows.push(
-                                          [safe(g.date), safe(t.startTime), safe(t.endTime), safe(t.name), String(t.minutes)].join(',')
+                                          [safe(dateCell), safe(t.name), safe(start), safe(end)].join(',')
                                         );
                                       }
                                     }
@@ -2125,7 +2143,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                     const url = URL.createObjectURL(blob);
                                     const a = document.createElement('a');
                                     a.href = url;
-                                    a.download = `tag_${s.tag}.csv`;
+                                    a.download = `tag_${s.tag}_${formatDateYYYYMMDD(new Date())}.csv`;
                                     document.body.appendChild(a);
                                     a.click();
                                     a.remove();
