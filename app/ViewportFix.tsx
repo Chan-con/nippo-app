@@ -14,7 +14,10 @@ export default function ViewportFix() {
     const update = () => {
       const height = vv?.height ?? window.innerHeight;
       const offsetTop = vv?.offsetTop ?? 0;
-      setRootVar('--app-height', `${Math.round(height)}px`);
+      // renderer 側の旧実装と同じ意味に合わせる:
+      // CSS では `calc(var(--app-height) - var(--app-offset-top))` を使うため、
+      // --app-height は「可視領域 + offsetTop」を入れて可視領域ぶんを確保する
+      setRootVar('--app-height', `${Math.round(height + offsetTop)}px`);
       setRootVar('--app-offset-top', `${Math.round(offsetTop)}px`);
     };
 
