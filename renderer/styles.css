@@ -2025,6 +2025,7 @@ textarea {
   padding: 24px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .settings-section {
@@ -2605,6 +2606,7 @@ textarea {
   gap: 24px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .task-stock-section h4 {
@@ -3231,6 +3233,33 @@ textarea {
 }
 
 /* 末尾で上書き（後続の通常ルールに負けないようにする） */
+@media (max-height: 700px) {
+  .settings-content,
+  .task-stock-content {
+    max-height: calc(var(--app-height) - var(--app-offset-top) - 24px);
+  }
+
+  .settings-header,
+  .task-stock-header {
+    padding: 16px 16px 12px;
+  }
+
+  .settings-body,
+  .task-stock-body {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .settings-section {
+    margin-bottom: 20px;
+  }
+
+  .settings-footer,
+  .task-stock-footer {
+    padding: 8px 12px 10px;
+  }
+}
+
 @media (max-width: 768px) {
   .settings-content,
   .task-stock-content {
