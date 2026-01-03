@@ -2549,6 +2549,7 @@ textarea {
   max-width: 600px;
   width: 90vw;
   max-height: calc(var(--app-height) - var(--app-offset-top) - 48px);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   transform: scale(0.9);
@@ -2607,6 +2608,30 @@ textarea {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+
+@media (max-height: 720px) {
+  .settings-content,
+  .task-stock-content {
+    max-height: calc(var(--app-height) - var(--app-offset-top) - 24px);
+  }
+
+  .settings-header,
+  .task-stock-header {
+    padding-top: 16px;
+    padding-bottom: 12px;
+  }
+
+  .settings-body,
+  .task-stock-body {
+    padding: 16px;
+  }
+
+  .settings-footer,
+  .task-stock-footer {
+    padding-top: 8px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
 }
 
 .task-stock-section h4 {
@@ -3233,33 +3258,6 @@ textarea {
 }
 
 /* 末尾で上書き（後続の通常ルールに負けないようにする） */
-@media (max-height: 700px) {
-  .settings-content,
-  .task-stock-content {
-    max-height: calc(var(--app-height) - var(--app-offset-top) - 24px);
-  }
-
-  .settings-header,
-  .task-stock-header {
-    padding: 16px 16px 12px;
-  }
-
-  .settings-body,
-  .task-stock-body {
-    padding: 16px;
-    gap: 16px;
-  }
-
-  .settings-section {
-    margin-bottom: 20px;
-  }
-
-  .settings-footer,
-  .task-stock-footer {
-    padding: 8px 12px 10px;
-  }
-}
-
 @media (max-width: 768px) {
   .settings-content,
   .task-stock-content {
