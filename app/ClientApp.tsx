@@ -1,7 +1,6 @@
 'use client';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import html2canvas from 'html2canvas';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Task = {
@@ -161,7 +160,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [holidayCalendarHolidays, setHolidayCalendarHolidays] = useState<Set<string>>(() => new Set());
   const [holidayCalendarLoaded, setHolidayCalendarLoaded] = useState(false);
   const [holidayCalendarExporting, setHolidayCalendarExporting] = useState(false);
-  const [holidayCalendarSavedToast, setHolidayCalendarSavedToast] = useState(false);
+  const [holidayCalendarCopiedToast, setHolidayCalendarCopiedToast] = useState(false);
+  const [holidayCalendarCopyError, setHolidayCalendarCopyError] = useState<string | null>(null);
   const holidayCalendarToastTimerRef = useRef<number | null>(null);
 
   // edit dialog (timeline)
@@ -1793,162 +1793,144 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   async function exportHolidayCalendar() {
     if (holidayCalendarExporting) return;
     setHolidayCalendarExporting(true);
+    setHolidayCalendarCopyError(null);
     try {
       const root = getComputedStyle(document.documentElement);
-      const bgPrimary = root.getPropertyValue('--bg-primary').trim();
-      const bgSecondary = root.getPropertyValue('--bg-secondary').trim();
-      const textPrimary = root.getPropertyValue('--text-primary').trim();
-      const textMuted = root.getPropertyValue('--text-muted').trim();
-      const border = root.getPropertyValue('--border').trim();
-      const accent = root.getPropertyValue('--accent').trim();
-      const errorColor = root.getPropertyValue('--error').trim();
+      const accent = root.getPropertyValue('--accent').trim() || '#2563eb';
+      const errorColor = root.getPropertyValue('--error').trim() || '#ef4444';
 
       const year = holidayCalendarMonth.getFullYear();
       const month = holidayCalendarMonth.getMonth();
       const monthLabel = `${year}年 ${month + 1}月`;
 
-      const container = document.createElement('div');
-      container.style.cssText = [
-        'position:absolute',
-        'top:-9999px',
-        'left:-9999px',
-        'width:1000px',
-        'height:1000px',
-        `background:${bgPrimary}`,
-        `color:${textPrimary}`,
-        'padding:48px',
-        'box-sizing:border-box',
-        `border:1px solid ${border}`,
-        'border-radius:16px',
-        'font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-      ].join(';');
+      // Export image style: light / readable like the sample
+      const bg = '#ffffff';
+      const border = '#e5e7eb';
+      const text = '#111827';
+      const muted = '#d1d5db';
+      const red = '#ef4444';
 
-      const header = document.createElement('div');
-      header.textContent = monthLabel;
-      header.style.cssText = [
-        'text-align:center',
-        'font-size:48px',
-        'font-weight:700',
-        'margin-bottom:28px',
-      ].join(';');
-      container.appendChild(header);
+      // Render to canvas directly to keep day numbers perfectly centered.
+      const canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = 1000;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('画像の生成に失敗しました');
 
-      const counts = getHolidayCalendarCounts(holidayCalendarMonth, holidayCalendarHolidays);
-      const countsRow = document.createElement('div');
-      countsRow.style.cssText = [
-        'display:flex',
-        'gap:16px',
-        'justify-content:center',
-        'margin-bottom:22px',
-      ].join(';');
-      const countCard = (label: string, value: number) => {
-        const card = document.createElement('div');
-        card.style.cssText = [
-          `background:${bgSecondary}`,
-          `border:1px solid ${border}`,
-          'border-radius:14px',
-          'padding:14px 18px',
-          'min-width:220px',
-          'text-align:center',
-        ].join(';');
-        const l = document.createElement('div');
-        l.textContent = label;
-        l.style.cssText = ['font-size:20px', 'opacity:0.9', 'margin-bottom:6px'].join(';');
-        const v = document.createElement('div');
-        v.textContent = String(value);
-        v.style.cssText = ['font-size:36px', 'font-weight:800'].join(';');
-        card.appendChild(l);
-        card.appendChild(v);
-        return card;
-      };
-      countsRow.appendChild(countCard('お休み', counts.holidayCount));
-      countsRow.appendChild(countCard('お仕事', counts.jobdayCount));
-      container.appendChild(countsRow);
+      const padding = 60;
+      const headerFontSize = 52;
+      const headerMarginBottom = 36;
+      const calHeight = 760;
+      const headerRowHeight = 64;
+      const calX = padding;
+      const calY = padding + headerFontSize + headerMarginBottom;
+      const calW = canvas.width - padding * 2;
+      const calH = calHeight;
+      const gridY = calY + headerRowHeight;
+      const gridH = calH - headerRowHeight;
+      const colW = calW / 7;
+      const rowH = gridH / 6;
 
-      const cal = document.createElement('div');
-      cal.style.cssText = [
-        `border:1px solid ${border}`,
-        'border-radius:14px',
-        'overflow:hidden',
-      ].join(';');
+      const fontFamily = 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
 
-      const headerRow = document.createElement('div');
-      headerRow.style.cssText = [
-        'display:grid',
-        'grid-template-columns:repeat(7, 1fr)',
-        `background:${bgSecondary}`,
-        `border-bottom:1px solid ${border}`,
-      ].join(';');
+      // Background
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Month header
+      ctx.fillStyle = text;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `500 ${headerFontSize}px ${fontFamily}`;
+      ctx.fillText(monthLabel, canvas.width / 2, padding + headerFontSize / 2);
+
+      // Calendar outline
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(calX + 0.5, calY + 0.5, calW - 1, calH - 1);
+
+      // Header row separator
+      ctx.beginPath();
+      ctx.moveTo(calX, calY + headerRowHeight);
+      ctx.lineTo(calX + calW, calY + headerRowHeight);
+      ctx.stroke();
+
+      // Day name row
       const dayNames = ['月', '火', '水', '木', '金', '土', '日'];
-      for (const dn of dayNames) {
-        const cell = document.createElement('div');
-        cell.textContent = dn;
-        cell.style.cssText = ['text-align:center', 'padding:12px 0', 'font-size:22px', 'font-weight:700'].join(';');
-        headerRow.appendChild(cell);
+      ctx.fillStyle = '#4b5563';
+      ctx.font = `500 22px ${fontFamily}`;
+      for (let i = 0; i < 7; i++) {
+        ctx.fillText(dayNames[i], calX + colW * (i + 0.5), calY + headerRowHeight / 2);
       }
-      cal.appendChild(headerRow);
 
-      const grid = document.createElement('div');
-      grid.style.cssText = ['display:grid', 'grid-template-columns:repeat(7, 1fr)', 'grid-template-rows:repeat(6, 1fr)'].join(';');
+      // Grid lines
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 1; i < 7; i++) {
+        const x = calX + colW * i;
+        ctx.moveTo(x, gridY);
+        ctx.lineTo(x, gridY + gridH);
+      }
+      for (let j = 1; j < 6; j++) {
+        const y = gridY + rowH * j;
+        ctx.moveTo(calX, y);
+        ctx.lineTo(calX + calW, y);
+      }
+      ctx.stroke();
+
       const cells = getHolidayCalendarCells(holidayCalendarMonth);
       const today = new Date();
       const isSameYmd = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-      for (const c of cells) {
+      // Day numbers + holidays
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `700 58px ${fontFamily}`;
+      for (let idx = 0; idx < cells.length; idx++) {
+        const c = cells[idx];
         const d = c.date;
         const key = holidayKey(d);
-        const dow = d.getDay();
         const isHoliday = c.inMonth && holidayCalendarHolidays.has(key);
         const isToday = c.inMonth && isSameYmd(d, today);
-        const isSaturday = dow === 6;
-        const isSunday = dow === 0;
-        const isWorkDay = c.inMonth && !isHoliday && !isSaturday && !isSunday;
+        const col = idx % 7;
+        const row = Math.floor(idx / 7);
+        const x0 = calX + colW * col;
+        const y0 = gridY + rowH * row;
+        const cx = x0 + colW / 2;
+        const cy = y0 + rowH / 2;
 
-        const dayEl = document.createElement('div');
-        dayEl.textContent = String(d.getDate());
-        dayEl.style.cssText = [
-          `border:1px solid ${border}`,
-          'display:flex',
-          'align-items:center',
-          'justify-content:center',
-          'font-size:40px',
-          'font-weight:800',
-          'position:relative',
-          `background:${bgPrimary}`,
-          'min-height:0',
-          'aspect-ratio:1 / 1',
-          c.inMonth ? '' : `color:${textMuted}`,
-          isWorkDay ? `color:${accent}` : '',
-          isSaturday ? `color:${accent}` : '',
-          isSunday ? `color:${errorColor}` : '',
-          isToday ? `outline:3px solid ${accent}; outline-offset:-3px;` : '',
-        ].filter(Boolean).join(';');
-
-        if (isHoliday) {
-          dayEl.style.color = errorColor;
-          dayEl.style.backgroundImage = [
-            `linear-gradient(45deg, transparent 48%, ${errorColor} 49.5%, ${errorColor} 50.5%, transparent 52%)`,
-            `linear-gradient(-45deg, transparent 48%, ${errorColor} 49.5%, ${errorColor} 50.5%, transparent 52%)`,
-          ].join(',');
-          dayEl.style.backgroundRepeat = 'no-repeat';
-          dayEl.style.backgroundSize = '100% 100%';
+        // Today outline
+        if (isToday) {
+          ctx.save();
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x0 + 1.5, y0 + 1.5, colW - 3, rowH - 3);
+          ctx.restore();
         }
 
-        grid.appendChild(dayEl);
+        // Text color
+        if (!c.inMonth) ctx.fillStyle = muted;
+        else if (isHoliday) ctx.fillStyle = red;
+        else ctx.fillStyle = accent;
+
+        ctx.fillText(String(d.getDate()), cx, cy);
+
+        if (isHoliday) {
+          ctx.save();
+          ctx.strokeStyle = red;
+          ctx.lineWidth = 6;
+          ctx.lineCap = 'butt';
+          const inset = 8;
+          ctx.beginPath();
+          ctx.moveTo(x0 + inset, y0 + inset);
+          ctx.lineTo(x0 + colW - inset, y0 + rowH - inset);
+          ctx.moveTo(x0 + colW - inset, y0 + inset);
+          ctx.lineTo(x0 + inset, y0 + rowH - inset);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
-
-      cal.appendChild(grid);
-      container.appendChild(cal);
-
-      document.body.appendChild(container);
-      const canvas = await html2canvas(container, {
-        backgroundColor: null,
-        width: 1000,
-        height: 1000,
-        scale: 1,
-        useCORS: true,
-      });
-      container.remove();
 
       const blob: Blob | null = await new Promise((resolve) => {
         canvas.toBlob((b) => resolve(b), 'image/png');
@@ -1956,19 +1938,41 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (!blob) throw new Error('画像の生成に失敗しました');
 
       const fileName = `${year}年${String(month + 1).padStart(2, '0')}月予定表.png`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
 
-      setHolidayCalendarSavedToast(true);
+      // Try clipboard first
+      let copied = false;
+      try {
+        const navAny = navigator as any;
+        if (navAny?.clipboard?.write && (window as any).ClipboardItem) {
+          const item = new (window as any).ClipboardItem({ 'image/png': blob });
+          await navAny.clipboard.write([item]);
+          copied = true;
+        }
+      } catch {
+        copied = false;
+      }
+
+      // Fallback: download
+      if (!copied) {
+        try {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          setHolidayCalendarCopyError('この環境では画像のクリップボードコピーに未対応のため、代わりにダウンロードしました');
+        } catch {
+          setHolidayCalendarCopyError('画像のクリップボードコピーに失敗しました');
+        }
+      }
+
+      setHolidayCalendarCopiedToast(true);
       if (holidayCalendarToastTimerRef.current != null) window.clearTimeout(holidayCalendarToastTimerRef.current);
       holidayCalendarToastTimerRef.current = window.setTimeout(() => {
-        setHolidayCalendarSavedToast(false);
+        setHolidayCalendarCopiedToast(false);
         holidayCalendarToastTimerRef.current = null;
       }, 2000);
     } finally {
@@ -3268,7 +3272,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 disabled={holidayCalendarExporting}
               >
                 <span className="material-icons">download</span>
-                {holidayCalendarSavedToast ? '保存完了' : holidayCalendarExporting ? '保存中...' : 'カレンダーを保存'}
+                {holidayCalendarCopiedToast ? 'コピー完了' : holidayCalendarExporting ? 'コピー中...' : 'クリップボードにコピー'}
               </button>
               <button
                 type="button"
@@ -3350,6 +3354,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
 
             <div className="holiday-cal-hint">日付をクリックして「お休み」を切り替えできます</div>
+            {holidayCalendarCopyError ? (
+              <div className="holiday-cal-hint" style={{ color: 'var(--text-muted)' }}>
+                {holidayCalendarCopyError}
+              </div>
+            ) : null}
           </div>
 
           <div className="task-stock-footer">
