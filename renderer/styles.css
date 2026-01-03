@@ -2381,6 +2381,7 @@ textarea {
   .main-body {
     margin-right: 0;
     padding-right: 0;
+    overflow-x: hidden;
   }
 
   /* スマホ時は「今日/履歴」を左寄せ */
@@ -3300,6 +3301,7 @@ textarea {
   .main-body {
     margin-right: 0;
     padding-right: 0;
+    overflow-x: hidden;
   }
 
   .history-controls {
