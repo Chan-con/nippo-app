@@ -447,6 +447,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!accessToken) return;
     if (!settingsOpen) return;
     void loadSettings();
+    void loadReportUrls();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, settingsOpen]);
 
@@ -2275,6 +2276,62 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </div>
               <div id="time-rounding-preview" className="rounding-preview" aria-live="polite">
                 例: 現在 10:12 → 丸め後 10:10
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <h4>🔗 報告先URL</h4>
+              <div className="url-list">
+                {reportUrls.length === 0 ? (
+                  <div className="url-list-empty">
+                    <span className="material-icons">link_off</span>
+                    <div>報告先が未設定です</div>
+                  </div>
+                ) : (
+                  reportUrls.map((u) => (
+                    <div key={`settings-url-${u.id}`} className="url-item">
+                      <div className="url-info">
+                        <div className="url-name">{u.name}</div>
+                        <div className="url-address">{u.url}</div>
+                      </div>
+                      <div className="url-actions">
+                        <button
+                          className="delete"
+                          type="button"
+                          title="削除"
+                          aria-label="削除"
+                          onClick={() => deleteReportUrl(u.id)}
+                          disabled={!accessToken || busy}
+                        >
+                          <span className="material-icons">delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="add-url-form">
+                <h5>新しい報告先を追加</h5>
+                <div className="input-row">
+                  <input
+                    type="text"
+                    value={newReportUrl.name}
+                    onChange={(e) => setNewReportUrl((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="表示名（例：Slack、Teams）"
+                    disabled={!accessToken || busy}
+                  />
+                  <input
+                    type="url"
+                    value={newReportUrl.url}
+                    onChange={(e) => setNewReportUrl((p) => ({ ...p, url: e.target.value }))}
+                    placeholder="URL（例：https://hooks.slack.com/...）"
+                    disabled={!accessToken || busy}
+                  />
+                  <button type="button" title="追加" aria-label="追加" onClick={addReportUrl} disabled={!accessToken || busy}>
+                    <span className="material-icons">add</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
