@@ -1,7 +1,8 @@
 'use client';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { useEffect, useMemo, useState } from 'react';
+import html2canvas from 'html2canvas';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Task = {
   id: string;
@@ -151,6 +152,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tagWorkLoading, setTagWorkLoading] = useState(false);
   const [tagWorkError, setTagWorkError] = useState<string | null>(null);
 
+  // holiday calendar
+  const [holidayCalendarOpen, setHolidayCalendarOpen] = useState(false);
+  const [holidayCalendarMonth, setHolidayCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [holidayCalendarHolidays, setHolidayCalendarHolidays] = useState<Set<string>>(() => new Set());
+  const [holidayCalendarLoaded, setHolidayCalendarLoaded] = useState(false);
+  const [holidayCalendarExporting, setHolidayCalendarExporting] = useState(false);
+  const [holidayCalendarSavedToast, setHolidayCalendarSavedToast] = useState(false);
+  const holidayCalendarToastTimerRef = useRef<number | null>(null);
+
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string>('');
@@ -202,6 +215,53 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       document.body.classList.remove('sidebar-open');
     };
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    // load holiday calendar data once
+    try {
+      const raw = localStorage.getItem('nippoHolidayCalendarData');
+      if (!raw) {
+        setHolidayCalendarLoaded(true);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      const holidays = Array.isArray(parsed?.holidays) ? parsed.holidays.filter((x: any) => typeof x === 'string') : [];
+      const monthStr = typeof parsed?.month === 'string' ? parsed.month : '';
+
+      setHolidayCalendarHolidays(new Set(holidays));
+      if (monthStr) {
+        const m = new Date(monthStr);
+        if (!Number.isNaN(m.getTime())) setHolidayCalendarMonth(new Date(m.getFullYear(), m.getMonth(), 1));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setHolidayCalendarLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    // persist holiday calendar data
+    if (!holidayCalendarLoaded) return;
+    try {
+      const data = {
+        holidays: Array.from(holidayCalendarHolidays),
+        month: holidayCalendarMonth.toISOString(),
+      };
+      localStorage.setItem('nippoHolidayCalendarData', JSON.stringify(data));
+    } catch {
+      // ignore
+    }
+  }, [holidayCalendarLoaded, holidayCalendarHolidays, holidayCalendarMonth]);
+
+  useEffect(() => {
+    return () => {
+      if (holidayCalendarToastTimerRef.current != null) {
+        window.clearTimeout(holidayCalendarToastTimerRef.current);
+        holidayCalendarToastTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const client = supabase;
@@ -1667,6 +1727,255 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  function holidayKey(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function getHolidayCalendarCells(monthDate: Date) {
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const firstDow = firstDay.getDay(); // 0=Sun
+    const adjustedFirst = (firstDow + 6) % 7; // Mon=0
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const cells: Array<{ date: Date; inMonth: boolean }> = [];
+    for (let i = adjustedFirst - 1; i >= 0; i--) {
+      cells.push({ date: new Date(year, month - 1, daysInPrevMonth - i), inMonth: false });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      cells.push({ date: new Date(year, month, d), inMonth: true });
+    }
+    const remaining = 42 - cells.length;
+    for (let d = 1; d <= remaining; d++) {
+      cells.push({ date: new Date(year, month + 1, d), inMonth: false });
+    }
+    return cells;
+  }
+
+  function getHolidayCalendarCounts(monthDate: Date, holidays: Set<string>) {
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let holidayCount = 0;
+    let jobdayCount = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, month, d);
+      const key = holidayKey(date);
+      const dow = date.getDay();
+      if (holidays.has(key)) {
+        holidayCount++;
+      } else if (dow !== 0 && dow !== 6) {
+        jobdayCount++;
+      }
+    }
+    return { holidayCount, jobdayCount };
+  }
+
+  function toggleHolidayCalendarDay(date: Date) {
+    const key = holidayKey(date);
+    setHolidayCalendarHolidays((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function clearHolidayCalendar() {
+    setHolidayCalendarHolidays(new Set());
+  }
+
+  async function exportHolidayCalendar() {
+    if (holidayCalendarExporting) return;
+    setHolidayCalendarExporting(true);
+    try {
+      const root = getComputedStyle(document.documentElement);
+      const bgPrimary = root.getPropertyValue('--bg-primary').trim();
+      const bgSecondary = root.getPropertyValue('--bg-secondary').trim();
+      const textPrimary = root.getPropertyValue('--text-primary').trim();
+      const textMuted = root.getPropertyValue('--text-muted').trim();
+      const border = root.getPropertyValue('--border').trim();
+      const accent = root.getPropertyValue('--accent').trim();
+      const errorColor = root.getPropertyValue('--error').trim();
+
+      const year = holidayCalendarMonth.getFullYear();
+      const month = holidayCalendarMonth.getMonth();
+      const monthLabel = `${year}年 ${month + 1}月`;
+
+      const container = document.createElement('div');
+      container.style.cssText = [
+        'position:absolute',
+        'top:-9999px',
+        'left:-9999px',
+        'width:1000px',
+        'height:1000px',
+        `background:${bgPrimary}`,
+        `color:${textPrimary}`,
+        'padding:48px',
+        'box-sizing:border-box',
+        `border:1px solid ${border}`,
+        'border-radius:16px',
+        'font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+      ].join(';');
+
+      const header = document.createElement('div');
+      header.textContent = monthLabel;
+      header.style.cssText = [
+        'text-align:center',
+        'font-size:48px',
+        'font-weight:700',
+        'margin-bottom:28px',
+      ].join(';');
+      container.appendChild(header);
+
+      const counts = getHolidayCalendarCounts(holidayCalendarMonth, holidayCalendarHolidays);
+      const countsRow = document.createElement('div');
+      countsRow.style.cssText = [
+        'display:flex',
+        'gap:16px',
+        'justify-content:center',
+        'margin-bottom:22px',
+      ].join(';');
+      const countCard = (label: string, value: number) => {
+        const card = document.createElement('div');
+        card.style.cssText = [
+          `background:${bgSecondary}`,
+          `border:1px solid ${border}`,
+          'border-radius:14px',
+          'padding:14px 18px',
+          'min-width:220px',
+          'text-align:center',
+        ].join(';');
+        const l = document.createElement('div');
+        l.textContent = label;
+        l.style.cssText = ['font-size:20px', 'opacity:0.9', 'margin-bottom:6px'].join(';');
+        const v = document.createElement('div');
+        v.textContent = String(value);
+        v.style.cssText = ['font-size:36px', 'font-weight:800'].join(';');
+        card.appendChild(l);
+        card.appendChild(v);
+        return card;
+      };
+      countsRow.appendChild(countCard('お休み', counts.holidayCount));
+      countsRow.appendChild(countCard('お仕事', counts.jobdayCount));
+      container.appendChild(countsRow);
+
+      const cal = document.createElement('div');
+      cal.style.cssText = [
+        `border:1px solid ${border}`,
+        'border-radius:14px',
+        'overflow:hidden',
+      ].join(';');
+
+      const headerRow = document.createElement('div');
+      headerRow.style.cssText = [
+        'display:grid',
+        'grid-template-columns:repeat(7, 1fr)',
+        `background:${bgSecondary}`,
+        `border-bottom:1px solid ${border}`,
+      ].join(';');
+      const dayNames = ['月', '火', '水', '木', '金', '土', '日'];
+      for (const dn of dayNames) {
+        const cell = document.createElement('div');
+        cell.textContent = dn;
+        cell.style.cssText = ['text-align:center', 'padding:12px 0', 'font-size:22px', 'font-weight:700'].join(';');
+        headerRow.appendChild(cell);
+      }
+      cal.appendChild(headerRow);
+
+      const grid = document.createElement('div');
+      grid.style.cssText = ['display:grid', 'grid-template-columns:repeat(7, 1fr)', 'grid-template-rows:repeat(6, 1fr)'].join(';');
+      const cells = getHolidayCalendarCells(holidayCalendarMonth);
+      const today = new Date();
+      const isSameYmd = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+      for (const c of cells) {
+        const d = c.date;
+        const key = holidayKey(d);
+        const dow = d.getDay();
+        const isHoliday = c.inMonth && holidayCalendarHolidays.has(key);
+        const isToday = c.inMonth && isSameYmd(d, today);
+        const isSaturday = dow === 6;
+        const isSunday = dow === 0;
+        const isWorkDay = c.inMonth && !isHoliday && !isSaturday && !isSunday;
+
+        const dayEl = document.createElement('div');
+        dayEl.textContent = String(d.getDate());
+        dayEl.style.cssText = [
+          `border:1px solid ${border}`,
+          'display:flex',
+          'align-items:center',
+          'justify-content:center',
+          'font-size:40px',
+          'font-weight:800',
+          'position:relative',
+          `background:${bgPrimary}`,
+          'min-height:0',
+          'aspect-ratio:1 / 1',
+          c.inMonth ? '' : `color:${textMuted}`,
+          isWorkDay ? `color:${accent}` : '',
+          isSaturday ? `color:${accent}` : '',
+          isSunday ? `color:${errorColor}` : '',
+          isToday ? `outline:3px solid ${accent}; outline-offset:-3px;` : '',
+        ].filter(Boolean).join(';');
+
+        if (isHoliday) {
+          dayEl.style.color = errorColor;
+          dayEl.style.backgroundImage = [
+            `linear-gradient(45deg, transparent 48%, ${errorColor} 49.5%, ${errorColor} 50.5%, transparent 52%)`,
+            `linear-gradient(-45deg, transparent 48%, ${errorColor} 49.5%, ${errorColor} 50.5%, transparent 52%)`,
+          ].join(',');
+          dayEl.style.backgroundRepeat = 'no-repeat';
+          dayEl.style.backgroundSize = '100% 100%';
+        }
+
+        grid.appendChild(dayEl);
+      }
+
+      cal.appendChild(grid);
+      container.appendChild(cal);
+
+      document.body.appendChild(container);
+      const canvas = await html2canvas(container, {
+        backgroundColor: null,
+        width: 1000,
+        height: 1000,
+        scale: 1,
+        useCORS: true,
+      });
+      container.remove();
+
+      const blob: Blob | null = await new Promise((resolve) => {
+        canvas.toBlob((b) => resolve(b), 'image/png');
+      });
+      if (!blob) throw new Error('画像の生成に失敗しました');
+
+      const fileName = `${year}年${String(month + 1).padStart(2, '0')}月予定表.png`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      setHolidayCalendarSavedToast(true);
+      if (holidayCalendarToastTimerRef.current != null) window.clearTimeout(holidayCalendarToastTimerRef.current);
+      holidayCalendarToastTimerRef.current = window.setTimeout(() => {
+        setHolidayCalendarSavedToast(false);
+        holidayCalendarToastTimerRef.current = null;
+      }, 2000);
+    } finally {
+      setHolidayCalendarExporting(false);
+    }
+  }
+
   return (
     <>
       <div className="titlebar">
@@ -1882,6 +2191,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               >
                 <span className="material-icons">label</span>
                 タグ
+              </button>
+              <button
+                id="holiday-calendar-btn"
+                className="btn-secondary"
+                title="お休みカレンダー"
+                aria-label="お休みカレンダー"
+                type="button"
+                onClick={() => setHolidayCalendarOpen(true)}
+                disabled={busy}
+              >
+                <span className="material-icons">event</span>
+                お休みカレンダー
               </button>
               <button
                 id="settings-btn"
@@ -2886,6 +3207,162 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 disabled={!accessToken || busy || !tagDirty}
               >
                 <span className="material-icons">save</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`task-stock-dialog ${holidayCalendarOpen ? 'show' : ''}`}
+        id="holiday-calendar-dialog"
+        aria-hidden={!holidayCalendarOpen}
+      >
+        <div className="task-stock-content holiday-cal-content">
+          <div className="task-stock-header">
+            <h3>📅 お休みカレンダー</h3>
+            <button
+              className="task-stock-close"
+              id="holiday-calendar-close"
+              title="閉じる"
+              aria-label="閉じる"
+              type="button"
+              onClick={() => setHolidayCalendarOpen(false)}
+            >
+              <span className="material-icons">close</span>
+            </button>
+          </div>
+
+          <div className="task-stock-body">
+            <div className="holiday-cal-header">
+              <button
+                type="button"
+                className="holiday-cal-nav btn-secondary"
+                aria-label="前の月"
+                title="前の月"
+                onClick={() => setHolidayCalendarMonth((p) => new Date(p.getFullYear(), p.getMonth() - 1, 1))}
+                disabled={holidayCalendarExporting}
+              >
+                ◀
+              </button>
+              <div className="holiday-cal-month" aria-live="polite">
+                {holidayCalendarMonth.getFullYear()}年 {holidayCalendarMonth.getMonth() + 1}月
+              </div>
+              <button
+                type="button"
+                className="holiday-cal-nav btn-secondary"
+                aria-label="次の月"
+                title="次の月"
+                onClick={() => setHolidayCalendarMonth((p) => new Date(p.getFullYear(), p.getMonth() + 1, 1))}
+                disabled={holidayCalendarExporting}
+              >
+                ▶
+              </button>
+            </div>
+
+            <div className="holiday-cal-controls">
+              <button
+                type="button"
+                className="btn-primary holiday-cal-save"
+                onClick={() => void exportHolidayCalendar()}
+                disabled={holidayCalendarExporting}
+              >
+                <span className="material-icons">download</span>
+                {holidayCalendarSavedToast ? '保存完了' : holidayCalendarExporting ? '保存中...' : 'カレンダーを保存'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary holiday-cal-reset"
+                onClick={clearHolidayCalendar}
+                disabled={holidayCalendarExporting}
+              >
+                <span className="material-icons">restart_alt</span>
+                リセット
+              </button>
+            </div>
+
+            {(() => {
+              const counts = getHolidayCalendarCounts(holidayCalendarMonth, holidayCalendarHolidays);
+              return (
+                <div className="holiday-cal-counters" aria-label="集計">
+                  <div className="holiday-cal-counter">
+                    <div className="holiday-cal-counter-label">お休み</div>
+                    <div className="holiday-cal-counter-value">{counts.holidayCount}</div>
+                  </div>
+                  <div className="holiday-cal-counter">
+                    <div className="holiday-cal-counter-label">お仕事</div>
+                    <div className="holiday-cal-counter-value">{counts.jobdayCount}</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="holiday-cal-calendar" aria-label="カレンダー">
+              <div className="holiday-cal-weekdays">
+                {['月', '火', '水', '木', '金', '土', '日'].map((d) => (
+                  <div key={d} className="holiday-cal-weekday">
+                    {d}
+                  </div>
+                ))}
+              </div>
+              <div className="holiday-cal-grid" role="grid" aria-label="日付">
+                {getHolidayCalendarCells(holidayCalendarMonth).map((c, idx) => {
+                  const d = c.date;
+                  const key = holidayKey(d);
+                  const dow = d.getDay();
+                  const isToday =
+                    c.inMonth &&
+                    d.getFullYear() === new Date().getFullYear() &&
+                    d.getMonth() === new Date().getMonth() &&
+                    d.getDate() === new Date().getDate();
+                  const isHoliday = c.inMonth && holidayCalendarHolidays.has(key);
+                  const isSat = dow === 6;
+                  const isSun = dow === 0;
+
+                  const cls = [
+                    'holiday-cal-day',
+                    c.inMonth ? '' : 'inactive',
+                    isToday ? 'today' : '',
+                    isHoliday ? 'holiday' : '',
+                    isSat ? 'saturday' : '',
+                    isSun ? 'sunday' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ');
+
+                  return (
+                    <button
+                      key={`${key}:${idx}`}
+                      type="button"
+                      className={cls}
+                      onClick={() => {
+                        if (!c.inMonth) return;
+                        toggleHolidayCalendarDay(d);
+                      }}
+                      disabled={!c.inMonth || holidayCalendarExporting}
+                      aria-label={`${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`}
+                    >
+                      {d.getDate()}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="holiday-cal-hint">日付をクリックして「お休み」を切り替えできます</div>
+          </div>
+
+          <div className="task-stock-footer">
+            <div className="task-stock-footer-buttons">
+              <button
+                className="btn-cancel"
+                id="holiday-calendar-cancel"
+                title="戻る"
+                aria-label="戻る"
+                type="button"
+                onClick={() => setHolidayCalendarOpen(false)}
+              >
+                <span className="material-icons">arrow_back</span>
               </button>
             </div>
           </div>

@@ -2662,6 +2662,164 @@ textarea {
   padding: 8px;
 }
 
+/* お休みカレンダー */
+.holiday-cal-content {
+  max-width: 760px;
+}
+
+.holiday-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.holiday-cal-month {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  flex: 1;
+}
+
+.holiday-cal-nav {
+  width: 44px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.holiday-cal-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.holiday-cal-save,
+.holiday-cal-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.holiday-cal-counters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+}
+
+.holiday-cal-counter {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  padding: 12px;
+  text-align: center;
+}
+
+.holiday-cal-counter-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.holiday-cal-counter-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.holiday-cal-calendar {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  /* カレンダー部分だけスクロールできるようにする */
+  overflow: auto;
+  max-height: min(520px, 55vh);
+}
+
+.holiday-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.holiday-cal-weekday {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 0;
+  color: var(--text-secondary);
+}
+
+.holiday-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.holiday-cal-day {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.08s ease, background 0.2s ease;
+}
+
+.holiday-cal-day:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  transform: scale(1.03);
+}
+
+.holiday-cal-day:disabled {
+  cursor: not-allowed;
+}
+
+.holiday-cal-day.inactive {
+  opacity: 0.35;
+}
+
+.holiday-cal-day.today {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.holiday-cal-day.saturday {
+  color: var(--accent);
+}
+
+.holiday-cal-day.sunday {
+  color: var(--error);
+}
+
+.holiday-cal-day.holiday {
+  color: var(--error);
+  background-image:
+    linear-gradient(45deg, transparent 48%, var(--error) 49.5%, var(--error) 50.5%, transparent 52%),
+    linear-gradient(-45deg, transparent 48%, var(--error) 49.5%, var(--error) 50.5%, transparent 52%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.holiday-cal-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* task-stock-item のスタイルは共通スタイルで定義済み */
 
 .task-stock-item-drag-handle {
