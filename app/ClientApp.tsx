@@ -1364,6 +1364,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return sum + (m ?? 0);
   }, 0);
 
+  const sortedTimelineTasks = useMemo(() => {
+    const list = [...effectiveTasks];
+    list.sort((a, b) => {
+      const ma = parseTimeToMinutesFlexible(a.startTime);
+      const mb = parseTimeToMinutesFlexible(b.startTime);
+      if (ma == null && mb == null) return 0;
+      if (ma == null) return 1;
+      if (mb == null) return -1;
+      return ma - mb;
+    });
+    return list;
+  }, [effectiveTasks]);
+
   const timelineEmptyText = viewMode === 'today' ? 'まだタスクがありません' : 'この日はタスクがありません';
 
   return (
@@ -1661,29 +1674,84 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
 
           <div className="main-body">
-            <div className="timeline-section">
+            <div className={`timeline-section ${viewMode === 'history' ? 'history-mode' : ''}`}>
               <h3>📈 タイムライン</h3>
               <div className="timeline-container" id="timeline-container">
-                {effectiveTasks.length === 0 ? (
+                {sortedTimelineTasks.length === 0 ? (
                   <div className="timeline-empty">
                     <span className="material-icons">schedule</span>
                     <p>{timelineEmptyText}</p>
                     <p className="sub-text">新しいタスクを追加してください</p>
                   </div>
                 ) : (
-                  effectiveTasks.map((t) => (
-                    <div key={t.id} className="timeline-item">
-                      <div className="timeline-time">
-                        {t.status === 'reserved' ? '(予約) ' : ''}
-                        {t.startTime || ''}
-                        {t.endTime ? ` - ${t.endTime}` : ''}
+                  sortedTimelineTasks.map((t) => {
+                    const isReserved = t.status === 'reserved';
+                    const isRunning = !isReserved && !t.endTime;
+                    const durationMinutes = !isReserved && t.endTime ? calcDurationMinutes(t.startTime, t.endTime) : null;
+                    const duration = durationMinutes != null ? formatDurationJa(durationMinutes) : '';
+
+                    const itemClass = `timeline-item${isRunning ? ' running' : ''}${isReserved ? ' reserved' : ''}`;
+
+                    const startTime = t.startTime || '';
+                    const timeColumn = !isReserved && t.endTime ? (
+                      <div className="timeline-time range">
+                        <span className="time-start">{startTime}</span>
+                        <span className="time-line" aria-hidden="true" />
+                        <span className="time-end">{t.endTime}</span>
                       </div>
-                      <div className="timeline-content">
-                        <div className="timeline-title">{t.name}</div>
-                        {t.tag ? <div className="timeline-tag">{t.tag}</div> : null}
+                    ) : (
+                      <div className="timeline-time">{startTime}</div>
+                    );
+
+                    const statusChip = isReserved ? (
+                      <span className="timeline-duration" style={{ background: 'var(--purple)', color: 'var(--bg-primary)' }}>
+                        予約
+                      </span>
+                    ) : isRunning ? (
+                      <span className="timeline-duration" style={{ background: 'var(--accent)', color: 'white' }}>
+                        実行中
+                      </span>
+                    ) : null;
+
+                    return (
+                      <div key={t.id} className={itemClass}>
+                        {timeColumn}
+                        <div className="timeline-content">
+                          <div
+                            className="timeline-task"
+                            title="クリックでタスク名をコピー"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setNewTaskName(t.name);
+                              const input = document.getElementById('task-input') as HTMLInputElement | null;
+                              input?.focus();
+                              if (input) {
+                                const len = input.value.length;
+                                try {
+                                  input.setSelectionRange(len, len);
+                                } catch {
+                                  // ignore
+                                }
+                              }
+                            }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setNewTaskName(t.name);
+                              const input = document.getElementById('task-input') as HTMLInputElement | null;
+                              input?.focus();
+                            }}
+                          >
+                            {t.name}
+                          </div>
+                          <div className="timeline-meta">
+                            {duration ? <span className="timeline-duration">{duration}</span> : null}
+                            {t.tag ? <span className="task-tag">{t.tag}</span> : null}
+                            {statusChip}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
