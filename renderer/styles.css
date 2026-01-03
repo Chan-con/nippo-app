@@ -2379,8 +2379,9 @@ textarea {
 
   /* iOS等（スクロールバーが常時表示されない環境）では負のマージンが横はみ出しの原因になりやすい */
   .main-body {
-    margin-right: 0;
-    padding-right: 0;
+    /* スクロールバーを画面右端に寄せる（.main-content の右paddingを相殺） */
+    margin-right: -24px;
+    padding-right: 24px;
     overflow-x: hidden;
   }
 
@@ -3302,8 +3303,8 @@ textarea {
   }
 
   .main-body {
-    margin-right: 0;
-    padding-right: 0;
+    margin-right: -24px;
+    padding-right: 24px;
     overflow-x: hidden;
   }
 
