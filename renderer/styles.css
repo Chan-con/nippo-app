@@ -776,7 +776,7 @@ textarea {
   padding-top: 2px;
   padding-bottom: 2px;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: min-content minmax(12px, 1fr) min-content;
   align-items: center;
   justify-items: center;
 }
@@ -791,7 +791,9 @@ textarea {
   align-self: stretch;
   margin-top: 4px;
   margin-bottom: 4px;
+  display: block;
   width: 1px;
+  min-height: 12px;
   background: var(--border);
   opacity: 0.7;
 }
