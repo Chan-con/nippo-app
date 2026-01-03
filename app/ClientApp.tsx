@@ -174,6 +174,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
 
+  function formatDateISO(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(t);
@@ -1788,13 +1795,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   title="履歴"
                   aria-label="履歴"
                   type="button"
-                  onClick={() => setViewMode('history')}
+                  onClick={() => {
+                    setViewMode('history');
+                    if (!historyDate) {
+                      const todayIso = formatDateISO(new Date());
+                      const defaultDate = historyDates.includes(todayIso) ? todayIso : (historyDates[0] ?? todayIso);
+                      setHistoryDate(defaultDate);
+                      if (defaultDate) void loadHistory(defaultDate);
+                    }
+                  }}
                 >
                   <span className="material-icons">history</span>
                 </button>
               </div>
               <div className="date-selector" id="date-selector" style={{ display: viewMode === 'history' ? 'flex' : 'none' }}>
-                <div className="date-input-wrap" id="date-input-wrap">
+                <div className={`date-input-wrap ${historyDate ? 'has-value' : ''}`} id="date-input-wrap">
                   <input
                     type="date"
                     id="calendar-date-input"
