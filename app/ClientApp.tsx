@@ -23,6 +23,27 @@ type TagStockItem = {
   name: string;
 };
 
+type TagWorkTask = {
+  date: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  minutes: number;
+};
+
+type TagWorkDateGroup = {
+  date: string;
+  totalMinutes: number;
+  count: number;
+  tasks: TagWorkTask[];
+};
+
+type TagWorkSummary = {
+  tag: string;
+  totalMinutes: number;
+  groups: TagWorkDateGroup[];
+};
+
 function parseTimeToMinutesFlexible(timeStr?: string) {
   if (!timeStr) return null;
   const raw = String(timeStr).trim();
@@ -115,6 +136,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsTimeRoundingMode, setSettingsTimeRoundingMode] = useState<'nearest' | 'floor' | 'ceil'>('nearest');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [tagWorkSummary, setTagWorkSummary] = useState<TagWorkSummary[]>([]);
+  const [activeTag, setActiveTag] = useState<string>('');
+  const [tagWorkLoading, setTagWorkLoading] = useState(false);
+  const [tagWorkError, setTagWorkError] = useState<string | null>(null);
 
   // history
   const [historyDates, setHistoryDates] = useState<string[]>([]);
@@ -1379,6 +1405,113 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const timelineEmptyText = viewMode === 'today' ? 'まだタスクがありません' : 'この日はタスクがありません';
 
+  const reportCompletedTasks = useMemo(() => {
+    const list = tasks
+      .filter((t) => !!t.endTime && t.status !== 'reserved')
+      .slice()
+      .sort((a, b) => {
+        const ma = parseTimeToMinutesFlexible(a.startTime);
+        const mb = parseTimeToMinutesFlexible(b.startTime);
+        if (ma == null && mb == null) return 0;
+        if (ma == null) return 1;
+        if (mb == null) return -1;
+        return ma - mb;
+      });
+    return list;
+  }, [tasks]);
+
+  function formatDateISOToJaShort(date: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    return date;
+  }
+
+  async function loadTagWorkSummary() {
+    if (!accessToken) return;
+    setTagWorkLoading(true);
+    setTagWorkError(null);
+    try {
+      const resDates = await apiFetch('/api/history/dates', { method: 'GET' });
+      const bodyDates = await resDates.json().catch(() => null as any);
+      const dates: string[] = Array.isArray(bodyDates?.dates)
+        ? bodyDates.dates
+        : Array.isArray(bodyDates?.data)
+          ? bodyDates.data
+          : [];
+
+      const tagMap = new Map<string, { totalMinutes: number; byDate: Map<string, TagWorkTask[]> }>();
+
+      for (const date of dates) {
+        const res = await apiFetch(`/api/history/${encodeURIComponent(date)}`, { method: 'GET' });
+        if (!res.ok) continue;
+        const body = await res.json().catch(() => null as any);
+        const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
+
+        for (const t of tasksInDay) {
+          const tag = typeof t?.tag === 'string' ? t.tag.trim() : '';
+          const startTime = typeof t?.startTime === 'string' ? t.startTime : '';
+          const endTime = typeof t?.endTime === 'string' ? t.endTime : '';
+          const name = String(t?.name || t?.title || '').trim();
+          const status = t?.status ?? null;
+
+          if (!tag || !name) continue;
+          if (!startTime || !endTime) continue;
+          if (status === 'reserved') continue;
+
+          const minutes = calcDurationMinutes(startTime, endTime);
+          if (minutes == null) continue;
+
+          if (!tagMap.has(tag)) tagMap.set(tag, { totalMinutes: 0, byDate: new Map() });
+          const entry = tagMap.get(tag)!;
+          entry.totalMinutes += minutes;
+          if (!entry.byDate.has(date)) entry.byDate.set(date, []);
+          entry.byDate.get(date)!.push({ date, name, startTime, endTime, minutes });
+        }
+      }
+
+      const summaries: TagWorkSummary[] = Array.from(tagMap.entries())
+        .map(([tag, v]) => {
+          const groups: TagWorkDateGroup[] = Array.from(v.byDate.entries())
+            .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+            .map(([date, tasks]) => {
+              const sorted = tasks.slice().sort((a, b) => {
+                const ma = parseTimeToMinutesFlexible(a.startTime);
+                const mb = parseTimeToMinutesFlexible(b.startTime);
+                if (ma == null && mb == null) return 0;
+                if (ma == null) return 1;
+                if (mb == null) return -1;
+                return ma - mb;
+              });
+              const totalMinutes = sorted.reduce((s, x) => s + x.minutes, 0);
+              return { date, totalMinutes, count: sorted.length, tasks: sorted };
+            });
+
+          return { tag, totalMinutes: v.totalMinutes, groups };
+        })
+        .sort((a, b) => b.totalMinutes - a.totalMinutes);
+
+      setTagWorkSummary(summaries);
+      if (summaries.length > 0) {
+        setActiveTag((prev) => (prev && summaries.some((s) => s.tag === prev) ? prev : summaries[0].tag));
+      } else {
+        setActiveTag('');
+      }
+    } catch (e: any) {
+      setTagWorkError(e?.message || 'タグ別作業時間の取得に失敗しました');
+      setTagWorkSummary([]);
+      setActiveTag('');
+    } finally {
+      setTagWorkLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!reportOpen) return;
+    if (!accessToken) return;
+    // 画面を開いたタイミングで最新を取得（旧UIと同じ）
+    void loadTagWorkSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportOpen, accessToken]);
+
   return (
     <>
       <div className="titlebar">
@@ -1807,13 +1940,186 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
           <div className="report-body">
             <div className="report-section">
+              <h4>🎯 目標</h4>
+              <div className="goal-summary">
+                {goalStock.length === 0 ? (
+                  <div className="sub-text">未設定</div>
+                ) : (
+                  goalStock.map((g, idx) => (
+                    <div key={`${g.name}:${idx}`} style={{ marginBottom: 6 }}>
+                      ・ {g.name}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="report-section">
+              <h4>🗓️ 今日の作業内容</h4>
+              <div className="task-summary">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: 'var(--text-primary)', fontWeight: 600 }}>
+                  <span className="material-icons" style={{ fontSize: 18, color: 'var(--success)' }}>
+                    check_box
+                  </span>
+                  完了したタスク:
+                </div>
+
+                {reportCompletedTasks.length === 0 ? (
+                  <div className="sub-text">完了したタスクはありません</div>
+                ) : (
+                  reportCompletedTasks.map((t) => {
+                    const minutes = calcDurationMinutes(t.startTime, t.endTime);
+                    const duration = minutes != null ? formatDurationJa(minutes) : '';
+                    const timeText = `${t.startTime || ''} - ${t.endTime || ''}`;
+                    return (
+                      <div key={`report-task-${t.id}`} className="task-item">
+                        <div>
+                          <div className="task-item-name">{t.name}</div>
+                          <div className="task-item-time">{timeText}</div>
+                        </div>
+                        <div className="task-item-duration">{duration || '0分'}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="report-section">
+              <h4>🏷️ タグ別作業時間</h4>
+              <div className="tag-summary">
+                {tagWorkLoading ? (
+                  <div className="sub-text">読み込み中...</div>
+                ) : tagWorkError ? (
+                  <div style={{ color: 'var(--error)', fontSize: 12 }}>{tagWorkError}</div>
+                ) : tagWorkSummary.length === 0 ? (
+                  <div className="sub-text">タグ付きの履歴タスクがありません</div>
+                ) : (
+                  <>
+                    <div className="tag-tabs-container">
+                      <div className="tag-tabs-navigation" role="tablist" aria-label="タグ別作業時間">
+                        {tagWorkSummary.map((s) => {
+                          const label = `${s.tag} (${formatDurationJa(s.totalMinutes)})`;
+                          return (
+                            <button
+                              key={`tag-tab-${s.tag}`}
+                              type="button"
+                              className={`tag-tab ${activeTag === s.tag ? 'active' : ''}`}
+                              role="tab"
+                              aria-selected={activeTag === s.tag}
+                              onClick={() => setActiveTag(s.tag)}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="tag-tabs-content">
+                      {tagWorkSummary.map((s) => {
+                        const isActive = s.tag === activeTag;
+                        return (
+                          <div key={`tag-panel-${s.tag}`} className={`tag-tab-panel ${isActive ? 'active' : ''}`} role="tabpanel">
+                            <div className="tag-tasks">
+                              {s.groups.map((g) => (
+                                <div key={`tag-date-${s.tag}-${g.date}`} className="tag-date-group">
+                                  <div className="date-header-with-stats">
+                                    <div className="date-header">{formatDateISOToJaShort(g.date)}</div>
+                                    <div className="date-total">
+                                      <span>{formatDurationJa(g.totalMinutes)}</span>
+                                      <span>({g.count}件)</span>
+                                    </div>
+                                  </div>
+
+                                  {g.tasks.map((t, idx) => (
+                                    <div key={`tag-task-${s.tag}-${g.date}-${idx}`} className="task-item">
+                                      <div>
+                                        <div className="task-item-name">{t.name}</div>
+                                        <div className="task-item-time">
+                                          {t.startTime} - {t.endTime}
+                                        </div>
+                                      </div>
+                                      <div className="task-item-duration">{formatDurationJa(t.minutes)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="tag-total">
+                              <span>合計: {formatDurationJa(s.totalMinutes)}（履歴含む）</span>
+                              <div className="tag-total-actions">
+                                <button
+                                  type="button"
+                                  className="tag-copy-btn"
+                                  onClick={async () => {
+                                    try {
+                                      const lines: string[] = [];
+                                      lines.push(`合計: ${formatDurationJa(s.totalMinutes)}（履歴含む）`);
+                                      for (const g of s.groups) {
+                                        lines.push('');
+                                        lines.push(g.date);
+                                        for (const t of g.tasks) {
+                                          lines.push(`- ${t.startTime} - ${t.endTime} ${t.name} (${formatDurationJa(t.minutes)})`);
+                                        }
+                                      }
+                                      await navigator.clipboard.writeText(lines.join('\n'));
+                                    } catch {
+                                      // ignore
+                                    }
+                                  }}
+                                >
+                                  <span className="material-icons">content_copy</span>
+                                  コピー
+                                </button>
+                                <button
+                                  type="button"
+                                  className="tag-copy-btn tag-csv-btn"
+                                  onClick={() => {
+                                    const rows: string[] = ['date,start,end,task,minutes'];
+                                    for (const g of s.groups) {
+                                      for (const t of g.tasks) {
+                                        const safe = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+                                        rows.push(
+                                          [safe(g.date), safe(t.startTime), safe(t.endTime), safe(t.name), String(t.minutes)].join(',')
+                                        );
+                                      }
+                                    }
+                                    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `tag_${s.tag}.csv`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+                                    URL.revokeObjectURL(url);
+                                  }}
+                                >
+                                  <span className="material-icons">download</span>
+                                  CSV
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="report-section">
               <h4>🔗 報告先</h4>
               <div className="report-links" id="report-links">
                 {reportUrls.length === 0 ? (
-                  <div className="text-muted">未設定</div>
+                  <div className="sub-text">未設定</div>
                 ) : (
                   reportUrls.map((u) => (
-                    <a key={u.id} href={u.url} target="_blank" rel="noreferrer" className="report-link">
+                    <a key={u.id} href={u.url} target="_blank" rel="noreferrer" className="report-link-btn">
+                      <span className="material-icons">open_in_new</span>
                       {u.name}
                     </a>
                   ))
@@ -1831,7 +2137,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       <button
                         key={u.id}
                         type="button"
-                        className={`tab-btn ${active ? 'active' : ''}`}
+                        className={`tab-button ${active ? 'active' : ''}`}
                         onClick={() => {
                           setActiveReportTabId(id);
                           void loadReportTab(id);
