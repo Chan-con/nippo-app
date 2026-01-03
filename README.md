@@ -64,9 +64,12 @@ Cloudflare Pagesでは、静的ファイル配信 + Pages Functionsで `/api/*` 
 ### デプロイ設定（Pages）
 
 - **Framework preset**: None
-- **Build command**: `npm run build`
+- **Build command**: `npm run pages:build`
 - **Build output directory**: `out`
 - **Functions directory**: `functions`
+
+> 補足: Next.js の静的エクスポート（`out/`）では `app/api/*` の Route Handler は利用できません。
+> 本番の `/api/*` は Cloudflare Pages Functions（`functions/`）で提供します。
 
 ### Pagesの環境変数
 

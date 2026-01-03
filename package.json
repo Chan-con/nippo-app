@@ -8,6 +8,7 @@
     "dev:clean": "npm run clean && next dev",
     "build": "next build",
     "build:clean": "npm run clean && next build",
+    "pages:build": "node scripts/pages-build-next-export.js",
     "start": "next start",
     "build:legacy": "node scripts/pages-build.js",
     "start:legacy": "node web-server.js",
