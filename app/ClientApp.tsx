@@ -139,6 +139,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tempTaskStock, setTempTaskStock] = useState<string[]>([]);
   const [taskStockInput, setTaskStockInput] = useState('');
   const [taskStockDirty, setTaskStockDirty] = useState(false);
+  const [taskStockLoaded, setTaskStockLoaded] = useState(false);
 
   const [settingsTimeRoundingInterval, setSettingsTimeRoundingInterval] = useState(0);
   const [settingsTimeRoundingMode, setSettingsTimeRoundingMode] = useState<'nearest' | 'floor' | 'ceil'>('nearest');
@@ -243,6 +244,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setTempTaskStock([]);
       setTaskStockInput('');
       setTaskStockDirty(false);
+      setTaskStockLoaded(false);
       setSettingsTimeRoundingInterval(0);
       setSettingsTimeRoundingMode('nearest');
       return;
@@ -253,6 +255,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     void loadReportSingle();
     void loadTagStock();
     void loadGoalStock();
+    void loadTaskStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
@@ -346,6 +349,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setTaskStock(normalized);
       setTempTaskStock(JSON.parse(JSON.stringify(normalized)));
       setTaskStockDirty(false);
+      setTaskStockLoaded(true);
     } catch {
       // ignore
     }
@@ -448,9 +452,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   useEffect(() => {
     if (!accessToken) return;
     if (!taskStockOpen) return;
-    void loadTaskStock();
+    // まず手元のキャッシュを即表示（モーダルを開いた瞬間に内容が出る）
+    setTempTaskStock(JSON.parse(JSON.stringify(taskStock)));
+    setTaskStockDirty(false);
+
+    // 未ロード時のみ裏で取得（初回でも遅延感を最小化）
+    if (!taskStockLoaded) void loadTaskStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, taskStockOpen]);
+  }, [accessToken, taskStockOpen, taskStock, taskStockLoaded]);
 
   useEffect(() => {
     if (!accessToken) return;
