@@ -2400,8 +2400,8 @@ textarea {
     align-items: flex-start;
     width: 100%;
     min-width: 0;
-    padding-left: 2px;
-    padding-right: 2px;
+    padding-left: 0;
+    padding-right: 0;
     box-sizing: border-box;
   }
 
@@ -3334,9 +3334,12 @@ textarea {
   }
 
   .history-controls .date-selector input[type="date"] {
-    width: 100%;
+    width: calc(100% - 4px);
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    display: block;
+    margin-left: 2px;
+    margin-right: 2px;
   }
 }
