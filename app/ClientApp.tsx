@@ -89,6 +89,21 @@ function formatDurationJa(totalMinutes: number) {
   return `${h}時間${m ? `${m}分` : ''}`;
 }
 
+function toFullWidthTime(text: string) {
+  return text
+    .replace(/[0-9]/g, (d) => String.fromCharCode(d.charCodeAt(0) + 0xfee0))
+    .replace(/:/g, '：');
+}
+
+function formatTimeDisplay(timeStr?: string) {
+  const minutes = parseTimeToMinutesFlexible(timeStr);
+  if (minutes == null) return '';
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  const ascii = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  return toFullWidthTime(ascii);
+}
+
 function getSupabase(opts?: { supabaseUrl?: string; supabaseAnonKey?: string }): SupabaseClient | null {
   const url = opts?.supabaseUrl || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = opts?.supabaseAnonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -1380,6 +1395,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `${hh}:${mm}`;
   }
 
+  function formatNowTimeDisplay(d: Date) {
+    return toFullWidthTime(formatTimeHHMM(d));
+  }
+
   const effectiveTasks = viewMode === 'today' ? tasks : historyTasks;
   const runningTask = tasks
     .slice()
@@ -1827,17 +1846,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                     const itemClass = `timeline-item${isRunning ? ' running' : ''}${isReserved ? ' reserved' : ''}`;
 
-                    const startTime = t.startTime || '';
-                    const endTimeForDisplay = isReserved ? (t.endTime || '') : isRunning ? formatTimeHHMM(now) : (t.endTime || '');
-                    const showRange = !!startTime && !!endTimeForDisplay && (!isReserved || !!t.endTime);
+                    const startTimeDisplay = formatTimeDisplay(t.startTime);
+                    const endTimeDisplay = isReserved
+                      ? formatTimeDisplay(t.endTime)
+                      : isRunning
+                        ? formatNowTimeDisplay(now)
+                        : formatTimeDisplay(t.endTime);
+                    const showRange = !!startTimeDisplay && !!endTimeDisplay && (!isReserved || !!t.endTime);
                     const timeColumn = showRange ? (
                       <div className="timeline-time range">
-                        <span className="time-start">{startTime}</span>
+                        <span className="time-start">{startTimeDisplay}</span>
                         <span className="time-line" aria-hidden="true" />
-                        <span className="time-end">{endTimeForDisplay}</span>
+                        <span className="time-end">{endTimeDisplay}</span>
                       </div>
                     ) : (
-                      <div className="timeline-time">{startTime}</div>
+                      <div className="timeline-time">{startTimeDisplay}</div>
                     );
 
                     const statusChip = isReserved ? (

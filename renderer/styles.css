@@ -775,26 +775,21 @@ textarea {
   align-self: stretch;
   padding-top: 2px;
   padding-bottom: 2px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .timeline-time.range .time-start,
 .timeline-time.range .time-end {
-  position: absolute;
-  left: 0;
   white-space: nowrap;
-}
-
-.timeline-time.range .time-start {
-  top: 0;
-}
-
-.timeline-time.range .time-end {
-  bottom: 0;
 }
 
 .timeline-time.range .time-line {
   position: absolute;
-  left: 18px;
+  left: 50%;
+  transform: translateX(-0.5px);
   top: 18px;
   bottom: 18px;
   width: 1px;
