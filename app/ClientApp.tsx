@@ -460,15 +460,22 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  function requestCloseHolidayCalendar() {
+  async function requestCloseHolidayCalendar() {
+    if (holidayCalendarExporting || holidayCalendarSyncing) return;
+
     if (!accessToken) {
       setHolidayCalendarOpen(false);
       return;
     }
+
     if (!holidayCalendarHasSaved || holidayCalendarDirty) {
       const ok = window.confirm('保存していない変更があります。閉じますか？');
       if (!ok) return;
+      await saveHolidayCalendarToServer();
+      // 保存に失敗した場合はエラー文言が入るので閉じない
+      if (holidayCalendarCopyError) return;
     }
+
     setHolidayCalendarOpen(false);
   }
 
@@ -3479,7 +3486,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               title="閉じる"
               aria-label="閉じる"
               type="button"
-              onClick={requestCloseHolidayCalendar}
+              onClick={() => void requestCloseHolidayCalendar()}
             >
               <span className="material-icons">close</span>
             </button>
@@ -3528,7 +3535,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 disabled={holidayCalendarExporting || holidayCalendarSyncing || (accessToken ? !holidayCalendarHasSaved || holidayCalendarDirty : false)}
               >
                 <span className="material-icons">content_copy</span>
-                {holidayCalendarCopiedToast ? 'コピー完了' : holidayCalendarExporting ? 'コピー中...' : '同期してコピー'}
+                {holidayCalendarCopiedToast ? 'コピー完了' : holidayCalendarExporting ? 'コピー中...' : '画像をコピー'}
               </button>
               <button
                 type="button"
@@ -3638,7 +3645,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 title="戻る"
                 aria-label="戻る"
                 type="button"
-                onClick={requestCloseHolidayCalendar}
+                onClick={() => void requestCloseHolidayCalendar()}
               >
                 <span className="material-icons">arrow_back</span>
               </button>
