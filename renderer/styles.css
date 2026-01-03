@@ -56,7 +56,6 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   height: var(--app-height);
-  padding-top: var(--app-offset-top);
   overflow: hidden;
   user-select: none;
   pointer-events: auto !important;
@@ -78,10 +77,12 @@ textarea {
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   position: fixed;
-  top: var(--app-offset-top);
+  top: 0;
   left: 0;
   right: 0;
   z-index: 1000;
+  transform: translate3d(0, var(--app-offset-top), 0);
+  will-change: transform;
 }
 
 .titlebar-drag {
@@ -136,6 +137,7 @@ textarea {
   /* titlebar は fixed のため、領域は padding で確保する */
   height: calc(var(--app-height) - var(--app-offset-top));
   padding-top: var(--titlebar-height);
+  transform: translate3d(0, var(--app-offset-top), 0);
 }
 
 /* Web版ログインUI（ヘッダー内） */
@@ -164,11 +166,12 @@ textarea {
 .mobile-overlay {
   display: none;
   position: fixed;
-  top: calc(var(--app-offset-top) + var(--titlebar-height));
+  top: var(--titlebar-height);
   left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.35);
+  transform: translate3d(0, var(--app-offset-top), 0);
 }
 
 .web-auth-bar {
