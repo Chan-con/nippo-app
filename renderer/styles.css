@@ -2377,18 +2377,28 @@ textarea {
     gap: 16px;
   }
 
+  /* iOS等（スクロールバーが常時表示されない環境）では負のマージンが横はみ出しの原因になりやすい */
+  .main-body {
+    margin-right: 0;
+    padding-right: 0;
+  }
+
   /* スマホ時は「今日/履歴」を左寄せ */
   .history-controls {
     align-items: flex-start;
+    width: 100%;
+    min-width: 0;
   }
 
   .history-controls .view-mode-toggle {
     justify-content: flex-start;
+    max-width: 100%;
   }
 
   .history-controls .date-selector {
     align-items: flex-start;
     width: 100%;
+    min-width: 0;
   }
 
   .main-header.history-mode {
@@ -3096,7 +3106,7 @@ textarea {
 .date-selector input[type="date"]:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .date-selector button {
@@ -3287,17 +3297,26 @@ textarea {
     width: 100%;
   }
 
+  .main-body {
+    margin-right: 0;
+    padding-right: 0;
+  }
+
   .history-controls {
     align-items: flex-start;
+    width: 100%;
+    min-width: 0;
   }
 
   .history-controls .view-mode-toggle {
     justify-content: flex-start;
+    max-width: 100%;
   }
 
   .history-controls .date-selector {
     align-items: flex-start;
     width: 100%;
+    min-width: 0;
   }
 
   .history-controls .date-input-wrap {
