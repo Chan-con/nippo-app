@@ -1828,11 +1828,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     const itemClass = `timeline-item${isRunning ? ' running' : ''}${isReserved ? ' reserved' : ''}`;
 
                     const startTime = t.startTime || '';
-                    const timeColumn = !isReserved && t.endTime ? (
+                    const endTimeForDisplay = isReserved ? (t.endTime || '') : isRunning ? formatTimeHHMM(now) : (t.endTime || '');
+                    const showRange = !!startTime && !!endTimeForDisplay && (!isReserved || !!t.endTime);
+                    const timeColumn = showRange ? (
                       <div className="timeline-time range">
                         <span className="time-start">{startTime}</span>
                         <span className="time-line" aria-hidden="true" />
-                        <span className="time-end">{t.endTime}</span>
+                        <span className="time-end">{endTimeForDisplay}</span>
                       </div>
                     ) : (
                       <div className="timeline-time">{startTime}</div>
