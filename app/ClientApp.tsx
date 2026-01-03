@@ -89,19 +89,12 @@ function formatDurationJa(totalMinutes: number) {
   return `${h}時間${m ? `${m}分` : ''}`;
 }
 
-function toFullWidthTime(text: string) {
-  return text
-    .replace(/[0-9]/g, (d) => String.fromCharCode(d.charCodeAt(0) + 0xfee0))
-    .replace(/:/g, '：');
-}
-
 function formatTimeDisplay(timeStr?: string) {
   const minutes = parseTimeToMinutesFlexible(timeStr);
   if (minutes == null) return '';
   const hh = Math.floor(minutes / 60);
   const mm = minutes % 60;
-  const ascii = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-  return toFullWidthTime(ascii);
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
 function getSupabase(opts?: { supabaseUrl?: string; supabaseAnonKey?: string }): SupabaseClient | null {
@@ -1396,7 +1389,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function formatNowTimeDisplay(d: Date) {
-    return toFullWidthTime(formatTimeHHMM(d));
+    return formatTimeHHMM(d);
   }
 
   const effectiveTasks = viewMode === 'today' ? tasks : historyTasks;
