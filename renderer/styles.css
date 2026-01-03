@@ -2400,6 +2400,7 @@ textarea {
     align-items: flex-start;
     width: 100%;
     min-width: 0;
+    padding-left: 2px;
     padding-right: 2px;
     box-sizing: border-box;
   }
@@ -3321,6 +3322,9 @@ textarea {
     align-items: flex-start;
     width: 100%;
     min-width: 0;
+    padding-left: 2px;
+    padding-right: 2px;
+    box-sizing: border-box;
   }
 
   .history-controls .date-input-wrap {
