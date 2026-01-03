@@ -2769,8 +2769,8 @@ textarea {
   border: 1px solid var(--border);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2780,8 +2780,7 @@ textarea {
 }
 
 .holiday-cal-day:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  transform: scale(1.03);
+  background-color: var(--bg-tertiary);
 }
 
 .holiday-cal-day:disabled {
