@@ -1564,14 +1564,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         </div>
       </div>
 
-      <div
-        id="mobile-overlay"
-        className="mobile-overlay"
-        aria-hidden={!sidebarOpen}
-        onClick={() => setSidebarOpen(false)}
-      />
-
       <div className="app-container">
+        <div
+          id="mobile-overlay"
+          className="mobile-overlay"
+          aria-hidden={!sidebarOpen}
+          onClick={() => setSidebarOpen(false)}
+        />
         <aside className="sidebar" id="mobile-sidebar" aria-hidden={!sidebarOpen}>
           <div className="sidebar-header">
             <h2>📋 今日のタスク</h2>
