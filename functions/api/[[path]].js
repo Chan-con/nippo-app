@@ -328,6 +328,19 @@ export async function onRequest(context) {
       return jsonResponse({ success: !!ok });
     }
 
+    // holiday-calendar
+    if (parts.length === 1 && parts[0] === 'holiday-calendar' && request.method === 'GET') {
+      const calendar = await taskManager.loadHolidayCalendar(userId);
+      return jsonResponse({ success: true, calendar });
+    }
+
+    if (parts.length === 1 && parts[0] === 'holiday-calendar' && request.method === 'POST') {
+      const month = typeof body?.month === 'string' ? body.month : null;
+      const holidays = Array.isArray(body?.holidays) ? body.holidays : [];
+      await taskManager.saveHolidayCalendar({ month, holidays }, userId);
+      return jsonResponse({ success: true });
+    }
+
     return jsonResponse({ success: false, error: 'Not Found' }, 404);
   } catch (error) {
     return jsonResponse({ success: false, error: error?.message || String(error) }, 500);

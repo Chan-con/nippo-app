@@ -282,6 +282,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   });
   const [holidayCalendarHolidays, setHolidayCalendarHolidays] = useState<Set<string>>(() => new Set());
   const [holidayCalendarLoaded, setHolidayCalendarLoaded] = useState(false);
+  const [holidayCalendarSyncing, setHolidayCalendarSyncing] = useState(false);
+  const [holidayCalendarDirty, setHolidayCalendarDirty] = useState(false);
+  const [holidayCalendarHasSaved, setHolidayCalendarHasSaved] = useState(false);
+  const [holidayCalendarLastSavedSnapshot, setHolidayCalendarLastSavedSnapshot] = useState<string>('');
   const [holidayCalendarExporting, setHolidayCalendarExporting] = useState(false);
   const [holidayCalendarCopiedToast, setHolidayCalendarCopiedToast] = useState(false);
   const [holidayCalendarCopyError, setHolidayCalendarCopyError] = useState<string | null>(null);
@@ -339,43 +343,164 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
   }, [sidebarOpen]);
 
-  useEffect(() => {
-    // load holiday calendar data once
+  function holidayCalendarSnapshot(monthDate: Date, holidays: Set<string>) {
+    const y = monthDate.getFullYear();
+    const m = String(monthDate.getMonth() + 1).padStart(2, '0');
+    const monthKey = `${y}-${m}-01`;
+    const list = Array.from(holidays).slice().sort();
+    return JSON.stringify({ month: monthKey, holidays: list });
+  }
+
+  function readHolidayCalendarDraft() {
     try {
       const raw = localStorage.getItem('nippoHolidayCalendarData');
-      if (!raw) {
-        setHolidayCalendarLoaded(true);
-        return;
-      }
+      if (!raw) return null;
       const parsed = JSON.parse(raw);
       const holidays = Array.isArray(parsed?.holidays) ? parsed.holidays.filter((x: any) => typeof x === 'string') : [];
       const monthStr = typeof parsed?.month === 'string' ? parsed.month : '';
-
-      setHolidayCalendarHolidays(new Set(holidays));
+      let monthDate: Date | null = null;
       if (monthStr) {
         const m = new Date(monthStr);
-        if (!Number.isNaN(m.getTime())) setHolidayCalendarMonth(new Date(m.getFullYear(), m.getMonth(), 1));
+        if (!Number.isNaN(m.getTime())) monthDate = new Date(m.getFullYear(), m.getMonth(), 1);
       }
+      return { monthDate, holidays };
     } catch {
-      // ignore
-    } finally {
-      setHolidayCalendarLoaded(true);
+      return null;
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    // persist holiday calendar data
-    if (!holidayCalendarLoaded) return;
+  function writeHolidayCalendarDraft(monthDate: Date, holidays: Set<string>) {
     try {
       const data = {
-        holidays: Array.from(holidayCalendarHolidays),
-        month: holidayCalendarMonth.toISOString(),
+        holidays: Array.from(holidays),
+        month: monthDate.toISOString(),
       };
       localStorage.setItem('nippoHolidayCalendarData', JSON.stringify(data));
     } catch {
       // ignore
     }
-  }, [holidayCalendarLoaded, holidayCalendarHolidays, holidayCalendarMonth]);
+  }
+
+  async function loadHolidayCalendarFromServer() {
+    if (!accessToken) return;
+    setHolidayCalendarSyncing(true);
+    setHolidayCalendarCopyError(null);
+    try {
+      const res = await apiFetch('/api/holiday-calendar');
+      const body = await res.json();
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'カレンダーの同期に失敗しました');
+
+      const cal = body?.calendar;
+      if (cal && typeof cal === 'object') {
+        const holidays = Array.isArray(cal.holidays) ? cal.holidays.filter((x: any) => typeof x === 'string') : [];
+        const monthStr = typeof cal.month === 'string' ? cal.month : '';
+
+        setHolidayCalendarHolidays(new Set(holidays));
+        if (monthStr && /^\d{4}-\d{2}-\d{2}$/.test(monthStr)) {
+          const y = parseInt(monthStr.slice(0, 4), 10);
+          const m0 = parseInt(monthStr.slice(5, 7), 10) - 1;
+          if (!Number.isNaN(y) && !Number.isNaN(m0)) setHolidayCalendarMonth(new Date(y, m0, 1));
+        }
+
+        const snapshot = holidayCalendarSnapshot(
+          monthStr && /^\d{4}-\d{2}-\d{2}$/.test(monthStr)
+            ? new Date(parseInt(monthStr.slice(0, 4), 10), parseInt(monthStr.slice(5, 7), 10) - 1, 1)
+            : holidayCalendarMonth,
+          new Set(holidays)
+        );
+        setHolidayCalendarLastSavedSnapshot(snapshot);
+        setHolidayCalendarDirty(false);
+        setHolidayCalendarHasSaved(true);
+        setHolidayCalendarLoaded(true);
+        return;
+      }
+
+      // No server data yet: fallback to local draft (migration)
+      const draft = readHolidayCalendarDraft();
+      if (draft?.holidays) setHolidayCalendarHolidays(new Set(draft.holidays));
+      if (draft?.monthDate) setHolidayCalendarMonth(draft.monthDate);
+
+      setHolidayCalendarHasSaved(false);
+      setHolidayCalendarDirty(false);
+      setHolidayCalendarLastSavedSnapshot('');
+      setHolidayCalendarLoaded(true);
+    } catch (e: any) {
+      setHolidayCalendarCopyError(e?.message || String(e));
+      setHolidayCalendarLoaded(true);
+    } finally {
+      setHolidayCalendarSyncing(false);
+    }
+  }
+
+  async function saveHolidayCalendarToServer() {
+    if (!accessToken) return;
+    setHolidayCalendarSyncing(true);
+    setHolidayCalendarCopyError(null);
+    try {
+      const y = holidayCalendarMonth.getFullYear();
+      const m = String(holidayCalendarMonth.getMonth() + 1).padStart(2, '0');
+      const monthKey = `${y}-${m}-01`;
+      const holidays = Array.from(holidayCalendarHolidays);
+      const res = await apiFetch('/api/holiday-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: monthKey, holidays }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body?.success) throw new Error(body?.error || '保存に失敗しました');
+
+      const snapshot = holidayCalendarSnapshot(holidayCalendarMonth, holidayCalendarHolidays);
+      setHolidayCalendarLastSavedSnapshot(snapshot);
+      setHolidayCalendarDirty(false);
+      setHolidayCalendarHasSaved(true);
+    } catch (e: any) {
+      setHolidayCalendarCopyError(e?.message || String(e));
+    } finally {
+      setHolidayCalendarSyncing(false);
+    }
+  }
+
+  function requestCloseHolidayCalendar() {
+    if (!accessToken) {
+      setHolidayCalendarOpen(false);
+      return;
+    }
+    if (!holidayCalendarHasSaved || holidayCalendarDirty) {
+      const ok = window.confirm('保存していない変更があります。閉じますか？');
+      if (!ok) return;
+    }
+    setHolidayCalendarOpen(false);
+  }
+
+  useEffect(() => {
+    if (!holidayCalendarOpen) return;
+    // local draft first (instant), then server (when logged in)
+    const draft = readHolidayCalendarDraft();
+    if (draft) {
+      if (draft.holidays) setHolidayCalendarHolidays(new Set(draft.holidays));
+      if (draft.monthDate) setHolidayCalendarMonth(draft.monthDate);
+    }
+    if (accessToken) void loadHolidayCalendarFromServer();
+    else setHolidayCalendarLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holidayCalendarOpen, accessToken]);
+
+  useEffect(() => {
+    // persist holiday calendar data
+    if (!holidayCalendarLoaded) return;
+    writeHolidayCalendarDraft(holidayCalendarMonth, holidayCalendarHolidays);
+
+    const snap = holidayCalendarSnapshot(holidayCalendarMonth, holidayCalendarHolidays);
+    if (accessToken) {
+      const saved = holidayCalendarLastSavedSnapshot;
+      if (!holidayCalendarHasSaved) {
+        // unsaved to server (migration/new)
+        setHolidayCalendarDirty(false);
+      } else {
+        setHolidayCalendarDirty(saved ? snap !== saved : true);
+      }
+    }
+  }, [holidayCalendarLoaded, holidayCalendarHolidays, holidayCalendarMonth, accessToken, holidayCalendarHasSaved, holidayCalendarLastSavedSnapshot]);
 
   useEffect(() => {
     return () => {
@@ -3354,7 +3479,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               title="閉じる"
               aria-label="閉じる"
               type="button"
-              onClick={() => setHolidayCalendarOpen(false)}
+              onClick={requestCloseHolidayCalendar}
             >
               <span className="material-icons">close</span>
             </button>
@@ -3368,7 +3493,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 aria-label="前の月"
                 title="前の月"
                 onClick={() => setHolidayCalendarMonth((p) => new Date(p.getFullYear(), p.getMonth() - 1, 1))}
-                disabled={holidayCalendarExporting}
+                disabled={holidayCalendarExporting || holidayCalendarSyncing}
               >
                 ◀
               </button>
@@ -3381,7 +3506,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 aria-label="次の月"
                 title="次の月"
                 onClick={() => setHolidayCalendarMonth((p) => new Date(p.getFullYear(), p.getMonth() + 1, 1))}
-                disabled={holidayCalendarExporting}
+                disabled={holidayCalendarExporting || holidayCalendarSyncing}
               >
                 ▶
               </button>
@@ -3391,17 +3516,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <button
                 type="button"
                 className="btn-primary holiday-cal-save"
-                onClick={() => void exportHolidayCalendar()}
-                disabled={holidayCalendarExporting}
+                onClick={async () => {
+                  if (!accessToken) {
+                    await exportHolidayCalendar();
+                    return;
+                  }
+                  if (!holidayCalendarHasSaved || holidayCalendarDirty) return;
+                  await saveHolidayCalendarToServer();
+                  await exportHolidayCalendar();
+                }}
+                disabled={holidayCalendarExporting || holidayCalendarSyncing || (accessToken ? !holidayCalendarHasSaved || holidayCalendarDirty : false)}
               >
-                <span className="material-icons">download</span>
-                {holidayCalendarCopiedToast ? 'コピー完了' : holidayCalendarExporting ? 'コピー中...' : 'クリップボードにコピー'}
+                <span className="material-icons">content_copy</span>
+                {holidayCalendarCopiedToast ? 'コピー完了' : holidayCalendarExporting ? 'コピー中...' : '同期してコピー'}
               </button>
               <button
                 type="button"
                 className="btn-secondary holiday-cal-reset"
                 onClick={clearHolidayCalendar}
-                disabled={holidayCalendarExporting}
+                disabled={holidayCalendarExporting || holidayCalendarSyncing}
               >
                 <span className="material-icons">restart_alt</span>
                 リセット
@@ -3468,7 +3601,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         if (!c.inMonth) return;
                         toggleHolidayCalendarDay(d);
                       }}
-                      disabled={!c.inMonth || holidayCalendarExporting}
+                      disabled={!c.inMonth || holidayCalendarExporting || holidayCalendarSyncing}
                       aria-label={`${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`}
                     >
                       {d.getDate()}
@@ -3489,12 +3622,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className="task-stock-footer">
             <div className="task-stock-footer-buttons">
               <button
+                className="btn-primary"
+                id="holiday-calendar-save"
+                title="保存"
+                aria-label="保存"
+                type="button"
+                onClick={() => void saveHolidayCalendarToServer()}
+                disabled={!accessToken || holidayCalendarSyncing || holidayCalendarExporting || (!holidayCalendarDirty && holidayCalendarHasSaved)}
+              >
+                <span className="material-icons">save</span>
+              </button>
+              <button
                 className="btn-cancel"
                 id="holiday-calendar-cancel"
                 title="戻る"
                 aria-label="戻る"
                 type="button"
-                onClick={() => setHolidayCalendarOpen(false)}
+                onClick={requestCloseHolidayCalendar}
               >
                 <span className="material-icons">arrow_back</span>
               </button>

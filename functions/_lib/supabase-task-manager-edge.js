@@ -638,4 +638,26 @@ export class SupabaseTaskManagerEdge {
     await this._setDoc(userId, 'settings', 'default', settings || {});
     return true;
   }
+
+  async loadHolidayCalendar(userId) {
+    if (!userId) throw new Error('userId is required');
+    const doc = await this._getDoc(userId, 'holiday_calendar', 'default', null);
+    if (!doc) return null;
+    const holidays = Array.isArray(doc.holidays) ? doc.holidays : [];
+    const month = typeof doc.month === 'string' ? doc.month : null;
+    return { month, holidays };
+  }
+
+  async saveHolidayCalendar(calendar, userId) {
+    if (!userId) throw new Error('userId is required');
+    const month = typeof calendar?.month === 'string' ? calendar.month : null;
+    const holidaysRaw = Array.isArray(calendar?.holidays) ? calendar.holidays : [];
+    const holidays = holidaysRaw.filter((x) => typeof x === 'string');
+    await this._setDoc(userId, 'holiday_calendar', 'default', {
+      month,
+      holidays,
+      updatedAt: new Date().toISOString(),
+    });
+    return true;
+  }
 }
