@@ -2458,7 +2458,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 aria-label="お休みカレンダー"
                 type="button"
                 onClick={() => setHolidayCalendarOpen(true)}
-                disabled={busy}
+                disabled={!accessToken || busy}
               >
                 <span className="material-icons">event</span>
                 お休みカレンダー
