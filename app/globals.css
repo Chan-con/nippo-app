@@ -37,5 +37,5 @@ body {
 
 /* ダイアログはタイトルバーより前面に */
 .report-dialog {
-  z-index: 6000;
+  z-index: 6000 !important;
 }
