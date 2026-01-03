@@ -2,11 +2,22 @@
 node_modules/
 package-lock.json
 
+# Node/Yarn/Pnpm
+yarn.lock
+pnpm-lock.yaml
+npm-shrinkwrap.json
+
 # Data files
 datas/
 
 # Build outputs
 out/
+dist/
+.next/
+.swc/
+.turbo/
+.vercel/
+*.tsbuildinfo
 *.exe
 *.dmg
 *.pkg
@@ -24,9 +35,16 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Local env files (do not commit secrets)
+.env.*
+!.env.example
+
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Python
 __pycache__/
@@ -62,3 +80,14 @@ venv.bak/
 # Temporary files
 *.tmp
 *.temp.claude/ 
+
+# Caches
+node_modules/.cache/
+.cache/
+.eslintcache
+
+# Service workers / workbox build artifacts (if generated)
+**/sw.js
+**/sw.js.map
+**/workbox-*.js
+**/workbox-*.js.map
