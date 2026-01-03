@@ -748,20 +748,16 @@ textarea {
   border-bottom: none;
 }
 
-.timeline-item:hover .timeline-edit {
-  opacity: 1;
-}
-
 .timeline-edit {
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s ease;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-small);
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  min-height: 32px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -769,7 +765,7 @@ textarea {
   color: var(--text-muted);
   flex-shrink: 0;
   align-self: center;
-  margin-right: 12px;
+  margin-left: 12px;
 }
 
 .timeline-edit:hover {

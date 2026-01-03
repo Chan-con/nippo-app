@@ -1,7 +1,7 @@
 'use client';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Task = {
   id: string;
@@ -159,9 +159,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [editTag, setEditTag] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
-
-  const lastTapAtRef = useRef<number>(0);
-  const suppressCopyUntilRef = useRef<number>(0);
 
   // history
   const [historyDates, setHistoryDates] = useState<string[]>([]);
@@ -2027,8 +2024,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             className="timeline-task"
                             title="クリックでタスク名をコピー"
                             onClick={(e) => {
-                              if ((e as any)?.detail && (e as any).detail > 1) return;
-                              if (Date.now() < suppressCopyUntilRef.current) return;
                               e.preventDefault();
                               setNewTaskName(t.name);
                               const input = document.getElementById('task-input') as HTMLInputElement | null;
@@ -2040,24 +2035,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 } catch {
                                   // ignore
                                 }
-                              }
-                            }}
-                            onDoubleClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              suppressCopyUntilRef.current = Date.now() + 400;
-                              openEditForTask(t);
-                            }}
-                            onTouchEnd={(e) => {
-                              if (!accessToken || busy) return;
-                              const nowAt = Date.now();
-                              const delta = nowAt - lastTapAtRef.current;
-                              lastTapAtRef.current = nowAt;
-                              if (delta > 0 && delta < 280) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                suppressCopyUntilRef.current = Date.now() + 700;
-                                openEditForTask(t);
                               }
                             }}
                             onContextMenu={(e) => {
@@ -2075,6 +2052,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             {statusChip}
                           </div>
                         </div>
+                        <button
+                          type="button"
+                          className="timeline-edit"
+                          title="編集"
+                          aria-label="編集"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openEditForTask(t);
+                          }}
+                          disabled={!accessToken || busy}
+                        >
+                          <span className="material-icons">edit</span>
+                        </button>
                       </div>
                     );
                   })
