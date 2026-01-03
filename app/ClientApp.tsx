@@ -44,6 +44,129 @@ type TagWorkSummary = {
   groups: TagWorkDateGroup[];
 };
 
+const jpPublicHolidayCache = new Map<number, Set<string>>();
+
+function ymdKeyFromParts(year: number, month0: number, day: number) {
+  const y = String(year);
+  const m = String(month0 + 1).padStart(2, '0');
+  const d = String(day).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function ymdKeyFromDate(date: Date) {
+  return ymdKeyFromParts(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function nthWeekdayOfMonth(year: number, month0: number, weekday0: number, nth: number) {
+  const first = new Date(year, month0, 1);
+  const firstDow = first.getDay();
+  const delta = (weekday0 - firstDow + 7) % 7;
+  const day = 1 + delta + (nth - 1) * 7;
+  return new Date(year, month0, day);
+}
+
+function vernalEquinoxDay(year: number) {
+  // Valid / commonly used approximation for 2000-2099
+  return Math.floor(20.69115 + 0.242194 * (year - 2000) - Math.floor((year - 2000) / 4));
+}
+
+function autumnalEquinoxDay(year: number) {
+  // Valid / commonly used approximation for 2000-2099
+  return Math.floor(23.09 + 0.242194 * (year - 2000) - Math.floor((year - 2000) / 4));
+}
+
+function getJpPublicHolidayKeysForYear(year: number) {
+  const cached = jpPublicHolidayCache.get(year);
+  if (cached) return cached;
+
+  const holidays = new Set<string>();
+  const add = (date: Date) => holidays.add(ymdKeyFromDate(date));
+  const addParts = (m0: number, d: number) => holidays.add(ymdKeyFromParts(year, m0, d));
+
+  // Fixed holidays
+  addParts(0, 1); // 元日
+  addParts(1, 11); // 建国記念の日
+  if (year >= 2020) addParts(1, 23); // 天皇誕生日 (2020-)
+  if (year >= 1989 && year <= 2018) addParts(11, 23); // 天皇誕生日 (1989-2018)
+  addParts(3, 29); // 昭和の日
+  addParts(4, 3); // 憲法記念日
+  addParts(4, 4); // みどりの日
+  addParts(4, 5); // こどもの日
+  if (year >= 2016) addParts(7, 11); // 山の日 (2016-)
+  addParts(10, 3); // 文化の日
+  addParts(10, 23); // 勤労感謝の日
+
+  // Happy Monday system
+  add(nthWeekdayOfMonth(year, 0, 1, 2)); // 成人の日: 1月第2月曜
+  add(nthWeekdayOfMonth(year, 6, 1, 3)); // 海の日: 7月第3月曜
+  add(nthWeekdayOfMonth(year, 8, 1, 3)); // 敬老の日: 9月第3月曜
+  add(nthWeekdayOfMonth(year, 9, 1, 2)); // スポーツの日: 10月第2月曜
+
+  // Equinoxes
+  addParts(2, vernalEquinoxDay(year));
+  addParts(8, autumnalEquinoxDay(year));
+
+  // One-off adjustments (recent years)
+  if (year === 2019) {
+    addParts(4, 1); // 即位の日
+    addParts(9, 22); // 即位礼正殿の儀
+  }
+  if (year === 2020) {
+    // Olympics shifts
+    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 6, 1, 3)));
+    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 9, 1, 2)));
+    if (year >= 2016) holidays.delete(ymdKeyFromParts(year, 7, 11));
+    addParts(6, 23); // 海の日
+    addParts(6, 24); // スポーツの日
+    addParts(7, 10); // 山の日
+  }
+  if (year === 2021) {
+    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 6, 1, 3)));
+    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 9, 1, 2)));
+    if (year >= 2016) holidays.delete(ymdKeyFromParts(year, 7, 11));
+    addParts(6, 22); // 海の日
+    addParts(6, 23); // スポーツの日
+    addParts(7, 8); // 山の日
+  }
+
+  // Substitute holidays (振替休日): Sunday -> next non-holiday weekday
+  for (const key of Array.from(holidays)) {
+    const [yy, mm, dd] = key.split('-').map((v) => parseInt(v, 10));
+    const date = new Date(yy, (mm ?? 1) - 1, dd ?? 1);
+    if (date.getDay() !== 0) continue;
+    const sub = new Date(date);
+    do {
+      sub.setDate(sub.getDate() + 1);
+    } while (holidays.has(ymdKeyFromDate(sub)));
+    holidays.add(ymdKeyFromDate(sub));
+  }
+
+  // Citizen's holidays (国民の休日): weekday between two holidays
+  const cur = new Date(year, 0, 2);
+  const end = new Date(year, 11, 30);
+  while (cur <= end) {
+    const key = ymdKeyFromDate(cur);
+    if (!holidays.has(key) && cur.getDay() !== 0) {
+      const prev = new Date(cur);
+      prev.setDate(prev.getDate() - 1);
+      const next = new Date(cur);
+      next.setDate(next.getDate() + 1);
+      if (holidays.has(ymdKeyFromDate(prev)) && holidays.has(ymdKeyFromDate(next))) {
+        holidays.add(key);
+      }
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  jpPublicHolidayCache.set(year, holidays);
+  return holidays;
+}
+
+function isJpPublicHoliday(date: Date) {
+  const set = getJpPublicHolidayKeysForYear(date.getFullYear());
+  return set.has(ymdKeyFromDate(date));
+}
+
 function parseTimeToMinutesFlexible(timeStr?: string) {
   if (!timeStr) return null;
   const raw = String(timeStr).trim();
@@ -3320,6 +3443,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     d.getMonth() === new Date().getMonth() &&
                     d.getDate() === new Date().getDate();
                   const isHoliday = c.inMonth && holidayCalendarHolidays.has(key);
+                  const isJpHoliday = c.inMonth && isJpPublicHoliday(d);
                   const isSat = dow === 6;
                   const isSun = dow === 0;
 
@@ -3327,9 +3451,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     'holiday-cal-day',
                     c.inMonth ? '' : 'inactive',
                     isToday ? 'today' : '',
-                    isHoliday ? 'holiday' : '',
                     isSat ? 'saturday' : '',
                     isSun ? 'sunday' : '',
+                    isJpHoliday ? 'jp-holiday' : '',
+                    isHoliday ? 'holiday' : '',
                   ]
                     .filter(Boolean)
                     .join(' ');
