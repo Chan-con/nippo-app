@@ -235,6 +235,8 @@ textarea {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  min-height: 0; /* 子要素スクロールを有効にする */
+  overflow: hidden; /* スクロールは .sidebar-content 側に集約 */
 }
 
 .sidebar-header {
@@ -269,6 +271,9 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* タスク入力 */
@@ -296,6 +301,16 @@ textarea {
   font-size: 13px;
   font-weight: 600;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.task-add-tab .material-icons {
+  display: block;
+  line-height: 1;
 }
 
 .task-add-tab:hover {
@@ -481,6 +496,12 @@ textarea {
   font-size: 14px;
   width: 100%;
   justify-content: center;
+}
+
+.btn-primary .material-icons,
+.btn-secondary .material-icons {
+  display: block;
+  line-height: 1;
 }
 
 .btn-secondary:hover:not(:disabled):not(.disabled) {
@@ -1401,6 +1422,15 @@ textarea {
   padding: 4px;
   border-radius: var(--radius-small);
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.edit-close .material-icons {
+  display: block;
+  line-height: 1;
 }
 
 .edit-close:hover {
@@ -1595,6 +1625,15 @@ textarea {
   padding: 4px;
   border-radius: var(--radius-small);
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.report-close .material-icons {
+  display: block;
+  line-height: 1;
 }
 
 .report-close:hover {
@@ -1966,6 +2005,15 @@ textarea {
   padding: 4px;
   border-radius: var(--radius-small);
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.settings-close .material-icons {
+  display: block;
+  line-height: 1;
 }
 
 .settings-close:hover {
@@ -2163,6 +2211,11 @@ textarea {
   transition: all 0.2s ease;
 }
 
+.input-row button .material-icons {
+  display: block;
+  line-height: 1;
+}
+
 .input-row button:hover {
   background: var(--accent-hover);
   transform: translateY(-1px);
@@ -2309,7 +2362,7 @@ textarea {
     transform: translateX(-105%);
     transition: transform 0.2s ease;
     z-index: 50;
-    overflow-y: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -2529,6 +2582,15 @@ textarea {
   padding: 4px;
   border-radius: var(--radius-small);
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.task-stock-close .material-icons {
+  display: block;
+  line-height: 1;
 }
 
 .task-stock-close:hover {
@@ -2938,6 +3000,15 @@ textarea {
   transition: all 0.3s ease;
   font-size: 14px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.mode-btn .material-icons {
+  display: block;
+  line-height: 1;
 }
 
 .mode-btn:hover {
@@ -3161,6 +3232,35 @@ textarea {
 
 /* 末尾で上書き（後続の通常ルールに負けないようにする） */
 @media (max-width: 768px) {
+  .settings-content,
+  .task-stock-content {
+    width: calc(100% - 24px);
+    max-height: calc(var(--app-height) - var(--app-offset-top) - 24px);
+  }
+
+  .settings-header,
+  .settings-body,
+  .settings-footer,
+  .task-stock-header,
+  .task-stock-body,
+  .task-stock-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .settings-footer,
+  .task-stock-footer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .add-url-form .input-row {
+    flex-direction: column;
+  }
+
+  .add-url-form .input-row button {
+    width: 100%;
+  }
+
   .history-controls {
     align-items: flex-start;
   }
