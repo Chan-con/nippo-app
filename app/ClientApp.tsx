@@ -1,7 +1,7 @@
 'use client';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Task = {
   id: string;
@@ -151,6 +151,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tagWorkLoading, setTagWorkLoading] = useState(false);
   const [tagWorkError, setTagWorkError] = useState<string | null>(null);
 
+  // edit dialog (timeline)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string>('');
+  const [editingTaskDateKey, setEditingTaskDateKey] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editTag, setEditTag] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+
+  const lastTapAtRef = useRef<number>(0);
+  const suppressCopyUntilRef = useRef<number>(0);
+
   // history
   const [historyDates, setHistoryDates] = useState<string[]>([]);
   const [historyDate, setHistoryDate] = useState<string>('');
@@ -245,6 +257,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setTaskStockInput('');
       setTaskStockDirty(false);
       setTaskStockLoaded(false);
+      setEditOpen(false);
+      setEditingTaskId('');
+      setEditingTaskDateKey(null);
+      setEditName('');
+      setEditTag('');
+      setEditStartTime('');
+      setEditEndTime('');
       setSettingsTimeRoundingInterval(0);
       setSettingsTimeRoundingMode('nearest');
       return;
@@ -1565,6 +1584,92 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportOpen, accessToken]);
 
+  function openEditForTask(task: Task) {
+    if (!accessToken || busy) return;
+    if (!task?.id) return;
+    if (viewMode === 'history' && !historyDate) return;
+
+    setEditingTaskId(String(task.id));
+    setEditingTaskDateKey(viewMode === 'history' ? historyDate : null);
+    setEditName(String(task.name || ''));
+    setEditTag(String(task.tag || ''));
+    setEditStartTime(String(task.startTime || ''));
+    setEditEndTime(String(task.endTime || ''));
+    setEditOpen(true);
+  }
+
+  async function saveEditingTask() {
+    if (!accessToken) return;
+    if (!editingTaskId) return;
+    const name = editName.trim();
+    const startTime = editStartTime.trim();
+    const endTime = editEndTime.trim();
+    const tag = editTag.trim();
+
+    if (!name || !startTime) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      if (viewMode === 'history') {
+        const dateKey = editingTaskDateKey || historyDate;
+        if (!dateKey) throw new Error('日付が未選択です');
+        const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null }),
+        });
+        const body = await res.json().catch(() => null as any);
+        if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
+        await loadHistory(dateKey);
+      } else {
+        const res = await apiFetch(`/api/tasks/${editingTaskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null }),
+        });
+        const body = await res.json().catch(() => null as any);
+        if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
+        await reloadTasks();
+      }
+
+      setEditOpen(false);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteEditingTask() {
+    if (!accessToken) return;
+    if (!editingTaskId) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      if (viewMode === 'history') {
+        const dateKey = editingTaskDateKey || historyDate;
+        if (!dateKey) throw new Error('日付が未選択です');
+        const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, { method: 'DELETE' });
+        const body = await res.json().catch(() => null as any);
+        if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '削除に失敗しました');
+        await loadHistory(dateKey);
+      } else {
+        const res = await apiFetch(`/api/tasks/${editingTaskId}`, { method: 'DELETE' });
+        const body = await res.json().catch(() => null as any);
+        if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '削除に失敗しました');
+        await reloadTasks();
+      }
+
+      setEditOpen(false);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <div className="titlebar">
@@ -1922,6 +2027,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             className="timeline-task"
                             title="クリックでタスク名をコピー"
                             onClick={(e) => {
+                              if ((e as any)?.detail && (e as any).detail > 1) return;
+                              if (Date.now() < suppressCopyUntilRef.current) return;
                               e.preventDefault();
                               setNewTaskName(t.name);
                               const input = document.getElementById('task-input') as HTMLInputElement | null;
@@ -1933,6 +2040,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 } catch {
                                   // ignore
                                 }
+                              }
+                            }}
+                            onDoubleClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              suppressCopyUntilRef.current = Date.now() + 400;
+                              openEditForTask(t);
+                            }}
+                            onTouchEnd={(e) => {
+                              if (!accessToken || busy) return;
+                              const nowAt = Date.now();
+                              const delta = nowAt - lastTapAtRef.current;
+                              lastTapAtRef.current = nowAt;
+                              if (delta > 0 && delta < 280) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                suppressCopyUntilRef.current = Date.now() + 700;
+                                openEditForTask(t);
                               }
                             }}
                             onContextMenu={(e) => {
@@ -1996,6 +2121,81 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
         </main>
+      </div>
+
+      <div className={`edit-dialog ${editOpen ? 'show' : ''}`} id="edit-dialog" aria-hidden={!editOpen}>
+        <div className="edit-content">
+          <div className="edit-header">
+            <h3>✏️ タスク編集</h3>
+            <button
+              className="edit-close"
+              id="edit-close"
+              title="閉じる"
+              aria-label="閉じる"
+              type="button"
+              onClick={() => setEditOpen(false)}
+            >
+              <span className="material-icons">close</span>
+            </button>
+          </div>
+          <div className="edit-body">
+            <div className="edit-field">
+              <label htmlFor="edit-task-name">作業内容</label>
+              <input
+                id="edit-task-name"
+                className="edit-input"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="タスク名"
+                disabled={busy}
+              />
+            </div>
+            <div className="edit-field">
+              <label htmlFor="edit-task-tag">タグ（任意）</label>
+              <input
+                id="edit-task-tag"
+                className="edit-input"
+                value={editTag}
+                onChange={(e) => setEditTag(e.target.value)}
+                placeholder="タグ"
+                disabled={busy}
+              />
+            </div>
+            <div className="edit-field">
+              <label htmlFor="edit-task-start">作業開始時刻</label>
+              <input
+                id="edit-task-start"
+                className="edit-input"
+                value={editStartTime}
+                onChange={(e) => setEditStartTime(e.target.value)}
+                placeholder="例: 午前 9:00 / 09:00"
+                disabled={busy}
+              />
+            </div>
+            <div className="edit-field">
+              <label htmlFor="edit-task-end">作業終了時刻（任意）</label>
+              <input
+                id="edit-task-end"
+                className="edit-input"
+                value={editEndTime}
+                onChange={(e) => setEditEndTime(e.target.value)}
+                placeholder="例: 午後 6:00 / 18:00"
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <div className="edit-footer">
+            <button className="btn-primary" id="edit-save" title="保存" aria-label="保存" type="button" onClick={saveEditingTask} disabled={!accessToken || busy}>
+              <span className="material-icons">save</span>
+            </button>
+            <button className="btn-cancel" id="edit-cancel" title="キャンセル" aria-label="キャンセル" type="button" onClick={() => setEditOpen(false)} disabled={busy}>
+              <span className="material-icons">arrow_back</span>
+            </button>
+            <button className="btn-danger" id="edit-delete" title="削除" aria-label="削除" type="button" onClick={deleteEditingTask} disabled={!accessToken || busy}>
+              <span className="material-icons">delete</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className={`report-dialog ${reportOpen ? 'show' : ''}`} id="report-dialog" aria-hidden={!reportOpen}>
