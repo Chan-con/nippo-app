@@ -46,6 +46,9 @@ class NippoApp {
         this._realtimePendingTypes = new Set();
         this._realtimePendingKeys = new Set();
         this._viewportHeightCleanup = null;
+        this._viewportSyncRaf = 0;
+        this._viewportSyncUntil = 0;
+        this._scrollLockY = 0;
         this.init();
     }
 
@@ -55,6 +58,11 @@ class NippoApp {
         try {
             const root = document.documentElement;
             if (!root || !root.style) return;
+
+            const isIOS = (() => {
+                const ua = navigator.userAgent || '';
+                return /iP(hone|ad|od)/.test(ua);
+            })();
 
             const vv = window.visualViewport;
             const setViewportVars = () => {
@@ -70,31 +78,102 @@ class NippoApp {
                 root.style.setProperty('--app-offset-top', `${Math.round(offsetTop)}px`);
             };
 
+            const startContinuousSync = (durationMs = 800) => {
+                // 既存の同期を延長
+                this._viewportSyncUntil = Math.max(this._viewportSyncUntil || 0, Date.now() + durationMs);
+                if (this._viewportSyncRaf) return;
+
+                const tick = () => {
+                    setViewportVars();
+                    if (Date.now() < (this._viewportSyncUntil || 0)) {
+                        this._viewportSyncRaf = requestAnimationFrame(tick);
+                    } else {
+                        this._viewportSyncRaf = 0;
+                    }
+                };
+
+                this._viewportSyncRaf = requestAnimationFrame(tick);
+            };
+
+            const lockPageScroll = () => {
+                if (!isIOS) return;
+                // すでに固定されているなら何もしない
+                if (document.body.classList.contains('keyboard-scroll-lock')) return;
+                this._scrollLockY = window.scrollY || 0;
+                document.body.classList.add('keyboard-scroll-lock');
+                document.body.style.position = 'fixed';
+                document.body.style.top = `${-this._scrollLockY}px`;
+                document.body.style.left = '0';
+                document.body.style.right = '0';
+                document.body.style.width = '100%';
+            };
+
+            const unlockPageScroll = () => {
+                if (!isIOS) return;
+                if (!document.body.classList.contains('keyboard-scroll-lock')) return;
+                document.body.classList.remove('keyboard-scroll-lock');
+                document.body.style.position = '';
+                document.body.style.top = '';
+                document.body.style.left = '';
+                document.body.style.right = '';
+                document.body.style.width = '';
+                const y = this._scrollLockY || 0;
+                this._scrollLockY = 0;
+                // 復帰
+                window.scrollTo(0, y);
+            };
+
             // 初回
             setViewportVars();
+            startContinuousSync(200);
 
             // 変化に追従（iOSのキーボード/URLバーの出入りは visualViewport が一番確実）
             const onResize = () => setViewportVars();
             const onScroll = () => setViewportVars();
 
-            window.addEventListener('resize', onResize);
-            window.addEventListener('orientationchange', onResize);
-            document.addEventListener('focusin', onResize);
-            document.addEventListener('focusout', () => setTimeout(setViewportVars, 50));
+            const onViewportChange = () => {
+                setViewportVars();
+                // キーボード出現/URLバー変化のアニメーションを追う
+                startContinuousSync(900);
+            };
+
+            window.addEventListener('resize', onViewportChange);
+            window.addEventListener('orientationchange', onViewportChange);
+            document.addEventListener('focusin', (e) => {
+                const t = e.target;
+                if (t instanceof HTMLElement && t.matches('input, textarea, select')) {
+                    lockPageScroll();
+                    onViewportChange();
+                }
+            });
+            document.addEventListener('focusout', (e) => {
+                const t = e.target;
+                if (t instanceof HTMLElement && t.matches('input, textarea, select')) {
+                    // キーボードが閉じるアニメーションも追う
+                    setTimeout(() => {
+                        unlockPageScroll();
+                        onViewportChange();
+                    }, 50);
+                }
+            });
 
             if (vv) {
-                vv.addEventListener('resize', onResize);
-                vv.addEventListener('scroll', onScroll);
+                vv.addEventListener('resize', onViewportChange);
+                vv.addEventListener('scroll', onViewportChange);
             }
 
             this._viewportHeightCleanup = () => {
-                window.removeEventListener('resize', onResize);
-                window.removeEventListener('orientationchange', onResize);
-                document.removeEventListener('focusin', onResize);
+                window.removeEventListener('resize', onViewportChange);
+                window.removeEventListener('orientationchange', onViewportChange);
                 if (vv) {
-                    vv.removeEventListener('resize', onResize);
-                    vv.removeEventListener('scroll', onScroll);
+                    vv.removeEventListener('resize', onViewportChange);
+                    vv.removeEventListener('scroll', onViewportChange);
                 }
+                if (this._viewportSyncRaf) {
+                    cancelAnimationFrame(this._viewportSyncRaf);
+                    this._viewportSyncRaf = 0;
+                }
+                unlockPageScroll();
             };
         } catch (_e) {
             // no-op

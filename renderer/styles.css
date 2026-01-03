@@ -61,6 +61,12 @@ body {
   pointer-events: auto !important;
 }
 
+/* iOS: 入力フォーカス時にブラウザがページを勝手にスクロールして
+   fixedヘッダーが視界外に押し出されるのを防ぐ */
+body.keyboard-scroll-lock {
+  overscroll-behavior: none;
+}
+
 input,
 select,
 textarea {
