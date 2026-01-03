@@ -36,6 +36,10 @@ body {
 }
 
 /* ダイアログはタイトルバーより前面に */
-.report-dialog {
+.report-dialog,
+.settings-dialog,
+.edit-dialog,
+.confirm-dialog,
+.task-stock-dialog {
   z-index: 6000 !important;
 }
