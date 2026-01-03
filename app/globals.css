@@ -34,3 +34,8 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
 }
+
+/* ダイアログはタイトルバーより前面に */
+.report-dialog {
+  z-index: 6000;
+}
