@@ -288,6 +288,22 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const workTimeExcludedNameSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const name of settingsExcludeTaskNames) {
+      const v = String(name ?? '').trim();
+      if (!v) continue;
+      set.add(v);
+    }
+    return set;
+  }, [settingsExcludeTaskNames]);
+
+  function isWorkTimeExcludedTaskName(name?: string) {
+    const v = String(name ?? '').trim();
+    if (!v) return false;
+    return workTimeExcludedNameSet.has(v);
+  }
+
   const [tagWorkSummary, setTagWorkSummary] = useState<TagWorkSummary[]>([]);
   const [activeTag, setActiveTag] = useState<string>('');
   const [tagWorkLoading, setTagWorkLoading] = useState(false);
@@ -613,6 +629,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     void loadTagStock();
     void loadGoalStock();
     void loadTaskStock();
+    void loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
@@ -1342,7 +1359,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 className="flex items-start justify-between gap-3 rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-sm text-[var(--text-primary)]">{t.name}</div>
+                  <div className="flex min-w-0 items-center gap-1">
+                    {isWorkTimeExcludedTaskName(t.name) ? (
+                      <span
+                        className="material-icons"
+                        title="就労時間の集計から除外"
+                        aria-label="就労時間の集計から除外"
+                        style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                      >
+                        local_cafe
+                      </span>
+                    ) : null}
+                    <div className="truncate text-sm text-[var(--text-primary)]">{t.name}</div>
+                  </div>
                   <div className="text-xs text-[var(--text-muted)]">
                     {t.status === 'reserved' ? '(予約) ' : ''}
                     {t.startTime || ''}
@@ -1429,7 +1458,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 className="flex items-start justify-between gap-3 rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-sm text-[var(--text-primary)]">{t.name}</div>
+                  <div className="flex min-w-0 items-center gap-1">
+                    {isWorkTimeExcludedTaskName(t.name) ? (
+                      <span
+                        className="material-icons"
+                        title="就労時間の集計から除外"
+                        aria-label="就労時間の集計から除外"
+                        style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                      >
+                        local_cafe
+                      </span>
+                    ) : null}
+                    <div className="truncate text-sm text-[var(--text-primary)]">{t.name}</div>
+                  </div>
                   <div className="text-xs text-[var(--text-muted)]">
                     {t.startTime || ''}
                     {t.endTime ? ` - ${t.endTime}` : ''}
@@ -2710,7 +2751,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               input?.focus();
                             }}
                           >
-                            {t.name}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              {isWorkTimeExcludedTaskName(t.name) ? (
+                                <span
+                                  className="material-icons"
+                                  title="就労時間の集計から除外"
+                                  aria-label="就労時間の集計から除外"
+                                  style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                                >
+                                  local_cafe
+                                </span>
+                              ) : null}
+                              <span>{t.name}</span>
+                            </span>
                           </div>
                           <div className="timeline-meta">
                             {duration ? <span className="timeline-duration">{duration}</span> : null}
