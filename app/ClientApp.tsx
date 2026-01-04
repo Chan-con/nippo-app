@@ -220,6 +220,30 @@ function formatTimeDisplay(timeStr?: string) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+function normalizeTaskNameListFromText(text: string) {
+  const lines = String(text || '')
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => !!s);
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const name of lines) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+function taskNameListToText(list: unknown) {
+  const arr = Array.isArray(list) ? list : [];
+  return arr
+    .map((x) => String(x ?? '').trim())
+    .filter((s) => !!s)
+    .join('\n');
+}
+
 function getSupabase(opts?: { supabaseUrl?: string; supabaseAnonKey?: string }): SupabaseClient | null {
   const url = opts?.supabaseUrl || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = opts?.supabaseAnonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -242,6 +266,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tagStockOpen, setTagStockOpen] = useState(false);
 
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskName, setNewTaskName] = useState('');
@@ -266,6 +291,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const [settingsTimeRoundingInterval, setSettingsTimeRoundingInterval] = useState(0);
   const [settingsTimeRoundingMode, setSettingsTimeRoundingMode] = useState<'nearest' | 'floor' | 'ceil'>('nearest');
+  const [settingsExcludeTaskNamesText, setSettingsExcludeTaskNamesText] = useState('');
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [settingsRemoteUpdatePending, setSettingsRemoteUpdatePending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -529,6 +557,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (cancelled) return;
       const session = data.session;
       setAccessToken(session?.access_token ?? null);
+      setUserId(session?.user?.id ?? null);
       setUserEmail(session?.user?.email ?? null);
     }
 
@@ -536,6 +565,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
     const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
       setAccessToken(session?.access_token ?? null);
+      setUserId(session?.user?.id ?? null);
       setUserEmail(session?.user?.email ?? null);
     });
 
@@ -578,6 +608,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setEditEndTime('');
       setSettingsTimeRoundingInterval(0);
       setSettingsTimeRoundingMode('nearest');
+      setSettingsExcludeTaskNamesText('');
+      setSettingsDirty(false);
+      setSettingsRemoteUpdatePending(false);
+      setUserId(null);
       return;
     }
     void reloadTasks();
@@ -719,6 +753,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const mode = String(s?.timeRounding?.mode ?? 'nearest');
       setSettingsTimeRoundingInterval(Number.isFinite(interval) ? interval : 0);
       setSettingsTimeRoundingMode(mode === 'floor' || mode === 'ceil' || mode === 'nearest' ? (mode as any) : 'nearest');
+      setSettingsExcludeTaskNamesText(taskNameListToText(s?.workTime?.excludeTaskNames));
+      setSettingsDirty(false);
+      setSettingsRemoteUpdatePending(false);
     } catch {
       // ignore
     }
@@ -729,6 +766,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setBusy(true);
     setError(null);
     try {
+      const excludeTaskNames = normalizeTaskNameListFromText(settingsExcludeTaskNamesText);
       const res = await apiFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -738,11 +776,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               interval: settingsTimeRoundingInterval,
               mode: settingsTimeRoundingMode,
             },
+            workTime: {
+              excludeTaskNames,
+            },
           },
         }),
       });
       const body = await res.json();
       if (!res.ok || !body?.success) throw new Error(body?.error || '保存に失敗しました');
+      setSettingsDirty(false);
+      setSettingsRemoteUpdatePending(false);
       setSettingsOpen(false);
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -750,6 +793,46 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setBusy(false);
     }
   }
+
+  // realtime: settings doc updates (Supabase Realtime)
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    if (!accessToken) return;
+    if (!userId) return;
+
+    const channel = client
+      .channel(`nippo_docs:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'nippo_docs',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload: any) => {
+          const docType = payload?.new?.doc_type ?? payload?.old?.doc_type ?? null;
+          const docKey = payload?.new?.doc_key ?? payload?.old?.doc_key ?? null;
+          if (docType !== 'settings' || docKey !== 'default') return;
+
+          if (settingsOpen && settingsDirty) {
+            setSettingsRemoteUpdatePending(true);
+            return;
+          }
+          void loadSettings();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        client.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [supabase, accessToken, userId, settingsOpen, settingsDirty]);
 
   async function saveTagStockChanges() {
     if (!accessToken) return;
@@ -3090,6 +3173,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </button>
           </div>
           <div className="settings-body">
+            {settingsRemoteUpdatePending ? (
+              <div className="settings-section">
+                <p className="settings-hint">他端末で設定が更新されました。保存すると上書きされるため、必要なら閉じてから開き直してください。</p>
+              </div>
+            ) : null}
             <div className="settings-section">
               <h4>⏱️ 時刻の丸め</h4>
               <p className="settings-hint">タスクの開始/終了ボタンを押した時刻を、指定した単位で自動的に丸めます。</p>
@@ -3102,7 +3190,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     id="time-rounding-interval"
                     className="edit-input"
                     value={String(settingsTimeRoundingInterval)}
-                    onChange={(e) => setSettingsTimeRoundingInterval(parseInt(e.target.value || '0', 10) || 0)}
+                    onChange={(e) => {
+                      setSettingsTimeRoundingInterval(parseInt(e.target.value || '0', 10) || 0);
+                      setSettingsDirty(true);
+                    }}
                   >
                     <option value="0">リアルタイム（丸めなし）</option>
                     <option value="5">5分</option>
@@ -3119,7 +3210,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     id="time-rounding-mode"
                     className="edit-input"
                     value={settingsTimeRoundingMode}
-                    onChange={(e) => setSettingsTimeRoundingMode((e.target.value as any) || 'nearest')}
+                    onChange={(e) => {
+                      setSettingsTimeRoundingMode((e.target.value as any) || 'nearest');
+                      setSettingsDirty(true);
+                    }}
                   >
                     <option value="nearest">最近接（四捨五入）</option>
                     <option value="floor">切り捨て</option>
@@ -3129,6 +3223,28 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </div>
               <div id="time-rounding-preview" className="rounding-preview" aria-live="polite">
                 例: 現在 10:12 → 丸め後 10:10
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <h4>🧮 就労時間集計</h4>
+              <p className="settings-hint">ここで指定したタスク名は、就労時間の集計から除外します（1行=1タスク名 / 完全一致）。</p>
+              <div className="settings-field">
+                <label htmlFor="worktime-exclude-tasknames" className="settings-label">
+                  除外するタスク名
+                </label>
+                <textarea
+                  id="worktime-exclude-tasknames"
+                  className="edit-input"
+                  rows={5}
+                  value={settingsExcludeTaskNamesText}
+                  onChange={(e) => {
+                    setSettingsExcludeTaskNamesText(e.target.value);
+                    setSettingsDirty(true);
+                  }}
+                  placeholder={'例:\n休憩\n打刻\n雑務'}
+                  disabled={!accessToken || busy}
+                />
               </div>
             </div>
 
