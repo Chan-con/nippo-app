@@ -2789,20 +2789,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
           <div className="report-body">
             <div className="report-section">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <h4>🎯 目標</h4>
-                <button
-                  type="button"
-                  className="tag-copy-btn"
-                  onClick={copyGoalsToClipboard}
-                  disabled={goalStock.length === 0}
-                  title="目標をコピー"
-                  aria-label="目標をコピー"
-                >
-                  <span className="material-icons">content_copy</span>
-                  コピー
-                </button>
-              </div>
+              <h4>🎯 目標</h4>
               <div className="goal-summary">
                 {goalStock.length === 0 ? (
                   <div className="sub-text">未設定</div>
@@ -3065,6 +3052,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               }}
             >
               <span className="material-icons">content_copy</span>
+            </button>
+            <button
+              className="btn-secondary"
+              id="goal-copy"
+              title="目標をコピー"
+              aria-label="目標をコピー"
+              type="button"
+              onClick={copyGoalsToClipboard}
+              disabled={goalStock.length === 0}
+            >
+              <span className="material-icons">flag</span>
             </button>
             <button
               className="btn-primary"
