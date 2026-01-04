@@ -1043,6 +1043,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  async function copyGoalsToClipboard() {
+    try {
+      const text = goalStock.map((g) => `・ ${g.name}`).join('\n').trim();
+      if (!text) return;
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore
+    }
+  }
+
   async function addReportUrl() {
     if (!accessToken) return;
     const name = newReportUrl.name.trim();
@@ -2779,7 +2789,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
           <div className="report-body">
             <div className="report-section">
-              <h4>🎯 目標</h4>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <h4>🎯 目標</h4>
+                <button
+                  type="button"
+                  className="tag-copy-btn"
+                  onClick={copyGoalsToClipboard}
+                  disabled={goalStock.length === 0}
+                  title="目標をコピー"
+                  aria-label="目標をコピー"
+                >
+                  <span className="material-icons">content_copy</span>
+                  コピー
+                </button>
+              </div>
               <div className="goal-summary">
                 {goalStock.length === 0 ? (
                   <div className="sub-text">未設定</div>
