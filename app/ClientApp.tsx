@@ -220,28 +220,18 @@ function formatTimeDisplay(timeStr?: string) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
-function normalizeTaskNameListFromText(text: string) {
-  const lines = String(text || '')
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => !!s);
-
+function normalizeTaskNameList(list: unknown) {
+  const arr = Array.isArray(list) ? list : [];
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const name of lines) {
+  for (const item of arr) {
+    const name = String(item ?? '').trim();
+    if (!name) continue;
     if (seen.has(name)) continue;
     seen.add(name);
     out.push(name);
   }
   return out;
-}
-
-function taskNameListToText(list: unknown) {
-  const arr = Array.isArray(list) ? list : [];
-  return arr
-    .map((x) => String(x ?? '').trim())
-    .filter((s) => !!s)
-    .join('\n');
 }
 
 function getSupabase(opts?: { supabaseUrl?: string; supabaseAnonKey?: string }): SupabaseClient | null {
@@ -291,7 +281,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const [settingsTimeRoundingInterval, setSettingsTimeRoundingInterval] = useState(0);
   const [settingsTimeRoundingMode, setSettingsTimeRoundingMode] = useState<'nearest' | 'floor' | 'ceil'>('nearest');
-  const [settingsExcludeTaskNamesText, setSettingsExcludeTaskNamesText] = useState('');
+  const [settingsExcludeTaskNames, setSettingsExcludeTaskNames] = useState<string[]>([]);
+  const [settingsExcludeTaskNameInput, setSettingsExcludeTaskNameInput] = useState('');
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsRemoteUpdatePending, setSettingsRemoteUpdatePending] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -608,7 +599,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setEditEndTime('');
       setSettingsTimeRoundingInterval(0);
       setSettingsTimeRoundingMode('nearest');
-      setSettingsExcludeTaskNamesText('');
+      setSettingsExcludeTaskNames([]);
+      setSettingsExcludeTaskNameInput('');
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
       setUserId(null);
@@ -753,7 +745,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const mode = String(s?.timeRounding?.mode ?? 'nearest');
       setSettingsTimeRoundingInterval(Number.isFinite(interval) ? interval : 0);
       setSettingsTimeRoundingMode(mode === 'floor' || mode === 'ceil' || mode === 'nearest' ? (mode as any) : 'nearest');
-      setSettingsExcludeTaskNamesText(taskNameListToText(s?.workTime?.excludeTaskNames));
+      setSettingsExcludeTaskNames(normalizeTaskNameList(s?.workTime?.excludeTaskNames));
+      setSettingsExcludeTaskNameInput('');
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
     } catch {
@@ -766,7 +759,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setBusy(true);
     setError(null);
     try {
-      const excludeTaskNames = normalizeTaskNameListFromText(settingsExcludeTaskNamesText);
+      const excludeTaskNames = normalizeTaskNameList(settingsExcludeTaskNames);
       const res = await apiFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3227,28 +3220,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
 
             <div className="settings-section">
-              <h4>🧮 就労時間集計</h4>
-              <p className="settings-hint">ここで指定したタスク名は、就労時間の集計から除外します（1行=1タスク名 / 完全一致）。</p>
-              <div className="settings-field">
-                <label htmlFor="worktime-exclude-tasknames" className="settings-label">
-                  除外するタスク名
-                </label>
-                <textarea
-                  id="worktime-exclude-tasknames"
-                  className="edit-input"
-                  rows={5}
-                  value={settingsExcludeTaskNamesText}
-                  onChange={(e) => {
-                    setSettingsExcludeTaskNamesText(e.target.value);
-                    setSettingsDirty(true);
-                  }}
-                  placeholder={'例:\n休憩\n打刻\n雑務'}
-                  disabled={!accessToken || busy}
-                />
-              </div>
-            </div>
-
-            <div className="settings-section">
               <h4>🔗 報告先URL</h4>
               <div className="url-list">
                 {reportUrls.length === 0 ? (
@@ -3298,6 +3269,74 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     disabled={!accessToken || busy}
                   />
                   <button type="button" title="追加" aria-label="追加" onClick={addReportUrl} disabled={!accessToken || busy}>
+                    <span className="material-icons">add</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <h4>🧮 就労時間集計</h4>
+              <p className="settings-hint">ここで指定したタスク名は、就労時間の集計から除外します（完全一致）。</p>
+              <div className="url-list">
+                {settingsExcludeTaskNames.length === 0 ? (
+                  <div className="url-list-empty">
+                    <span className="material-icons">do_not_disturb_on</span>
+                    <div>除外タスクは未設定です</div>
+                  </div>
+                ) : (
+                  settingsExcludeTaskNames.map((name) => (
+                    <div key={`settings-exclude-${name}`} className="url-item">
+                      <div className="url-info">
+                        <div className="url-name">{name}</div>
+                        <div className="url-address">完全一致で除外</div>
+                      </div>
+                      <div className="url-actions">
+                        <button
+                          className="delete"
+                          type="button"
+                          title="削除"
+                          aria-label="削除"
+                          onClick={() => {
+                            setSettingsExcludeTaskNames((p) => p.filter((x) => x !== name));
+                            setSettingsDirty(true);
+                          }}
+                          disabled={!accessToken || busy}
+                        >
+                          <span className="material-icons">delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="add-url-form">
+                <h5>除外タスクを追加</h5>
+                <div className="input-row">
+                  <input
+                    type="text"
+                    value={settingsExcludeTaskNameInput}
+                    onChange={(e) => setSettingsExcludeTaskNameInput(e.target.value)}
+                    placeholder="タスク名（例：休憩）"
+                    disabled={!accessToken || busy}
+                  />
+                  <button
+                    type="button"
+                    title="追加"
+                    aria-label="追加"
+                    onClick={() => {
+                      const name = settingsExcludeTaskNameInput.trim();
+                      if (!name) return;
+                      setSettingsExcludeTaskNames((p) => {
+                        if (p.includes(name)) return p;
+                        return [...p, name];
+                      });
+                      setSettingsExcludeTaskNameInput('');
+                      setSettingsDirty(true);
+                    }}
+                    disabled={!accessToken || busy}
+                  >
                     <span className="material-icons">add</span>
                   </button>
                 </div>
