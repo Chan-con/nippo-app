@@ -3014,6 +3014,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </button>
             <button
               className="btn-secondary"
+              id="goal-copy"
+              title="目標をコピー"
+              aria-label="目標をコピー"
+              type="button"
+              onClick={copyGoalsToClipboard}
+              disabled={goalStock.length === 0}
+            >
+              <span className="material-icons">flag</span>
+            </button>
+            <button
+              className="btn-secondary"
               id="copy-timeline-btn"
               title="タイムラインをコピー"
               aria-label="タイムラインをコピー"
@@ -3052,17 +3063,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               }}
             >
               <span className="material-icons">content_copy</span>
-            </button>
-            <button
-              className="btn-secondary"
-              id="goal-copy"
-              title="目標をコピー"
-              aria-label="目標をコピー"
-              type="button"
-              onClick={copyGoalsToClipboard}
-              disabled={goalStock.length === 0}
-            >
-              <span className="material-icons">flag</span>
             </button>
             <button
               className="btn-primary"
