@@ -318,6 +318,16 @@ textarea {
   border-color: var(--accent);
 }
 
+.task-add-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.task-add-tab:disabled:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+}
+
 .task-add-tab.active {
   background: var(--accent);
   color: white;

@@ -407,6 +407,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
 
+  useEffect(() => {
+    // 履歴モードでは予約を扱わない（予約は「今日のみ」要件）
+    if (viewMode !== 'history') return;
+    setAddMode('now');
+    setReserveStartTime('');
+  }, [viewMode]);
+
   function formatDateISO(d: Date) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1925,25 +1932,45 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const name = newTaskName.trim();
     if (!name) return;
 
+    const isHistoryTarget = viewMode === 'history' && !!historyDate;
+
     setBusy(true);
     setError(null);
     try {
-      const isReserve = addMode === 'reserve';
-      const url = isReserve ? '/api/tasks/reserve' : '/api/tasks';
-      const payload: any = { name };
-      if (selectedTag) payload.tag = selectedTag;
-      if (isReserve && reserveStartTime) payload.startTime = reserveStartTime;
+      if (isHistoryTarget) {
+        const payload: any = { name };
+        if (selectedTag) payload.tag = selectedTag;
 
-      const res = await apiFetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const body = await res.json();
-      if (!res.ok || !body?.success) throw new Error(body?.error || '追加に失敗しました');
-      setNewTaskName('');
-      setReserveStartTime('');
-      await reloadTasks();
+        const res = await apiFetch(`/api/history/${historyDate}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '追加に失敗しました');
+
+        setNewTaskName('');
+        setReserveStartTime('');
+        await loadHistory(historyDate);
+        await loadHistoryDates();
+      } else {
+        const isReserve = addMode === 'reserve';
+        const url = isReserve ? '/api/tasks/reserve' : '/api/tasks';
+        const payload: any = { name };
+        if (selectedTag) payload.tag = selectedTag;
+        if (isReserve && reserveStartTime) payload.startTime = reserveStartTime;
+
+        const res = await apiFetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) throw new Error(body?.error || '追加に失敗しました');
+        setNewTaskName('');
+        setReserveStartTime('');
+        await reloadTasks();
+      }
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -2601,6 +2628,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   title="予約"
                   aria-label="予約"
                   onClick={() => setAddMode('reserve')}
+                  disabled={!accessToken || busy || viewMode !== 'today'}
                 >
                   <span className="material-icons">schedule</span>
                 </button>
@@ -2632,7 +2660,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   aria-label="開始時刻"
                   value={reserveStartTime}
                   onChange={(e) => setReserveStartTime(e.target.value)}
-                  disabled={!accessToken || busy}
+                  disabled={!accessToken || busy || viewMode !== 'today'}
                 />
               </div>
 
@@ -2647,7 +2675,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void addTask();
                   }}
-                  disabled={!accessToken || busy}
+                  disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 />
               </div>
 
@@ -2658,7 +2686,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 title="追加"
                 aria-label="追加"
                 onClick={addTask}
-                disabled={!accessToken || busy}
+                disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
               >
                 <span className="material-icons">add</span>
               </button>
