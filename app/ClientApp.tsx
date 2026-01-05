@@ -4312,9 +4312,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     </div>
                   ) : (
                     <>
-                      <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
+                      <div className="holiday-cal-counter">
                         <div className="holiday-cal-counter-label">時間（合計 / 上限反映後）</div>
-                        <div className="holiday-cal-counter-value" style={{ fontSize: 18 }}>
+                        <div className="holiday-cal-counter-value" style={{ fontSize: 16 }}>
                           <button
                             type="button"
                             className="billing-copy-number"
@@ -4350,7 +4350,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           </button>
                         </div>
                       </div>
-                      <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
+                        <div className="holiday-cal-counter">
                         <div className="holiday-cal-counter-label">稼働日数</div>
                         <div className="holiday-cal-counter-value">{Number(billingSummary.workedDays ?? 0)}日</div>
                       </div>
