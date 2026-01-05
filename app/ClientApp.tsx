@@ -407,6 +407,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
 
+  function nowHHMM() {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
   useEffect(() => {
     // 履歴モードでは予約を扱わない（予約は「今日のみ」要件）
     if (viewMode !== 'history') return;
@@ -1639,8 +1646,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     setHistoryEditing({
                       id: t.id,
                       name: t.name || '',
-                      startTime: t.startTime || '',
-                      endTime: t.endTime || '',
+                      startTime: formatTimeDisplay(t.startTime) || '',
+                      endTime: formatTimeDisplay(t.endTime) || '',
                       tag: t.tag || '',
                     })
                   }
@@ -1676,14 +1683,30 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 className="w-full rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm"
                 value={historyEditing.startTime}
                 onChange={(e) => setHistoryEditing((p) => (p ? { ...p, startTime: e.target.value } : p))}
-                placeholder="開始 (例: 午前 9:00 / 09:00)"
+                type="time"
+                onClick={() => {
+                  if (busy) return;
+                  setHistoryEditing((p) => (p && !p.startTime ? { ...p, startTime: nowHHMM() } : p));
+                }}
+                onDoubleClick={() => {
+                  if (busy) return;
+                  setHistoryEditing((p) => (p ? { ...p, startTime: '' } : p));
+                }}
                 disabled={busy}
               />
               <input
                 className="w-full rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm"
                 value={historyEditing.endTime}
                 onChange={(e) => setHistoryEditing((p) => (p ? { ...p, endTime: e.target.value } : p))}
-                placeholder="終了 (任意)"
+                type="time"
+                onClick={() => {
+                  if (busy) return;
+                  setHistoryEditing((p) => (p && !p.endTime ? { ...p, endTime: nowHHMM() } : p));
+                }}
+                onDoubleClick={() => {
+                  if (busy) return;
+                  setHistoryEditing((p) => (p ? { ...p, endTime: '' } : p));
+                }}
                 disabled={busy}
               />
             </div>
@@ -1737,14 +1760,30 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               className="w-full rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm"
               value={historyNewTask.startTime}
               onChange={(e) => setHistoryNewTask((p) => ({ ...p, startTime: e.target.value }))}
-              placeholder="開始 (任意)"
+              type="time"
+              onClick={() => {
+                if (busy) return;
+                setHistoryNewTask((p) => (!p.startTime ? { ...p, startTime: nowHHMM() } : p));
+              }}
+              onDoubleClick={() => {
+                if (busy) return;
+                setHistoryNewTask((p) => ({ ...p, startTime: '' }));
+              }}
               disabled={!historyDate || busy}
             />
             <input
               className="w-full rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm"
               value={historyNewTask.endTime}
               onChange={(e) => setHistoryNewTask((p) => ({ ...p, endTime: e.target.value }))}
-              placeholder="終了 (任意)"
+              type="time"
+              onClick={() => {
+                if (busy) return;
+                setHistoryNewTask((p) => (!p.endTime ? { ...p, endTime: nowHHMM() } : p));
+              }}
+              onDoubleClick={() => {
+                if (busy) return;
+                setHistoryNewTask((p) => ({ ...p, endTime: '' }));
+              }}
               disabled={!historyDate || busy}
             />
           </div>
@@ -2208,8 +2247,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setEditingTaskDateKey(viewMode === 'history' ? historyDate : null);
     setEditName(String(task.name || ''));
     setEditTag(String(task.tag || ''));
-    setEditStartTime(String(task.startTime || ''));
-    setEditEndTime(String(task.endTime || ''));
+    setEditStartTime(formatTimeDisplay(task.startTime) || '');
+    setEditEndTime(formatTimeDisplay(task.endTime) || '');
     setEditOpen(true);
   }
 
@@ -3060,7 +3099,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 className="edit-input"
                 value={editStartTime}
                 onChange={(e) => setEditStartTime(e.target.value)}
-                placeholder="例: 午前 9:00 / 09:00"
+                type="time"
+                onClick={() => {
+                  if (busy) return;
+                  if (!editStartTime) setEditStartTime(nowHHMM());
+                }}
+                onDoubleClick={() => {
+                  if (busy) return;
+                  setEditStartTime('');
+                }}
                 disabled={busy}
               />
             </div>
@@ -3071,7 +3118,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 className="edit-input"
                 value={editEndTime}
                 onChange={(e) => setEditEndTime(e.target.value)}
-                placeholder="例: 午後 6:00 / 18:00"
+                type="time"
+                onClick={() => {
+                  if (busy) return;
+                  if (!editEndTime) setEditEndTime(nowHHMM());
+                }}
+                onDoubleClick={() => {
+                  if (busy) return;
+                  setEditEndTime('');
+                }}
                 disabled={busy}
               />
             </div>
