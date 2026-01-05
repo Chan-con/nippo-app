@@ -220,6 +220,17 @@ function formatTimeDisplay(timeStr?: string) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+function formatTimeAmPmJa(timeStr?: string) {
+  const minutes = parseTimeToMinutesFlexible(timeStr);
+  if (minutes == null) return '';
+  const hh24 = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  const amOrPm = hh24 < 12 ? '午前' : '午後';
+  let hour12 = hh24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  return `${amOrPm} ${hour12}:${String(mm).padStart(2, '0')}`;
+}
+
 function normalizeTaskNameList(list: unknown) {
   const arr = Array.isArray(list) ? list : [];
   const out: string[] = [];
@@ -3310,12 +3321,37 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               type="button"
               onClick={async () => {
                 try {
-                  const text = (viewMode === 'today' ? tasks : historyTasks)
+                  const base = viewMode === 'today' ? tasks : historyTasks;
+                  const sorted = [...base].sort((a, b) => {
+                    const ma = parseTimeToMinutesFlexible(a.startTime);
+                    const mb = parseTimeToMinutesFlexible(b.startTime);
+                    if (ma == null && mb == null) return 0;
+                    if (ma == null) return 1;
+                    if (mb == null) return -1;
+                    return ma - mb;
+                  });
+
+                  const text = sorted
                     .map((t) => {
                       const tag = t.tag ? ` [${t.tag}]` : '';
-                      if (t.status === 'reserved') return `(予約) ${t.startTime || ''} ${t.name}${tag}`;
-                      if (t.endTime) return `${t.startTime || ''} - ${t.endTime} ${t.name}${tag}`;
-                      return `${t.startTime || ''} -  ${t.name}${tag}`;
+                      const start = formatTimeAmPmJa(t.startTime);
+                      const end = formatTimeAmPmJa(t.endTime);
+
+                      if (t.status === 'reserved') {
+                        const timeLine = `${start} ~ 予約`;
+                        const titleLine = `(予約) ${t.name}${tag}`;
+                        return `${timeLine}\n${titleLine}`;
+                      }
+
+                      if (t.endTime) {
+                        const timeLine = `${start} ~ ${end}`;
+                        const titleLine = `${t.name}${tag}`;
+                        return `${timeLine}\n${titleLine}`;
+                      }
+
+                      const timeLine = `${start} ~ 実行中`;
+                      const titleLine = `${t.name}${tag}`;
+                      return `${timeLine}\n${titleLine}`;
                     })
                     .join('\n');
                   await navigator.clipboard.writeText(text);
