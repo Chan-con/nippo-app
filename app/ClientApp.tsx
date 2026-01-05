@@ -2722,7 +2722,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   value={newTaskName}
                   onChange={(e) => setNewTaskName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') void addTask();
+                    if (e.key === 'Enter' && String(newTaskName || '').trim()) void addTask();
                   }}
                   disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 />
@@ -2735,7 +2735,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 title="追加"
                 aria-label="追加"
                 onClick={addTask}
-                disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
+                disabled={!accessToken || busy || !String(newTaskName || '').trim() || (viewMode === 'history' && !historyDate)}
               >
                 <span className="material-icons">add</span>
               </button>
