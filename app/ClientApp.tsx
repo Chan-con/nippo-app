@@ -289,6 +289,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskName, setNewTaskName] = useState('');
   const taskInputRef = useRef<HTMLInputElement | null>(null);
+  const [taskInputFocused, setTaskInputFocused] = useState(false);
   const [taskSuggestOpen, setTaskSuggestOpen] = useState(false);
   const [taskSuggestActiveIndex, setTaskSuggestActiveIndex] = useState(-1);
   const taskSuggestCloseTimerRef = useRef<number | null>(null);
@@ -314,9 +315,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const taskNameSuggestions = useMemo(() => {
     const list = normalizeTaskNameList(taskStock);
     const q = String(newTaskName || '').trim().toLowerCase();
-    if (!q) return [];
-    const filtered = list.filter((n) => n.toLowerCase().includes(q));
-    return filtered.slice(0, 10);
+    const filtered = q ? list.filter((n) => n.toLowerCase().includes(q)) : list;
+    return filtered;
   }, [taskStock, newTaskName]);
 
   useEffect(() => {
@@ -2812,18 +2812,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   ref={taskInputRef}
                   value={newTaskName}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    setNewTaskName(v);
-                    setTaskSuggestOpen(Boolean(v.trim()));
+                    setNewTaskName(e.target.value);
+                    setTaskSuggestOpen(true);
                   }}
                   onFocus={() => {
                     if (taskSuggestCloseTimerRef.current != null) {
                       window.clearTimeout(taskSuggestCloseTimerRef.current);
                       taskSuggestCloseTimerRef.current = null;
                     }
-                    setTaskSuggestOpen(Boolean(String(newTaskName || '').trim()));
+                    setTaskInputFocused(true);
+                    setTaskSuggestOpen(true);
                   }}
                   onBlur={() => {
+                    setTaskInputFocused(false);
                     if (taskSuggestCloseTimerRef.current != null) window.clearTimeout(taskSuggestCloseTimerRef.current);
                     taskSuggestCloseTimerRef.current = window.setTimeout(() => {
                       setTaskSuggestOpen(false);
@@ -2883,7 +2884,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 />
 
-                {taskSuggestOpen && accessToken && !busy ? (
+                {taskInputFocused && taskSuggestOpen && accessToken && !busy ? (
                   <div
                     className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-primary)]"
                     role="listbox"
