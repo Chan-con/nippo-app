@@ -343,7 +343,8 @@ export async function onRequest(context) {
 
     // billing-summary
     if (parts.length === 1 && parts[0] === 'billing-summary' && request.method === 'GET') {
-      const summary = await taskManager.computeBillingSummary(userId);
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10) || 0;
+      const summary = await taskManager.computeBillingSummary(userId, { offset });
       return jsonResponse({ success: true, summary });
     }
 

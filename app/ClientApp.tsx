@@ -361,6 +361,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [billingDailyRate, setBillingDailyRate] = useState('');
   const [billingClosingDay, setBillingClosingDay] = useState('31');
   const [billingHourlyCapHours, setBillingHourlyCapHours] = useState('');
+  const [billingPeriodOffset, setBillingPeriodOffset] = useState(0);
   const [billingDirty, setBillingDirty] = useState(false);
   const [billingRemoteUpdatePending, setBillingRemoteUpdatePending] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
@@ -900,12 +901,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  async function fetchBillingSummary() {
+  async function fetchBillingSummary(offset = billingPeriodOffset) {
     if (!accessToken) return;
     setBillingLoading(true);
     setBillingError(null);
     try {
-      const res = await apiFetch('/api/billing-summary');
+      const o = Number(offset) || 0;
+      const path = `/api/billing-summary${o ? `?offset=${encodeURIComponent(String(o))}` : ''}`;
+      const res = await apiFetch(path);
       const body = await res.json().catch(() => null as any);
       if (!res.ok || !body?.success) throw new Error(body?.error || '請求の集計に失敗しました');
       setBillingSummary(body.summary || null);
@@ -1021,7 +1024,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!accessToken) return;
     if (!billingOpen) return;
     void loadSettings();
-    void fetchBillingSummary();
+    setBillingPeriodOffset(0);
+    void fetchBillingSummary(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, billingOpen]);
 
@@ -4280,7 +4284,39 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
 
             <div className="task-stock-section">
-              <h4>🧮 集計</h4>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <h4>🧮 集計</h4>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    title="前の期間"
+                    aria-label="前の期間"
+                    onClick={() => {
+                      const o = billingPeriodOffset - 1;
+                      setBillingPeriodOffset(o);
+                      void fetchBillingSummary(o);
+                    }}
+                    disabled={!accessToken || busy || billingLoading}
+                  >
+                    <span className="material-icons">chevron_left</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    title="次の期間"
+                    aria-label="次の期間"
+                    onClick={() => {
+                      const o = billingPeriodOffset + 1;
+                      setBillingPeriodOffset(o);
+                      void fetchBillingSummary(o);
+                    }}
+                    disabled={!accessToken || busy || billingLoading}
+                  >
+                    <span className="material-icons">chevron_right</span>
+                  </button>
+                </div>
+              </div>
               {billingLoading ? <div className="sub-text">読み込み中...</div> : null}
               {billingError ? <div style={{ color: 'var(--error)', fontSize: 12 }}>{billingError}</div> : null}
               {billingSummary ? (

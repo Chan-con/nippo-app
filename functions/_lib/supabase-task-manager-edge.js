@@ -106,6 +106,16 @@ function getNowJstDate() {
   return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
 }
 
+function addMonthsClamped(date, deltaMonths) {
+  const base = new Date(date);
+  const anchor = new Date(base.getFullYear(), base.getMonth() + deltaMonths, 1);
+  const y = anchor.getFullYear();
+  const m0 = anchor.getMonth();
+  anchor.setDate(clampDay(y, m0, base.getDate()));
+  anchor.setHours(base.getHours(), base.getMinutes(), base.getSeconds(), base.getMilliseconds());
+  return anchor;
+}
+
 function computeClosingPeriodJst(closingDay, nowJst) {
   const cd = Number.isFinite(closingDay) ? Math.trunc(closingDay) : 31;
   const closing = Math.max(1, Math.min(31, cd || 31));
@@ -726,7 +736,7 @@ export class SupabaseTaskManagerEdge {
     return Array.isArray(data) ? data : [];
   }
 
-  async computeBillingSummary(userId) {
+  async computeBillingSummary(userId, opts) {
     if (!userId) throw new Error('userId is required');
 
     const settings = (await this.loadSettings(userId)) || {};
@@ -743,10 +753,14 @@ export class SupabaseTaskManagerEdge {
     const dailyCapHours = Number(workTime.dailyCapHours);
     const hourlyCapHours = Number.isFinite(dailyCapHours) ? dailyCapHours : Number(billing.hourlyCapHours);
 
+    const offsetRaw = Number(opts?.offset);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(-120, Math.min(120, Math.trunc(offsetRaw))) : 0;
+
     const nowJst = getNowJstDate();
+    const baseJst = offset ? addMonthsClamped(nowJst, offset) : nowJst;
     const period = computeClosingPeriodJst(
       Number.isFinite(closingDay) ? closingDay : 31,
-      nowJst
+      baseJst
     );
 
     const exclude = new Set(
