@@ -4284,12 +4284,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
 
             <div className="task-stock-section">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <h4>🧮 集計</h4>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span className="material-icons" aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>
+                    calculate
+                  </span>
+                  <h4 style={{ margin: 0 }}>集計</h4>
+                </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
-                    className="btn-secondary"
+                    className="icon-btn"
                     title="前の期間"
                     aria-label="前の期間"
                     onClick={() => {
@@ -4303,7 +4308,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </button>
                   <button
                     type="button"
-                    className="btn-secondary"
+                    className="icon-btn"
+                    title="現在の期間"
+                    aria-label="現在の期間"
+                    onClick={() => {
+                      setBillingPeriodOffset(0);
+                      void fetchBillingSummary(0);
+                    }}
+                    disabled={!accessToken || busy || billingLoading || billingPeriodOffset === 0}
+                  >
+                    <span className="material-icons">today</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
                     title="次の期間"
                     aria-label="次の期間"
                     onClick={() => {
