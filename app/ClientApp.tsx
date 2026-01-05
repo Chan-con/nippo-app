@@ -2791,17 +2791,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   }}
                   disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 />
-                <button
-                  id="add-to-task-stock-btn"
-                  className="icon-btn"
-                  title="タスクストックに追加"
-                  aria-label="タスクストックに追加"
-                  type="button"
-                  onClick={() => void addTextToTaskStock(newTaskName)}
-                  disabled={!accessToken || busy || !String(newTaskName || '').trim()}
-                >
-                  <span className="material-icons">bookmark_add</span>
-                </button>
               </div>
 
               <button
