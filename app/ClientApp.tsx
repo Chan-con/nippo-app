@@ -314,7 +314,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const taskNameSuggestions = useMemo(() => {
     const list = normalizeTaskNameList(taskStock);
     const q = String(newTaskName || '').trim().toLowerCase();
-    const filtered = q ? list.filter((n) => n.toLowerCase().includes(q)) : list;
+    if (!q) return [];
+    const filtered = list.filter((n) => n.toLowerCase().includes(q));
     return filtered.slice(0, 10);
   }, [taskStock, newTaskName]);
 
@@ -2804,20 +2805,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <input
                   type="text"
                   id="task-input"
+                  name="task-input"
+                  autoComplete="off"
                   placeholder="新しいタスクを入力..."
                   className="task-input"
                   ref={taskInputRef}
                   value={newTaskName}
                   onChange={(e) => {
-                    setNewTaskName(e.target.value);
-                    setTaskSuggestOpen(true);
+                    const v = e.target.value;
+                    setNewTaskName(v);
+                    setTaskSuggestOpen(Boolean(v.trim()));
                   }}
                   onFocus={() => {
                     if (taskSuggestCloseTimerRef.current != null) {
                       window.clearTimeout(taskSuggestCloseTimerRef.current);
                       taskSuggestCloseTimerRef.current = null;
                     }
-                    setTaskSuggestOpen(true);
+                    setTaskSuggestOpen(Boolean(String(newTaskName || '').trim()));
                   }}
                   onBlur={() => {
                     if (taskSuggestCloseTimerRef.current != null) window.clearTimeout(taskSuggestCloseTimerRef.current);
