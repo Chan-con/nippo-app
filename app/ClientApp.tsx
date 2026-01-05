@@ -2915,7 +2915,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     return (
                       <div key={t.id} className={itemClass}>
                         {timeColumn}
-                        <div className="timeline-content">
+                        <div
+                          className="timeline-content"
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openEditForTask(t);
+                          }}
+                        >
                           <div
                             className="timeline-task"
                             title="クリックでタスク名をコピー"
@@ -2960,20 +2967,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             {statusChip}
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          className="timeline-edit"
-                          title="編集"
-                          aria-label="編集"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openEditForTask(t);
-                          }}
-                          disabled={!accessToken || busy}
-                        >
-                          <span className="material-icons">edit</span>
-                        </button>
                       </div>
                     );
                   })
