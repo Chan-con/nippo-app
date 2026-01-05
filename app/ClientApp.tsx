@@ -374,6 +374,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return fixed.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
   }
 
+  function normalizeYmd(input: unknown) {
+    const s = String(input ?? '').trim();
+    const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!m) return s;
+    return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+  }
+
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string>('');
@@ -4281,7 +4288,37 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   <div className="holiday-cal-counter">
                     <div className="holiday-cal-counter-label">期間</div>
                     <div className="holiday-cal-counter-value" style={{ fontSize: 14, fontWeight: 800 }}>
-                      {String(billingSummary.periodStart)}〜{String(billingSummary.periodEnd)}
+                      <button
+                        type="button"
+                        className="billing-copy-number"
+                        title="開始日（yyyy-mm-dd）をコピー"
+                        aria-label="開始日（yyyy-mm-dd）をコピー"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(normalizeYmd(billingSummary.periodStart));
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        {normalizeYmd(billingSummary.periodStart)}
+                      </button>
+                      <span className="billing-copy-sep"> / </span>
+                      <button
+                        type="button"
+                        className="billing-copy-number"
+                        title="終了日（yyyy-mm-dd）をコピー"
+                        aria-label="終了日（yyyy-mm-dd）をコピー"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(normalizeYmd(billingSummary.periodEnd));
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        {normalizeYmd(billingSummary.periodEnd)}
+                      </button>
                     </div>
                   </div>
                   <div className="holiday-cal-counter">
@@ -4308,7 +4345,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   {billingSummary.mode === 'daily' ? (
                     <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
                       <div className="holiday-cal-counter-label">稼働日数</div>
-                      <div className="holiday-cal-counter-value">{Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0)}日</div>
+                      <div className="holiday-cal-counter-value">
+                        <button
+                          type="button"
+                          className="billing-copy-number"
+                          title="稼働日数（数値）をコピー"
+                          aria-label="稼働日数（数値）をコピー"
+                          onClick={async () => {
+                            try {
+                              const v = Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0);
+                              await navigator.clipboard.writeText(String(Number.isFinite(v) ? v : 0));
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                        >
+                          {Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0)}日
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -4350,9 +4404,26 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           </button>
                         </div>
                       </div>
-                        <div className="holiday-cal-counter">
+                      <div className="holiday-cal-counter">
                         <div className="holiday-cal-counter-label">稼働日数</div>
-                        <div className="holiday-cal-counter-value">{Number(billingSummary.workedDays ?? 0)}日</div>
+                        <div className="holiday-cal-counter-value">
+                          <button
+                            type="button"
+                            className="billing-copy-number"
+                            title="稼働日数（数値）をコピー"
+                            aria-label="稼働日数（数値）をコピー"
+                            onClick={async () => {
+                              try {
+                                const v = Number(billingSummary.workedDays ?? 0);
+                                await navigator.clipboard.writeText(String(Number.isFinite(v) ? v : 0));
+                              } catch {
+                                // ignore
+                              }
+                            }}
+                          >
+                            {Number(billingSummary.workedDays ?? 0)}日
+                          </button>
+                        </div>
                       </div>
                     </>
                   )}
