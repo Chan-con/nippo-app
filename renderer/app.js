@@ -270,7 +270,22 @@ class NippoApp {
             return;
         }
 
-        this._supabase = window.supabase.createClient(url, anonKey);
+        let storage;
+        try {
+            storage = window.localStorage;
+        } catch {
+            storage = undefined;
+        }
+
+        this._supabase = window.supabase.createClient(url, anonKey, {
+            auth: {
+                flowType: 'pkce',
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true,
+                storage,
+            },
+        });
 
         const authBar = document.getElementById('web-auth-bar');
         const statusEl = document.getElementById('web-auth-status');

@@ -234,11 +234,28 @@ function normalizeTaskNameList(list: unknown) {
   return out;
 }
 
+function getSafeLocalStorage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 function getSupabase(opts?: { supabaseUrl?: string; supabaseAnonKey?: string }): SupabaseClient | null {
   const url = opts?.supabaseUrl || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = opts?.supabaseAnonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return null;
-  return createClient(url, anonKey);
+  return createClient(url, anonKey, {
+    auth: {
+      // Keep login even after closing the browser by using a refresh-token capable flow.
+      flowType: 'pkce',
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: getSafeLocalStorage(),
+    },
+  });
 }
 
 export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey?: string }) {
