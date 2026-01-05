@@ -4108,6 +4108,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className="task-stock-footer">
             <div className="task-stock-footer-buttons">
               <button
+                className="btn-cancel"
+                id="holiday-calendar-cancel"
+                title="戻る"
+                aria-label="戻る"
+                type="button"
+                onClick={() => void requestCloseHolidayCalendar()}
+              >
+                <span className="material-icons">arrow_back</span>
+              </button>
+              <button
                 className="btn-primary"
                 id="holiday-calendar-save"
                 title="保存"
@@ -4117,16 +4127,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 disabled={!accessToken || holidayCalendarSyncing || holidayCalendarExporting || (!holidayCalendarDirty && holidayCalendarHasSaved)}
               >
                 <span className="material-icons">save</span>
-              </button>
-              <button
-                className="btn-cancel"
-                id="holiday-calendar-cancel"
-                title="戻る"
-                aria-label="戻る"
-                type="button"
-                onClick={() => void requestCloseHolidayCalendar()}
-              >
-                <span className="material-icons">arrow_back</span>
               </button>
             </div>
           </div>
