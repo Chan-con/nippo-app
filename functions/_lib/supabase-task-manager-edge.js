@@ -777,6 +777,7 @@ export class SupabaseTaskManagerEdge {
       }
 
       const workDays = countableDays.size;
+      const workedDays = workDays;
       const rate = Number.isFinite(dailyRate) ? dailyRate : 0;
       const amount = Math.round(workDays * rate);
       return {
@@ -785,6 +786,7 @@ export class SupabaseTaskManagerEdge {
         periodStart: period.startKey,
         periodEnd: period.endKey,
         workDays,
+        workedDays,
         dailyRate: Number.isFinite(dailyRate) ? dailyRate : 0,
         amount,
       };
@@ -794,6 +796,7 @@ export class SupabaseTaskManagerEdge {
     const rows = await this.loadTasksRange(period.startKey, period.endKey, userId);
     const capMin = Number.isFinite(hourlyCapHours) && hourlyCapHours > 0 ? Math.round(hourlyCapHours * 60) : 0;
     const byDate = new Map();
+    const workedDaySet = new Set();
 
     for (const row of rows) {
       const dateKey = String(row?.doc_key || '');
@@ -810,6 +813,7 @@ export class SupabaseTaskManagerEdge {
       }
       if (!dateKey) continue;
       byDate.set(dateKey, (byDate.get(dateKey) || 0) + total);
+      if (total > 0) workedDaySet.add(dateKey);
     }
 
     let totalMinutes = 0;
@@ -831,6 +835,7 @@ export class SupabaseTaskManagerEdge {
       hourlyCapHours: capMin > 0 ? capMin / 60 : 0,
       totalMinutes,
       billedMinutes,
+      workedDays: workedDaySet.size,
       amount,
     };
   }

@@ -4307,48 +4307,54 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </div>
                   {billingSummary.mode === 'daily' ? (
                     <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
-                      <div className="holiday-cal-counter-label">日数</div>
-                      <div className="holiday-cal-counter-value">{Number(billingSummary.workDays || 0)}日</div>
+                      <div className="holiday-cal-counter-label">稼働日数</div>
+                      <div className="holiday-cal-counter-value">{Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0)}日</div>
                     </div>
                   ) : (
-                    <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
-                      <div className="holiday-cal-counter-label">時間（合計 / 上限反映後）</div>
-                      <div className="holiday-cal-counter-value" style={{ fontSize: 18 }}>
-                        <button
-                          type="button"
-                          className="billing-copy-number"
-                          title="合計時間（数値）をコピー"
-                          aria-label="合計時間（数値）をコピー"
-                          onClick={async () => {
-                            try {
-                              const m = Number(billingSummary.totalMinutes || 0);
-                              await navigator.clipboard.writeText(formatHoursNumber(m));
-                            } catch {
-                              // ignore
-                            }
-                          }}
-                        >
-                          {formatDurationJa(Number(billingSummary.totalMinutes || 0))}
-                        </button>
-                        <span className="billing-copy-sep"> / </span>
-                        <button
-                          type="button"
-                          className="billing-copy-number"
-                          title="上限反映後時間（数値）をコピー"
-                          aria-label="上限反映後時間（数値）をコピー"
-                          onClick={async () => {
-                            try {
-                              const m = Number(billingSummary.billedMinutes || 0);
-                              await navigator.clipboard.writeText(formatHoursNumber(m));
-                            } catch {
-                              // ignore
-                            }
-                          }}
-                        >
-                          {formatDurationJa(Number(billingSummary.billedMinutes || 0))}
-                        </button>
+                    <>
+                      <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
+                        <div className="holiday-cal-counter-label">時間（合計 / 上限反映後）</div>
+                        <div className="holiday-cal-counter-value" style={{ fontSize: 18 }}>
+                          <button
+                            type="button"
+                            className="billing-copy-number"
+                            title="合計時間（数値）をコピー"
+                            aria-label="合計時間（数値）をコピー"
+                            onClick={async () => {
+                              try {
+                                const m = Number(billingSummary.totalMinutes || 0);
+                                await navigator.clipboard.writeText(formatHoursNumber(m));
+                              } catch {
+                                // ignore
+                              }
+                            }}
+                          >
+                            {formatDurationJa(Number(billingSummary.totalMinutes || 0))}
+                          </button>
+                          <span className="billing-copy-sep"> / </span>
+                          <button
+                            type="button"
+                            className="billing-copy-number"
+                            title="上限反映後時間（数値）をコピー"
+                            aria-label="上限反映後時間（数値）をコピー"
+                            onClick={async () => {
+                              try {
+                                const m = Number(billingSummary.billedMinutes || 0);
+                                await navigator.clipboard.writeText(formatHoursNumber(m));
+                              } catch {
+                                // ignore
+                              }
+                            }}
+                          >
+                            {formatDurationJa(Number(billingSummary.billedMinutes || 0))}
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                      <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
+                        <div className="holiday-cal-counter-label">稼働日数</div>
+                        <div className="holiday-cal-counter-value">{Number(billingSummary.workedDays ?? 0)}日</div>
+                      </div>
+                    </>
                   )}
                 </div>
               ) : null}
