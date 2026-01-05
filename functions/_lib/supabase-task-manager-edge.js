@@ -747,9 +747,6 @@ export class SupabaseTaskManagerEdge {
       nowJst
     );
 
-    const cal = await this.loadHolidayCalendar(userId);
-    const holidayKeys = new Set(Array.isArray(cal?.holidays) ? cal.holidays.filter((x) => typeof x === 'string') : []);
-
     const exclude = new Set(
       Array.isArray(workTime.excludeTaskNames)
         ? workTime.excludeTaskNames.map((x) => String(x ?? '').trim()).filter(Boolean)
@@ -757,17 +754,27 @@ export class SupabaseTaskManagerEdge {
     );
 
     if (mode === 'daily') {
-      let workDays = 0;
-      const cur = new Date(period.startDate);
-      while (cur <= period.endDate) {
-        const dow = cur.getDay();
-        const key = ymdKeyFromDate(cur);
-        const isWeekend = dow === 0 || dow === 6;
-        const isHoliday = holidayKeys.has(key);
-        if (!isWeekend && !isHoliday) workDays++;
-        cur.setDate(cur.getDate() + 1);
+      const rows = await this.loadTasksRange(period.startKey, period.endKey, userId);
+      const countableDays = new Set();
+      for (const row of rows) {
+        const dateKey = String(row?.doc_key || '');
+        if (!dateKey) continue;
+        const tasks = Array.isArray(row?.content?.tasks) ? row.content.tasks : [];
+        let hasCountable = false;
+        for (const t of tasks) {
+          if (!t) continue;
+          if (t.status === 'reserved') continue;
+          const name = String(t.name ?? '').trim();
+          if (name && exclude.has(name)) continue;
+          const minutes = calcDurationMinutes(t.startTime, t.endTime);
+          if (minutes == null || minutes <= 0) continue;
+          hasCountable = true;
+          break;
+        }
+        if (hasCountable) countableDays.add(dateKey);
       }
 
+      const workDays = countableDays.size;
       const rate = Number.isFinite(dailyRate) ? dailyRate : 0;
       const amount = Math.round(workDays * rate);
       return {

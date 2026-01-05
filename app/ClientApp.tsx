@@ -930,7 +930,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           }
 
           if (docType === 'holiday_calendar' && docKey === 'default') {
-            if (billingOpen) void fetchBillingSummary();
             if (holidayCalendarOpen && !holidayCalendarDirty) void loadHolidayCalendarFromServer();
             return;
           }
