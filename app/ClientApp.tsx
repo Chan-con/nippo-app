@@ -339,6 +339,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [billingError, setBillingError] = useState<string | null>(null);
   const [billingSummary, setBillingSummary] = useState<any>(null);
 
+  function formatHoursNumber(minutes: number) {
+    const h = minutes / 60;
+    if (!Number.isFinite(h)) return '0';
+    const fixed = h.toFixed(2);
+    return fixed.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  }
+
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string>('');
@@ -4153,7 +4160,39 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
                       <div className="holiday-cal-counter-label">時間（合計 / 上限反映後）</div>
                       <div className="holiday-cal-counter-value" style={{ fontSize: 18 }}>
-                        {formatDurationJa(Number(billingSummary.totalMinutes || 0))} / {formatDurationJa(Number(billingSummary.billedMinutes || 0))}
+                        <button
+                          type="button"
+                          className="billing-copy-number"
+                          title="合計時間（数値）をコピー"
+                          aria-label="合計時間（数値）をコピー"
+                          onClick={async () => {
+                            try {
+                              const m = Number(billingSummary.totalMinutes || 0);
+                              await navigator.clipboard.writeText(formatHoursNumber(m));
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                        >
+                          {formatDurationJa(Number(billingSummary.totalMinutes || 0))}
+                        </button>
+                        <span className="billing-copy-sep"> / </span>
+                        <button
+                          type="button"
+                          className="billing-copy-number"
+                          title="上限反映後時間（数値）をコピー"
+                          aria-label="上限反映後時間（数値）をコピー"
+                          onClick={async () => {
+                            try {
+                              const m = Number(billingSummary.billedMinutes || 0);
+                              await navigator.clipboard.writeText(formatHoursNumber(m));
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                        >
+                          {formatDurationJa(Number(billingSummary.billedMinutes || 0))}
+                        </button>
                       </div>
                     </div>
                   )}

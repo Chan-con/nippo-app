@@ -2672,6 +2672,24 @@ textarea {
   max-width: 760px;
 }
 
+.billing-copy-number {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.billing-copy-number:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+}
+
+.billing-copy-sep {
+  color: var(--text-muted);
+}
+
 .holiday-cal-header {
   display: flex;
   align-items: center;
