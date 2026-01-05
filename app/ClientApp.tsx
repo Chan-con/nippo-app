@@ -3112,7 +3112,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               />
             </div>
             <div className="edit-field">
-              <label htmlFor="edit-task-end">作業終了時刻（任意）</label>
+              <label htmlFor="edit-task-end">作業終了時刻</label>
               <input
                 id="edit-task-end"
                 className="edit-input"
@@ -3132,11 +3132,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
           <div className="edit-footer">
-            <button className="btn-primary" id="edit-save" title="保存" aria-label="保存" type="button" onClick={saveEditingTask} disabled={!accessToken || busy}>
-              <span className="material-icons">save</span>
-            </button>
             <button className="btn-cancel" id="edit-cancel" title="キャンセル" aria-label="キャンセル" type="button" onClick={() => setEditOpen(false)} disabled={busy}>
               <span className="material-icons">arrow_back</span>
+            </button>
+            <button className="btn-primary" id="edit-save" title="保存" aria-label="保存" type="button" onClick={saveEditingTask} disabled={!accessToken || busy}>
+              <span className="material-icons">save</span>
             </button>
             <button className="btn-danger" id="edit-delete" title="削除" aria-label="削除" type="button" onClick={deleteEditingTask} disabled={!accessToken || busy}>
               <span className="material-icons">delete</span>
