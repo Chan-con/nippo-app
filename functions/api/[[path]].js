@@ -341,6 +341,12 @@ export async function onRequest(context) {
       return jsonResponse({ success: true });
     }
 
+    // billing-summary
+    if (parts.length === 1 && parts[0] === 'billing-summary' && request.method === 'GET') {
+      const summary = await taskManager.computeBillingSummary(userId);
+      return jsonResponse({ success: true, summary });
+    }
+
     return jsonResponse({ success: false, error: 'Not Found' }, 404);
   } catch (error) {
     return jsonResponse({ success: false, error: error?.message || String(error) }, 500);

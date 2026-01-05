@@ -2667,6 +2667,11 @@ textarea {
   max-width: 760px;
 }
 
+/* 請求 */
+.billing-content {
+  max-width: 760px;
+}
+
 .holiday-cal-header {
   display: flex;
   align-items: center;

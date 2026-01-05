@@ -326,6 +326,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [holidayCalendarCopyError, setHolidayCalendarCopyError] = useState<string | null>(null);
   const holidayCalendarToastTimerRef = useRef<number | null>(null);
 
+  // billing
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [billingMode, setBillingMode] = useState<'hourly' | 'daily'>('hourly');
+  const [billingHourlyRate, setBillingHourlyRate] = useState('');
+  const [billingDailyRate, setBillingDailyRate] = useState('');
+  const [billingClosingDay, setBillingClosingDay] = useState('31');
+  const [billingHourlyCapHours, setBillingHourlyCapHours] = useState('');
+  const [billingDirty, setBillingDirty] = useState(false);
+  const [billingRemoteUpdatePending, setBillingRemoteUpdatePending] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingSummary, setBillingSummary] = useState<any>(null);
+
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string>('');
@@ -619,6 +632,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsExcludeTaskNameInput('');
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
+
+      setBillingOpen(false);
+      setBillingMode('hourly');
+      setBillingHourlyRate('');
+      setBillingDailyRate('');
+      setBillingClosingDay('31');
+      setBillingHourlyCapHours('');
+      setBillingDirty(false);
+      setBillingRemoteUpdatePending(false);
+      setBillingLoading(false);
+      setBillingError(null);
+      setBillingSummary(null);
       setUserId(null);
       return;
     }
@@ -766,6 +791,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsExcludeTaskNameInput('');
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
+
+      const b = s?.billing || {};
+      const bMode = String(b?.mode ?? 'hourly') === 'daily' ? 'daily' : 'hourly';
+      setBillingMode(bMode as any);
+      setBillingHourlyRate(Number.isFinite(Number(b?.hourlyRate)) ? String(Number(b?.hourlyRate)) : '');
+      setBillingDailyRate(Number.isFinite(Number(b?.dailyRate)) ? String(Number(b?.dailyRate)) : '');
+      setBillingClosingDay(Number.isFinite(Number(b?.closingDay)) ? String(Math.trunc(Number(b?.closingDay))) : '31');
+      setBillingHourlyCapHours(Number.isFinite(Number(b?.hourlyCapHours)) ? String(Number(b?.hourlyCapHours)) : '');
+      setBillingDirty(false);
+      setBillingRemoteUpdatePending(false);
     } catch {
       // ignore
     }
@@ -804,6 +839,62 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  async function fetchBillingSummary() {
+    if (!accessToken) return;
+    setBillingLoading(true);
+    setBillingError(null);
+    try {
+      const res = await apiFetch('/api/billing-summary');
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || '請求の集計に失敗しました');
+      setBillingSummary(body.summary || null);
+    } catch (e: any) {
+      setBillingError(e?.message || String(e));
+      setBillingSummary(null);
+    } finally {
+      setBillingLoading(false);
+    }
+  }
+
+  async function saveBillingSettings() {
+    if (!accessToken) return;
+    setBusy(true);
+    setBillingError(null);
+    try {
+      const closingDayNum = Math.max(1, Math.min(31, parseInt(billingClosingDay || '31', 10) || 31));
+      const mode = billingMode === 'daily' ? 'daily' : 'hourly';
+      const hourlyRateNum = Number(billingHourlyRate);
+      const dailyRateNum = Number(billingDailyRate);
+      const capNum = Number(billingHourlyCapHours);
+
+      const res = await apiFetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            billing: {
+              mode,
+              closingDay: closingDayNum,
+              hourlyRate: Number.isFinite(hourlyRateNum) ? hourlyRateNum : 0,
+              dailyRate: Number.isFinite(dailyRateNum) ? dailyRateNum : 0,
+              hourlyCapHours: Number.isFinite(capNum) ? capNum : 0,
+            },
+          },
+        }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || '保存に失敗しました');
+
+      setBillingDirty(false);
+      setBillingRemoteUpdatePending(false);
+      await fetchBillingSummary();
+    } catch (e: any) {
+      setBillingError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // realtime: settings doc updates (Supabase Realtime)
   useEffect(() => {
     const client = supabase;
@@ -824,13 +915,29 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         (payload: any) => {
           const docType = payload?.new?.doc_type ?? payload?.old?.doc_type ?? null;
           const docKey = payload?.new?.doc_key ?? payload?.old?.doc_key ?? null;
-          if (docType !== 'settings' || docKey !== 'default') return;
-
-          if (settingsOpen && settingsDirty) {
-            setSettingsRemoteUpdatePending(true);
+          if (docType === 'settings' && docKey === 'default') {
+            if (settingsOpen && settingsDirty) {
+              setSettingsRemoteUpdatePending(true);
+              return;
+            }
+            if (billingOpen && billingDirty) {
+              setBillingRemoteUpdatePending(true);
+              return;
+            }
+            void loadSettings();
+            if (billingOpen) void fetchBillingSummary();
             return;
           }
-          void loadSettings();
+
+          if (docType === 'holiday_calendar' && docKey === 'default') {
+            if (billingOpen) void fetchBillingSummary();
+            if (holidayCalendarOpen && !holidayCalendarDirty) void loadHolidayCalendarFromServer();
+            return;
+          }
+
+          if (docType === 'tasks' && billingOpen) {
+            void fetchBillingSummary();
+          }
         }
       )
       .subscribe();
@@ -842,7 +949,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         // ignore
       }
     };
-  }, [supabase, accessToken, userId, settingsOpen, settingsDirty]);
+  }, [supabase, accessToken, userId, settingsOpen, settingsDirty, billingOpen, billingDirty, holidayCalendarOpen, holidayCalendarDirty]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    if (!billingOpen) return;
+    void loadSettings();
+    void fetchBillingSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, billingOpen]);
 
   async function saveTagStockChanges() {
     if (!accessToken) return;
@@ -2591,6 +2706,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 お休みカレンダー
               </button>
               <button
+                id="billing-btn"
+                className="btn-secondary"
+                title="請求"
+                aria-label="請求"
+                type="button"
+                onClick={() => setBillingOpen(true)}
+                disabled={!accessToken || busy}
+              >
+                <span className="material-icons">receipt_long</span>
+                請求
+              </button>
+              <button
                 id="settings-btn"
                 className="btn-secondary"
                 title="設定"
@@ -3877,6 +4004,189 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 onClick={() => void requestCloseHolidayCalendar()}
               >
                 <span className="material-icons">arrow_back</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={`task-stock-dialog ${billingOpen ? 'show' : ''}`} id="billing-dialog" aria-hidden={!billingOpen}>
+        <div className="task-stock-content billing-content">
+          <div className="task-stock-header">
+            <h3>🧾 請求</h3>
+            <button
+              className="task-stock-close"
+              id="billing-close"
+              title="閉じる"
+              aria-label="閉じる"
+              type="button"
+              onClick={() => setBillingOpen(false)}
+            >
+              <span className="material-icons">close</span>
+            </button>
+          </div>
+
+          <div className="task-stock-body">
+            {billingRemoteUpdatePending ? (
+              <div className="task-stock-section">
+                <p className="settings-hint">他端末で請求設定が更新されました。保存すると上書きされるため、必要なら閉じてから開き直してください。</p>
+              </div>
+            ) : null}
+
+            <div className="task-stock-section">
+              <h4>⚙️ 請求設定</h4>
+              <div className="settings-grid-2col">
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor="billing-mode">
+                    モード
+                  </label>
+                  <select
+                    id="billing-mode"
+                    className="edit-input"
+                    value={billingMode}
+                    onChange={(e) => {
+                      setBillingMode((e.target.value as any) || 'hourly');
+                      setBillingDirty(true);
+                    }}
+                    disabled={!accessToken || busy}
+                  >
+                    <option value="hourly">時給</option>
+                    <option value="daily">日給</option>
+                  </select>
+                </div>
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor="billing-closing-day">
+                    締め日（1〜31）
+                  </label>
+                  <input
+                    id="billing-closing-day"
+                    className="edit-input"
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={billingClosingDay}
+                    onChange={(e) => {
+                      setBillingClosingDay(e.target.value);
+                      setBillingDirty(true);
+                    }}
+                    disabled={!accessToken || busy}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor="billing-hourly-rate">
+                    時給（円）
+                  </label>
+                  <input
+                    id="billing-hourly-rate"
+                    className="edit-input"
+                    type="number"
+                    min={0}
+                    value={billingHourlyRate}
+                    onChange={(e) => {
+                      setBillingHourlyRate(e.target.value);
+                      setBillingDirty(true);
+                    }}
+                    disabled={!accessToken || busy}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor="billing-daily-rate">
+                    日給（円）
+                  </label>
+                  <input
+                    id="billing-daily-rate"
+                    className="edit-input"
+                    type="number"
+                    min={0}
+                    value={billingDailyRate}
+                    onChange={(e) => {
+                      setBillingDailyRate(e.target.value);
+                      setBillingDirty(true);
+                    }}
+                    disabled={!accessToken || busy}
+                  />
+                </div>
+                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
+                  <label className="settings-label" htmlFor="billing-hourly-cap">
+                    時給モードの上限（時間/日、未設定=上限なし）
+                  </label>
+                  <input
+                    id="billing-hourly-cap"
+                    className="edit-input"
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    value={billingHourlyCapHours}
+                    onChange={(e) => {
+                      setBillingHourlyCapHours(e.target.value);
+                      setBillingDirty(true);
+                    }}
+                    disabled={!accessToken || busy}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="task-stock-section">
+              <h4>🧮 集計</h4>
+              {billingLoading ? <div className="sub-text">読み込み中...</div> : null}
+              {billingError ? <div style={{ color: 'var(--error)', fontSize: 12 }}>{billingError}</div> : null}
+              {billingSummary ? (
+                <div className="holiday-cal-counters" aria-label="請求集計">
+                  <div className="holiday-cal-counter">
+                    <div className="holiday-cal-counter-label">期間</div>
+                    <div className="holiday-cal-counter-value" style={{ fontSize: 14, fontWeight: 800 }}>
+                      {String(billingSummary.periodStart)}〜{String(billingSummary.periodEnd)}
+                    </div>
+                  </div>
+                  <div className="holiday-cal-counter">
+                    <div className="holiday-cal-counter-label">請求額</div>
+                    <div className="holiday-cal-counter-value">
+                      {Number(billingSummary.amount || 0).toLocaleString('ja-JP')}円
+                    </div>
+                  </div>
+                  {billingSummary.mode === 'daily' ? (
+                    <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
+                      <div className="holiday-cal-counter-label">日数</div>
+                      <div className="holiday-cal-counter-value">{Number(billingSummary.workDays || 0)}日</div>
+                    </div>
+                  ) : (
+                    <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
+                      <div className="holiday-cal-counter-label">時間（合計 / 上限反映後）</div>
+                      <div className="holiday-cal-counter-value" style={{ fontSize: 18 }}>
+                        {formatDurationJa(Number(billingSummary.totalMinutes || 0))} / {formatDurationJa(Number(billingSummary.billedMinutes || 0))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="task-stock-footer">
+            <div className="task-stock-footer-buttons">
+              <button className="btn-cancel" id="billing-cancel" title="戻る" aria-label="戻る" type="button" onClick={() => setBillingOpen(false)}>
+                <span className="material-icons">arrow_back</span>
+              </button>
+              <button
+                className="btn-secondary"
+                id="billing-reload"
+                title="再読み込み"
+                aria-label="再読み込み"
+                type="button"
+                onClick={() => void fetchBillingSummary()}
+                disabled={!accessToken || busy || billingLoading}
+              >
+                <span className="material-icons">refresh</span>
+              </button>
+              <button
+                className="btn-primary"
+                id="billing-save"
+                type="button"
+                onClick={saveBillingSettings}
+                disabled={!accessToken || busy || !billingDirty}
+              >
+                <span className="material-icons">save</span>
               </button>
             </div>
           </div>

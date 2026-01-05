@@ -64,6 +64,75 @@ function safeRandomId(prefix = 'id') {
   return `${prefix}-${hex}`;
 }
 
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function deepMerge(a, b) {
+  if (!isPlainObject(a)) a = {};
+  if (!isPlainObject(b)) return { ...a };
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    if (isPlainObject(v) && isPlainObject(out[k])) out[k] = deepMerge(out[k], v);
+    else out[k] = v;
+  }
+  return out;
+}
+
+function calcDurationMinutes(start, end) {
+  const s = parseTimeToMinutesFlexible(start);
+  const e = parseTimeToMinutesFlexible(end);
+  if (s == null || e == null) return null;
+  const diff = e - s;
+  if (diff < 0) return null;
+  return diff;
+}
+
+function clampDay(year, month0, day) {
+  const last = new Date(year, month0 + 1, 0).getDate();
+  const d = Math.max(1, Math.min(last, day));
+  return d;
+}
+
+function ymdKeyFromDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getNowJstDate() {
+  const now = new Date();
+  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+}
+
+function computeClosingPeriodJst(closingDay, nowJst) {
+  const cd = Number.isFinite(closingDay) ? Math.trunc(closingDay) : 31;
+  const closing = Math.max(1, Math.min(31, cd || 31));
+
+  const y = nowJst.getFullYear();
+  const m0 = nowJst.getMonth();
+  const today = nowJst.getDate();
+
+  // Determine period end month
+  const endMonth0 = today <= clampDay(y, m0, closing) ? m0 : m0 + 1;
+  const endDate = new Date(y, endMonth0, clampDay(y, endMonth0, closing));
+
+  const prevMonth0 = endDate.getMonth() - 1;
+  const prevYear = prevMonth0 < 0 ? endDate.getFullYear() - 1 : endDate.getFullYear();
+  const prevM0 = (prevMonth0 + 12) % 12;
+  const prevEnd = new Date(prevYear, prevM0, clampDay(prevYear, prevM0, closing));
+  const startDate = new Date(prevEnd);
+  startDate.setDate(startDate.getDate() + 1);
+
+  return {
+    startDate,
+    endDate,
+    startKey: ymdKeyFromDate(startDate),
+    endKey: ymdKeyFromDate(endDate),
+  };
+}
+
 export class SupabaseTaskManagerEdge {
   constructor({ supabaseUrl, serviceRoleKey }) {
     if (!supabaseUrl) throw new Error('SUPABASE_URL is required');
@@ -635,8 +704,126 @@ export class SupabaseTaskManagerEdge {
 
   async saveSettings(settings, userId) {
     if (!userId) throw new Error('userId is required');
-    await this._setDoc(userId, 'settings', 'default', settings || {});
+    const current = await this._getDoc(userId, 'settings', 'default', {});
+    const merged = deepMerge(current || {}, settings || {});
+    await this._setDoc(userId, 'settings', 'default', merged);
     return true;
+  }
+
+  async loadTasksRange(startKey, endKey, userId) {
+    if (!userId) throw new Error('userId is required');
+    if (!startKey || !endKey) return [];
+
+    const { data, error } = await this.supabase
+      .from('nippo_docs')
+      .select('doc_key,content')
+      .eq('user_id', userId)
+      .eq('doc_type', 'tasks')
+      .gte('doc_key', startKey)
+      .lte('doc_key', endKey);
+
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  }
+
+  async computeBillingSummary(userId) {
+    if (!userId) throw new Error('userId is required');
+
+    const settings = (await this.loadSettings(userId)) || {};
+    const billing = isPlainObject(settings.billing) ? settings.billing : {};
+    const workTime = isPlainObject(settings.workTime) ? settings.workTime : {};
+
+    const modeRaw = String(billing.mode || 'hourly');
+    const mode = modeRaw === 'daily' ? 'daily' : 'hourly';
+
+    const closingDay = Number(billing.closingDay);
+    const hourlyRate = Number(billing.hourlyRate);
+    const dailyRate = Number(billing.dailyRate);
+    const hourlyCapHours = Number(billing.hourlyCapHours);
+
+    const nowJst = getNowJstDate();
+    const period = computeClosingPeriodJst(
+      Number.isFinite(closingDay) ? closingDay : 31,
+      nowJst
+    );
+
+    const cal = await this.loadHolidayCalendar(userId);
+    const holidayKeys = new Set(Array.isArray(cal?.holidays) ? cal.holidays.filter((x) => typeof x === 'string') : []);
+
+    const exclude = new Set(
+      Array.isArray(workTime.excludeTaskNames)
+        ? workTime.excludeTaskNames.map((x) => String(x ?? '').trim()).filter(Boolean)
+        : []
+    );
+
+    if (mode === 'daily') {
+      let workDays = 0;
+      const cur = new Date(period.startDate);
+      while (cur <= period.endDate) {
+        const dow = cur.getDay();
+        const key = ymdKeyFromDate(cur);
+        const isWeekend = dow === 0 || dow === 6;
+        const isHoliday = holidayKeys.has(key);
+        if (!isWeekend && !isHoliday) workDays++;
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      const rate = Number.isFinite(dailyRate) ? dailyRate : 0;
+      const amount = Math.round(workDays * rate);
+      return {
+        mode,
+        closingDay: Number.isFinite(closingDay) ? Math.trunc(closingDay) : 31,
+        periodStart: period.startKey,
+        periodEnd: period.endKey,
+        workDays,
+        dailyRate: Number.isFinite(dailyRate) ? dailyRate : 0,
+        amount,
+      };
+    }
+
+    // hourly
+    const rows = await this.loadTasksRange(period.startKey, period.endKey, userId);
+    const capMin = Number.isFinite(hourlyCapHours) && hourlyCapHours > 0 ? Math.round(hourlyCapHours * 60) : 0;
+    const byDate = new Map();
+
+    for (const row of rows) {
+      const dateKey = String(row?.doc_key || '');
+      const tasks = Array.isArray(row?.content?.tasks) ? row.content.tasks : [];
+      let total = 0;
+      for (const t of tasks) {
+        if (!t) continue;
+        if (t.status === 'reserved') continue;
+        const name = String(t.name ?? '').trim();
+        if (name && exclude.has(name)) continue;
+        const minutes = calcDurationMinutes(t.startTime, t.endTime);
+        if (minutes == null) continue;
+        total += minutes;
+      }
+      if (!dateKey) continue;
+      byDate.set(dateKey, (byDate.get(dateKey) || 0) + total);
+    }
+
+    let totalMinutes = 0;
+    let billedMinutes = 0;
+    for (const m of byDate.values()) {
+      totalMinutes += m;
+      billedMinutes += capMin > 0 ? Math.min(m, capMin) : m;
+    }
+
+    const rate = Number.isFinite(hourlyRate) ? hourlyRate : 0;
+    const amount = Math.round((billedMinutes / 60) * rate);
+
+    return {
+      mode,
+      closingDay: Number.isFinite(closingDay) ? Math.trunc(closingDay) : 31,
+      periodStart: period.startKey,
+      periodEnd: period.endKey,
+      hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : 0,
+      hourlyCapHours: capMin > 0 ? capMin / 60 : 0,
+      totalMinutes,
+      billedMinutes,
+      amount,
+    };
   }
 
   async loadHolidayCalendar(userId) {
