@@ -4287,7 +4287,22 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   <div className="holiday-cal-counter">
                     <div className="holiday-cal-counter-label">請求額</div>
                     <div className="holiday-cal-counter-value">
-                      {Number(billingSummary.amount || 0).toLocaleString('ja-JP')}円
+                      <button
+                        type="button"
+                        className="billing-copy-number"
+                        title="請求額（数値）をコピー"
+                        aria-label="請求額（数値）をコピー"
+                        onClick={async () => {
+                          try {
+                            const v = Number(billingSummary.amount || 0);
+                            await navigator.clipboard.writeText(String(Number.isFinite(v) ? v : 0));
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        {Number(billingSummary.amount || 0).toLocaleString('ja-JP')}円
+                      </button>
                     </div>
                   </div>
                   {billingSummary.mode === 'daily' ? (
