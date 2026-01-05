@@ -288,6 +288,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskName, setNewTaskName] = useState('');
+  const taskInputRef = useRef<HTMLInputElement | null>(null);
+  const [taskSuggestOpen, setTaskSuggestOpen] = useState(false);
+  const [taskSuggestActiveIndex, setTaskSuggestActiveIndex] = useState(-1);
+  const taskSuggestCloseTimerRef = useRef<number | null>(null);
   const [addMode, setAddMode] = useState<'now' | 'reserve'>('now');
   const [selectedTag, setSelectedTag] = useState('');
   const [reserveStartTime, setReserveStartTime] = useState('');
@@ -306,6 +310,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskStockInput, setTaskStockInput] = useState('');
   const [taskStockDirty, setTaskStockDirty] = useState(false);
   const [taskStockLoaded, setTaskStockLoaded] = useState(false);
+
+  const taskNameSuggestions = useMemo(() => {
+    const list = normalizeTaskNameList(taskStock);
+    const q = String(newTaskName || '').trim().toLowerCase();
+    const filtered = q ? list.filter((n) => n.toLowerCase().includes(q)) : list;
+    return filtered.slice(0, 10);
+  }, [taskStock, newTaskName]);
+
+  useEffect(() => {
+    setTaskSuggestActiveIndex(-1);
+  }, [newTaskName]);
+
+  useEffect(() => {
+    if (taskSuggestActiveIndex < 0) return;
+    if (taskSuggestActiveIndex >= taskNameSuggestions.length) {
+      setTaskSuggestActiveIndex(taskNameSuggestions.length - 1);
+    }
+  }, [taskNameSuggestions, taskSuggestActiveIndex]);
 
   const [settingsTimeRoundingInterval, setSettingsTimeRoundingInterval] = useState(0);
   const [settingsTimeRoundingMode, setSettingsTimeRoundingMode] = useState<'nearest' | 'floor' | 'ceil'>('nearest');
@@ -2778,19 +2800,129 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 />
               </div>
 
-              <div className="task-name-row input-with-button">
+              <div className="task-name-row input-with-button relative">
                 <input
                   type="text"
                   id="task-input"
                   placeholder="新しいタスクを入力..."
                   className="task-input"
+                  ref={taskInputRef}
                   value={newTaskName}
-                  onChange={(e) => setNewTaskName(e.target.value)}
+                  onChange={(e) => {
+                    setNewTaskName(e.target.value);
+                    setTaskSuggestOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (taskSuggestCloseTimerRef.current != null) {
+                      window.clearTimeout(taskSuggestCloseTimerRef.current);
+                      taskSuggestCloseTimerRef.current = null;
+                    }
+                    setTaskSuggestOpen(true);
+                  }}
+                  onBlur={() => {
+                    if (taskSuggestCloseTimerRef.current != null) window.clearTimeout(taskSuggestCloseTimerRef.current);
+                    taskSuggestCloseTimerRef.current = window.setTimeout(() => {
+                      setTaskSuggestOpen(false);
+                      taskSuggestCloseTimerRef.current = null;
+                    }, 120);
+                  }}
                   onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setTaskSuggestOpen(false);
+                      setTaskSuggestActiveIndex(-1);
+                      return;
+                    }
+
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setTaskSuggestOpen(true);
+                      setTaskSuggestActiveIndex((idx) => {
+                        if (!taskNameSuggestions.length) return -1;
+                        const next = Math.min(idx + 1, taskNameSuggestions.length - 1);
+                        return next < 0 ? 0 : next;
+                      });
+                      return;
+                    }
+
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setTaskSuggestOpen(true);
+                      setTaskSuggestActiveIndex((idx) => {
+                        if (!taskNameSuggestions.length) return -1;
+                        if (idx <= 0) return 0;
+                        return idx - 1;
+                      });
+                      return;
+                    }
+
+                    if (e.key === 'Enter' && taskSuggestOpen && taskSuggestActiveIndex >= 0) {
+                      const picked = taskNameSuggestions[taskSuggestActiveIndex];
+                      if (picked) {
+                        e.preventDefault();
+                        setNewTaskName(picked);
+                        setTaskSuggestOpen(false);
+                        setTaskSuggestActiveIndex(-1);
+                        window.requestAnimationFrame(() => {
+                          taskInputRef.current?.focus();
+                          try {
+                            taskInputRef.current?.setSelectionRange(picked.length, picked.length);
+                          } catch {
+                            // ignore
+                          }
+                        });
+                        return;
+                      }
+                    }
+
                     if (e.key === 'Enter' && String(newTaskName || '').trim()) void addTask();
                   }}
                   disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 />
+
+                {taskSuggestOpen && accessToken && !busy ? (
+                  <div
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-primary)]"
+                    role="listbox"
+                    aria-label="タスク候補"
+                  >
+                    {taskNameSuggestions.length ? (
+                      taskNameSuggestions.map((name, idx) => (
+                        <button
+                          key={name}
+                          type="button"
+                          role="option"
+                          aria-selected={idx === taskSuggestActiveIndex}
+                          className={`block w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] ${
+                            idx === taskSuggestActiveIndex ? 'bg-[var(--bg-secondary)]' : ''
+                          }`}
+                          onMouseEnter={() => setTaskSuggestActiveIndex(idx)}
+                          onMouseDown={(ev) => {
+                            ev.preventDefault();
+                            if (taskSuggestCloseTimerRef.current != null) {
+                              window.clearTimeout(taskSuggestCloseTimerRef.current);
+                              taskSuggestCloseTimerRef.current = null;
+                            }
+                            setNewTaskName(name);
+                            setTaskSuggestOpen(false);
+                            setTaskSuggestActiveIndex(-1);
+                            window.requestAnimationFrame(() => {
+                              taskInputRef.current?.focus();
+                              try {
+                                taskInputRef.current?.setSelectionRange(name.length, name.length);
+                              } catch {
+                                // ignore
+                              }
+                            });
+                          }}
+                        >
+                          {name}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-[var(--text-secondary)]">候補なし</div>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               <button
