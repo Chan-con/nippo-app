@@ -842,12 +842,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsRemoteUpdatePending(false);
 
       const b = s?.billing || {};
+      const wt = s?.workTime || {};
       const bMode = String(b?.mode ?? 'hourly') === 'daily' ? 'daily' : 'hourly';
       setBillingMode(bMode as any);
       setBillingHourlyRate(Number.isFinite(Number(b?.hourlyRate)) ? String(Number(b?.hourlyRate)) : '');
       setBillingDailyRate(Number.isFinite(Number(b?.dailyRate)) ? String(Number(b?.dailyRate)) : '');
       setBillingClosingDay(Number.isFinite(Number(b?.closingDay)) ? String(Math.trunc(Number(b?.closingDay))) : '31');
-      setBillingHourlyCapHours(Number.isFinite(Number(b?.hourlyCapHours)) ? String(Number(b?.hourlyCapHours)) : '');
+      // 1日の労働時間上限（後方互換: billing.hourlyCapHours）
+      const dailyCapHours = Number(wt?.dailyCapHours);
+      const legacyCapHours = Number(b?.hourlyCapHours);
+      const capHours = Number.isFinite(dailyCapHours) ? dailyCapHours : Number.isFinite(legacyCapHours) ? legacyCapHours : NaN;
+      setBillingHourlyCapHours(Number.isFinite(capHours) ? String(capHours) : '');
       setBillingDirty(false);
       setBillingRemoteUpdatePending(false);
     } catch {
@@ -915,6 +920,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const hourlyRateNum = Number(billingHourlyRate);
       const dailyRateNum = Number(billingDailyRate);
       const capNum = Number(billingHourlyCapHours);
+      const capHours = Number.isFinite(capNum) ? capNum : 0;
 
       const res = await apiFetch('/api/settings', {
         method: 'POST',
@@ -926,7 +932,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               closingDay: closingDayNum,
               hourlyRate: Number.isFinite(hourlyRateNum) ? hourlyRateNum : 0,
               dailyRate: Number.isFinite(dailyRateNum) ? dailyRateNum : 0,
-              hourlyCapHours: Number.isFinite(capNum) ? capNum : 0,
+              // 後方互換のため billing 側にも残す
+              hourlyCapHours: capHours,
+            },
+            workTime: {
+              // 1日の労働時間上限（時間/日）
+              dailyCapHours: capHours,
             },
           },
         }),
@@ -1129,10 +1140,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setHistoryTasks(tasks);
 
       const completed = tasks.filter((t) => !!t.endTime).length;
-      const totalMinutes = tasks.reduce((sum, t) => {
+      const totalMinutesRaw = tasks.reduce((sum, t) => {
+        if (t.status === 'reserved') return sum;
+        if (isWorkTimeExcludedTaskName(t.name)) return sum;
         const m = calcDurationMinutes(t.startTime, t.endTime);
         return sum + (m ?? 0);
       }, 0);
+      const totalMinutes = dailyWorkCapMin > 0 ? Math.min(totalMinutesRaw, dailyWorkCapMin) : totalMinutesRaw;
       setHistoryStats({ totalMinutes, completed, total: tasks.length });
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -2088,10 +2102,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     .reverse()
     .find((t) => !t.endTime && t.status !== 'reserved');
   const completedCount = effectiveTasks.filter((t) => !!t.endTime && t.status !== 'reserved').length;
-  const totalMinutes = effectiveTasks.reduce((sum, t) => {
+  const dailyWorkCapMin = useMemo(() => {
+    const h = Number(billingHourlyCapHours);
+    return Number.isFinite(h) && h > 0 ? Math.round(h * 60) : 0;
+  }, [billingHourlyCapHours]);
+
+  const totalMinutesRaw = effectiveTasks.reduce((sum, t) => {
+    if (t.status === 'reserved') return sum;
+    if (isWorkTimeExcludedTaskName(t.name)) return sum;
     const m = calcDurationMinutes(t.startTime, t.endTime);
     return sum + (m ?? 0);
   }, 0);
+  const totalMinutes = dailyWorkCapMin > 0 ? Math.min(totalMinutesRaw, dailyWorkCapMin) : totalMinutesRaw;
 
   const sortedTimelineTasks = useMemo(() => {
     const list = [...effectiveTasks];
@@ -4231,7 +4253,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 </div>
                 <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
                   <label className="settings-label" htmlFor="billing-hourly-cap">
-                    時給モードの上限（時間/日、未設定=上限なし）
+                    一日の労働時間上限（時間/日、未設定=上限なし）
                   </label>
                   <input
                     id="billing-hourly-cap"

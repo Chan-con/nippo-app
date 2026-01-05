@@ -739,7 +739,9 @@ export class SupabaseTaskManagerEdge {
     const closingDay = Number(billing.closingDay);
     const hourlyRate = Number(billing.hourlyRate);
     const dailyRate = Number(billing.dailyRate);
-    const hourlyCapHours = Number(billing.hourlyCapHours);
+    // 1日の労働時間上限（後方互換: billing.hourlyCapHours）
+    const dailyCapHours = Number(workTime.dailyCapHours);
+    const hourlyCapHours = Number.isFinite(dailyCapHours) ? dailyCapHours : Number(billing.hourlyCapHours);
 
     const nowJst = getNowJstDate();
     const period = computeClosingPeriodJst(
