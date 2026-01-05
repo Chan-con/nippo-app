@@ -2477,8 +2477,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       ctx.stroke();
 
       const cells = getHolidayCalendarCells(holidayCalendarMonth);
-      const today = new Date();
-      const isSameYmd = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
       // Day numbers + holidays
       ctx.textAlign = 'center';
@@ -2489,22 +2487,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const d = c.date;
         const key = holidayKey(d);
         const isHoliday = c.inMonth && holidayCalendarHolidays.has(key);
-        const isToday = c.inMonth && isSameYmd(d, today);
         const col = idx % 7;
         const row = Math.floor(idx / 7);
         const x0 = calX + colW * col;
         const y0 = gridY + rowH * row;
         const cx = x0 + colW / 2;
         const cy = y0 + rowH / 2;
-
-        // Today outline
-        if (isToday) {
-          ctx.save();
-          ctx.strokeStyle = accent;
-          ctx.lineWidth = 3;
-          ctx.strokeRect(x0 + 1.5, y0 + 1.5, colW - 3, rowH - 3);
-          ctx.restore();
-        }
 
         // Text color
         if (!c.inMonth) ctx.fillStyle = muted;
