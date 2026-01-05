@@ -833,6 +833,60 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  async function addTextToTaskStock(nameRaw: string) {
+    if (!accessToken) return;
+    const name = String(nameRaw ?? '').trim();
+    if (!name) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      // Prefer already-loaded task stock, otherwise fetch once.
+      let current = taskStock;
+      if (!taskStockLoaded) {
+        const res = await apiFetch('/api/task-stock');
+        const body = await res.json();
+        if (res.ok && body?.success) {
+          const raw = Array.isArray(body.tasks) ? body.tasks : [];
+          current = raw
+            .map((t: any) => {
+              if (typeof t === 'string') return t;
+              if (t && typeof t === 'object' && t.name) return String(t.name);
+              if (t == null) return null;
+              return String(t);
+            })
+            .filter((x: any) => typeof x === 'string' && x.trim())
+            .map((x: string) => x.trim());
+        }
+      }
+
+      const merged = normalizeTaskNameList([...(Array.isArray(current) ? current : []), name]);
+      const alreadySame =
+        Array.isArray(current) &&
+        current.length === merged.length &&
+        current.every((v, i) => v === merged[i]);
+
+      if (!alreadySame) {
+        const res = await apiFetch('/api/task-stock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tasks: merged }),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) throw new Error(body?.error || 'タスクストックへの追加に失敗しました');
+      }
+
+      setTaskStock(JSON.parse(JSON.stringify(merged)));
+      setTempTaskStock(JSON.parse(JSON.stringify(merged)));
+      setTaskStockDirty(false);
+      setTaskStockLoaded(true);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadSettings() {
     if (!accessToken) return;
     try {
@@ -2724,7 +2778,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 />
               </div>
 
-              <div className="task-name-row">
+              <div className="task-name-row input-with-button">
                 <input
                   type="text"
                   id="task-input"
@@ -2737,6 +2791,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   }}
                   disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 />
+                <button
+                  id="add-to-task-stock-btn"
+                  className="icon-btn"
+                  title="タスクストックに追加"
+                  aria-label="タスクストックに追加"
+                  type="button"
+                  onClick={() => void addTextToTaskStock(newTaskName)}
+                  disabled={!accessToken || busy || !String(newTaskName || '').trim()}
+                >
+                  <span className="material-icons">bookmark_add</span>
+                </button>
               </div>
 
               <button
@@ -3093,14 +3158,27 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className="edit-body">
             <div className="edit-field">
               <label htmlFor="edit-task-name">作業内容</label>
-              <input
-                id="edit-task-name"
-                className="edit-input"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="タスク名"
-                disabled={busy}
-              />
+              <div className="input-with-button">
+                <input
+                  id="edit-task-name"
+                  className="edit-input"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="タスク名"
+                  disabled={busy}
+                />
+                <button
+                  id="edit-add-to-task-stock-btn"
+                  className="icon-btn"
+                  title="タスクストックに追加"
+                  aria-label="タスクストックに追加"
+                  type="button"
+                  onClick={() => void addTextToTaskStock(editName)}
+                  disabled={!accessToken || busy || !String(editName || '').trim()}
+                >
+                  <span className="material-icons">bookmark_add</span>
+                </button>
+              </div>
             </div>
             <div className="edit-field">
               <label htmlFor="edit-task-tag">タグ（任意）</label>
