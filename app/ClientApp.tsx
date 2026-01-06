@@ -311,6 +311,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tempTagStock, setTempTagStock] = useState<TagStockItem[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tagDirty, setTagDirty] = useState(false);
+  const tagStockDragFromIndexRef = useRef<number | null>(null);
+  const tagStockLastDragAtRef = useRef(0);
+  const [tagStockDragOverIndex, setTagStockDragOverIndex] = useState<number | null>(null);
+  const [tagStockDraggingIndex, setTagStockDraggingIndex] = useState<number | null>(null);
 
   const [goalStock, setGoalStock] = useState<Array<{ name: string }>>([]);
   const [tempGoalStock, setTempGoalStock] = useState<Array<{ name: string }>>([]);
@@ -4217,6 +4221,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>🏷️ 保存済みタグ</h4>
+              <p className="task-stock-help-text">タグはドラッグで並び替えできます</p>
               <div className="task-stock-list" id="tag-stock-list">
                 {tempTagStock.length === 0 ? (
                   <div className="task-stock-empty">
@@ -4225,9 +4230,56 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </div>
                 ) : (
                   tempTagStock.map((tag, idx) => (
-                    <div key={`${tag.id ?? ''}:${tag.name}:${idx}`} className="stock-item">
+                    <div
+                      key={`${tag.id ?? ''}:${tag.name}:${idx}`}
+                      className={`stock-item tag-stock-item${tagStockDragOverIndex === idx ? ' drag-over' : ''}${tagStockDraggingIndex === idx ? ' dragging' : ''}`}
+                    >
                       <div className="stock-item-content">
-                        <div className="tag-stock-item-name" title="タグ名">
+                        <div
+                          className="tag-stock-item-name"
+                          title="タグ名"
+                          draggable
+                          onDragStart={(e) => {
+                            tagStockDragFromIndexRef.current = idx;
+                            tagStockLastDragAtRef.current = Date.now();
+                            setTagStockDraggingIndex(idx);
+                            setTagStockDragOverIndex(idx);
+                            try {
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', tag.name);
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (tagStockDragFromIndexRef.current != null) setTagStockDragOverIndex(idx);
+                            try {
+                              e.dataTransfer.dropEffect = 'move';
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            tagStockLastDragAtRef.current = Date.now();
+                            const from = tagStockDragFromIndexRef.current;
+                            if (from == null) return;
+                            if (from === idx) return;
+                            setTempTagStock((p) => arrayMove(p, from, idx));
+                            setTagDirty(true);
+                            tagStockDragFromIndexRef.current = idx;
+                            setTagStockDraggingIndex(idx);
+                            setTagStockDragOverIndex(null);
+                          }}
+                          onDragEnd={() => {
+                            tagStockLastDragAtRef.current = Date.now();
+                            tagStockDragFromIndexRef.current = null;
+                            setTagStockDraggingIndex(null);
+                            setTagStockDragOverIndex(null);
+                          }}
+                          style={{ cursor: 'grab' }}
+                        >
                           {tag.name}
                         </div>
                         <button
