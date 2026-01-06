@@ -324,6 +324,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskStockLoaded, setTaskStockLoaded] = useState(false);
   const taskStockDragFromIndexRef = useRef<number | null>(null);
   const taskStockLastDragAtRef = useRef(0);
+  const [taskStockDragOverIndex, setTaskStockDragOverIndex] = useState<number | null>(null);
+  const [taskStockDraggingIndex, setTaskStockDraggingIndex] = useState<number | null>(null);
 
   const taskNameSuggestions = useMemo(() => {
     const list = normalizeTaskNameList(taskStock);
@@ -4078,7 +4080,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </div>
                 ) : (
                   tempTaskStock.map((t, idx) => (
-                    <div key={`${t}:${idx}`} className="task-stock-item">
+                    <div
+                      key={`${t}:${idx}`}
+                      className={`task-stock-item${taskStockDragOverIndex === idx ? ' drag-over' : ''}${taskStockDraggingIndex === idx ? ' dragging' : ''}`}
+                    >
                       <div className="stock-item-content">
                         <div
                           className="task-stock-item-name clickable"
@@ -4087,6 +4092,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           onDragStart={(e) => {
                             taskStockDragFromIndexRef.current = idx;
                             taskStockLastDragAtRef.current = Date.now();
+                            setTaskStockDraggingIndex(idx);
+                            setTaskStockDragOverIndex(idx);
                             try {
                               e.dataTransfer.effectAllowed = 'move';
                               e.dataTransfer.setData('text/plain', t);
@@ -4096,6 +4103,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           }}
                           onDragOver={(e) => {
                             e.preventDefault();
+                            if (taskStockDragFromIndexRef.current != null) setTaskStockDragOverIndex(idx);
                             try {
                               e.dataTransfer.dropEffect = 'move';
                             } catch {
@@ -4111,10 +4119,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             setTempTaskStock((p) => arrayMove(p, from, idx));
                             setTaskStockDirty(true);
                             taskStockDragFromIndexRef.current = idx;
+                            setTaskStockDraggingIndex(idx);
+                            setTaskStockDragOverIndex(null);
                           }}
                           onDragEnd={() => {
                             taskStockLastDragAtRef.current = Date.now();
                             taskStockDragFromIndexRef.current = null;
+                            setTaskStockDraggingIndex(null);
+                            setTaskStockDragOverIndex(null);
                           }}
                           onClick={() => {
                             if (Date.now() - taskStockLastDragAtRef.current < 250) return;
