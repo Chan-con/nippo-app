@@ -320,6 +320,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tempGoalStock, setTempGoalStock] = useState<Array<{ name: string }>>([]);
   const [goalInput, setGoalInput] = useState('');
   const [goalDirty, setGoalDirty] = useState(false);
+  const goalStockDragFromIndexRef = useRef<number | null>(null);
+  const [goalStockDragOverIndex, setGoalStockDragOverIndex] = useState<number | null>(null);
+  const [goalStockDraggingIndex, setGoalStockDraggingIndex] = useState<number | null>(null);
 
   const [taskStock, setTaskStock] = useState<string[]>([]);
   const [tempTaskStock, setTempTaskStock] = useState<string[]>([]);
@@ -3984,6 +3987,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>🎯 保存済み目標</h4>
+              <p className="task-stock-help-text">目標はドラッグで並び替えできます</p>
               <div className="task-stock-list" id="goal-stock-list">
                 {tempGoalStock.length === 0 ? (
                   <div className="task-stock-empty">
@@ -3992,9 +3996,53 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </div>
                 ) : (
                   tempGoalStock.map((g, idx) => (
-                    <div key={`${g.name}:${idx}`} className="goal-stock-item">
+                    <div
+                      key={`${g.name}:${idx}`}
+                      className={`goal-stock-item${goalStockDragOverIndex === idx ? ' drag-over' : ''}${goalStockDraggingIndex === idx ? ' dragging' : ''}`}
+                    >
                       <div className="goal-stock-content">
-                        <div className="goal-stock-item-name" title="目標名">
+                        <div
+                          className="goal-stock-item-name"
+                          title="目標名"
+                          draggable
+                          onDragStart={(e) => {
+                            goalStockDragFromIndexRef.current = idx;
+                            setGoalStockDraggingIndex(idx);
+                            setGoalStockDragOverIndex(idx);
+                            try {
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', g.name);
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (goalStockDragFromIndexRef.current != null) setGoalStockDragOverIndex(idx);
+                            try {
+                              e.dataTransfer.dropEffect = 'move';
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const from = goalStockDragFromIndexRef.current;
+                            if (from == null) return;
+                            if (from === idx) return;
+                            setTempGoalStock((p) => arrayMove(p, from, idx));
+                            setGoalDirty(true);
+                            goalStockDragFromIndexRef.current = idx;
+                            setGoalStockDraggingIndex(idx);
+                            setGoalStockDragOverIndex(null);
+                          }}
+                          onDragEnd={() => {
+                            goalStockDragFromIndexRef.current = null;
+                            setGoalStockDraggingIndex(null);
+                            setGoalStockDragOverIndex(null);
+                          }}
+                          style={{ cursor: 'grab' }}
+                        >
                           {g.name}
                         </div>
                         <button

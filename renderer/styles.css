@@ -3073,6 +3073,15 @@ input[type='number']::-webkit-inner-spin-button {
   cursor: grabbing;
 }
 
+/* 目標ストック: ドラッグ中の視覚フィードバック */
+.goal-stock-item.dragging {
+  opacity: 0.65;
+}
+
+.goal-stock-item.dragging .goal-stock-item-name {
+  cursor: grabbing;
+}
+
 /* タスクストックのヘルプテキスト */
 .task-stock-help-text {
   color: var(--text-muted);
