@@ -2307,6 +2307,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return list;
   }, [tasks]);
 
+  const reportTimelineCopyBlocked = (viewMode === 'today' ? tasks : historyTasks).some(
+    (t) => t.status === 'reserved' || (!t.endTime && t.status !== 'reserved')
+  );
+
   function formatDateISOToJaShort(date: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
     const todayIso = formatDateISO(new Date());
@@ -3694,6 +3698,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               title="タイムラインをコピー"
               aria-label="タイムラインをコピー"
               type="button"
+              disabled={reportTimelineCopyBlocked}
               onClick={async () => {
                 try {
                   const base = viewMode === 'today' ? tasks : historyTasks;
