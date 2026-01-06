@@ -287,6 +287,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const tasksReloadInFlightRef = useRef(false);
   const [newTaskName, setNewTaskName] = useState('');
   const taskInputRef = useRef<HTMLInputElement | null>(null);
   const [taskInputFocused, setTaskInputFocused] = useState(false);
@@ -1179,19 +1180,71 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return fetch(path, { ...init, headers });
   }
 
-  async function reloadTasks() {
-    setError(null);
+  async function reloadTasksInternal(opts: { silent: boolean }) {
+    const silent = !!opts?.silent;
+    if (!silent) setError(null);
     try {
-      const res = await apiFetch('/api/tasks');
+      const res = await apiFetch('/api/tasks', { cache: 'no-store' });
       const body = await res.json();
       if (!res.ok || !body?.success) {
         throw new Error(body?.error || 'タスク取得に失敗しました');
       }
       setTasks(Array.isArray(body.tasks) ? body.tasks : []);
     } catch (e: any) {
-      setError(e?.message || String(e));
+      if (!silent) setError(e?.message || String(e));
     }
   }
+
+  async function reloadTasks() {
+    await reloadTasksInternal({ silent: false });
+  }
+
+  async function reloadTasksSilent() {
+    await reloadTasksInternal({ silent: true });
+  }
+
+  useEffect(() => {
+    // 予約の期限到来処理は /api/tasks(GET) のタイミングで走るため、
+    // 画面を開いている間は定期的に取得してステータスを自動反映させる。
+    if (!accessToken) return;
+    if (viewMode === 'history') return;
+
+    let disposed = false;
+
+    async function tick() {
+      if (disposed) return;
+      if (document.visibilityState !== 'visible') return;
+      if (tasksReloadInFlightRef.current) return;
+      tasksReloadInFlightRef.current = true;
+      try {
+        await reloadTasksSilent();
+      } finally {
+        tasksReloadInFlightRef.current = false;
+      }
+    }
+
+    // 予約の「分」精度で十分なので 60 秒間隔。
+    const intervalId = window.setInterval(() => {
+      void tick();
+    }, 60_000);
+
+    const onVisibleOrFocus = () => {
+      void tick();
+    };
+    window.addEventListener('focus', onVisibleOrFocus);
+    document.addEventListener('visibilitychange', onVisibleOrFocus);
+
+    // すぐ1回だけ同期
+    void tick();
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onVisibleOrFocus);
+      document.removeEventListener('visibilitychange', onVisibleOrFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, viewMode]);
 
   async function loadHistoryDates() {
     if (!accessToken) return;
