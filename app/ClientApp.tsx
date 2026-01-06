@@ -245,6 +245,16 @@ function normalizeTaskNameList(list: unknown) {
   return out;
 }
 
+function arrayMove<T>(arr: T[], fromIndex: number, toIndex: number) {
+  const from = Math.max(0, Math.min(arr.length - 1, fromIndex));
+  const to = Math.max(0, Math.min(arr.length - 1, toIndex));
+  if (from === to) return arr;
+  const copy = arr.slice();
+  const [item] = copy.splice(from, 1);
+  copy.splice(to, 0, item as T);
+  return copy;
+}
+
 function getSafeLocalStorage(): Storage | undefined {
   try {
     return window.localStorage;
@@ -312,6 +322,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskStockInput, setTaskStockInput] = useState('');
   const [taskStockDirty, setTaskStockDirty] = useState(false);
   const [taskStockLoaded, setTaskStockLoaded] = useState(false);
+  const taskStockDragFromIndexRef = useRef<number | null>(null);
+  const taskStockLastDragAtRef = useRef(0);
 
   const taskNameSuggestions = useMemo(() => {
     const list = normalizeTaskNameList(taskStock);
@@ -4056,7 +4068,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>💾 保存済みタスク</h4>
-              <p className="task-stock-help-text">タスクをクリックすると入力欄に追加されます</p>
+              <p className="task-stock-help-text">タスクはドラッグで並び替えできます（クリックで入力欄に追加）</p>
               <div className="task-stock-list" id="task-stock-list">
                 {tempTaskStock.length === 0 ? (
                   <div className="task-stock-empty">
@@ -4071,10 +4083,45 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         <div
                           className="task-stock-item-name clickable"
                           title="クリックして新しいタスクに追加"
+                          draggable
+                          onDragStart={(e) => {
+                            taskStockDragFromIndexRef.current = idx;
+                            taskStockLastDragAtRef.current = Date.now();
+                            try {
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', t);
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            try {
+                              e.dataTransfer.dropEffect = 'move';
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            taskStockLastDragAtRef.current = Date.now();
+                            const from = taskStockDragFromIndexRef.current;
+                            if (from == null) return;
+                            if (from === idx) return;
+                            setTempTaskStock((p) => arrayMove(p, from, idx));
+                            setTaskStockDirty(true);
+                            taskStockDragFromIndexRef.current = idx;
+                          }}
+                          onDragEnd={() => {
+                            taskStockLastDragAtRef.current = Date.now();
+                            taskStockDragFromIndexRef.current = null;
+                          }}
                           onClick={() => {
+                            if (Date.now() - taskStockLastDragAtRef.current < 250) return;
                             setNewTaskName(t);
                             setTaskStockOpen(false);
                           }}
+                          style={{ cursor: 'grab' }}
                         >
                           <span className="material-icons" style={{ fontSize: 14, marginRight: 6, opacity: 0.6, color: 'var(--accent)' }}>
                             add_circle_outline
