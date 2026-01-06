@@ -3004,34 +3004,34 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 ) : null}
               </div>
 
-              <button
-                id="add-task-btn"
-                className="btn-primary btn-add-task"
-                type="button"
-                title="追加"
-                aria-label="追加"
-                onClick={addTask}
-                disabled={!accessToken || busy || !String(newTaskName || '').trim() || (viewMode === 'history' && !historyDate)}
-              >
-                <span className="material-icons">add</span>
-              </button>
-            </div>
-
-            <div className="action-buttons">
-              {runningTask ? (
+              {viewMode === 'today' && addMode !== 'reserve' && runningTask ? (
                 <button
                   id="end-task-btn"
-                  className="btn-secondary"
+                  className="btn-primary btn-add-task"
+                  type="button"
                   title="タスク終了"
                   aria-label="タスク終了"
-                  type="button"
                   onClick={endTask}
                   disabled={!accessToken || busy}
                 >
                   <span className="material-icons">check_circle</span>
-                  タスク終了
                 </button>
-              ) : null}
+              ) : (
+                <button
+                  id="add-task-btn"
+                  className="btn-primary btn-add-task"
+                  type="button"
+                  title="追加"
+                  aria-label="追加"
+                  onClick={addTask}
+                  disabled={!accessToken || busy || !String(newTaskName || '').trim() || (viewMode === 'history' && !historyDate)}
+                >
+                  <span className="material-icons">add</span>
+                </button>
+              )}
+            </div>
+
+            <div className="action-buttons">
               <button
                 id="create-report-btn"
                 className="btn-secondary"
