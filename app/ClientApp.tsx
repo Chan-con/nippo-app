@@ -3258,16 +3258,29 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             onClick={(e) => {
                               e.preventDefault();
                               setNewTaskName(t.name);
-                              const input = document.getElementById('task-input') as HTMLInputElement | null;
-                              input?.focus();
-                              if (input) {
-                                const len = input.value.length;
-                                try {
-                                  input.setSelectionRange(len, len);
-                                } catch {
-                                  // ignore
+                              const isMobile =
+                                typeof window !== 'undefined' &&
+                                typeof window.matchMedia === 'function' &&
+                                window.matchMedia('(max-width: 639px)').matches;
+                              if (isMobile) setSidebarOpen(true);
+
+                              window.setTimeout(() => {
+                                const input = document.getElementById('task-input') as HTMLInputElement | null;
+                                input?.focus();
+                                if (input) {
+                                  try {
+                                    input.scrollIntoView({ block: 'center' });
+                                  } catch {
+                                    // ignore
+                                  }
+                                  const len = input.value.length;
+                                  try {
+                                    input.setSelectionRange(len, len);
+                                  } catch {
+                                    // ignore
+                                  }
                                 }
-                              }
+                              }, 0);
                             }}
                             onContextMenu={(e) => {
                               e.preventDefault();
