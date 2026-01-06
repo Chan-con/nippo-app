@@ -481,6 +481,14 @@ input[type='number']::-webkit-inner-spin-button {
   box-shadow: var(--shadow-small);
 }
 
+.btn-end-task {
+  background: var(--error);
+}
+
+.btn-end-task:hover:not(:disabled) {
+  background: var(--error);
+}
+
 .btn-primary:disabled,
 .btn-primary.disabled {
   background: var(--surface);

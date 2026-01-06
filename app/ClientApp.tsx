@@ -3007,14 +3007,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               {viewMode === 'today' && addMode !== 'reserve' && runningTask ? (
                 <button
                   id="end-task-btn"
-                  className="btn-primary btn-add-task"
+                  className="btn-primary btn-add-task btn-end-task"
                   type="button"
                   title="タスク終了"
                   aria-label="タスク終了"
                   onClick={endTask}
                   disabled={!accessToken || busy}
                 >
-                  <span className="material-icons">check_circle</span>
+                  <span className="material-icons">stop_circle</span>
                 </button>
               ) : (
                 <button
