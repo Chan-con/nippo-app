@@ -117,7 +117,8 @@ export async function onRequest(context) {
     if (parts.length === 1 && parts[0] === 'gpt-api-key' && request.method === 'GET') {
       const doc = await taskManager._getDoc(userId, 'gpt_api_key', 'default', null);
       const hasKey = !!(doc && typeof doc === 'object' && doc.iv && doc.ciphertext);
-      return jsonResponse({ success: true, hasKey });
+      const encryptionReady = !!env.GPT_API_KEY_ENCRYPTION_SECRET;
+      return jsonResponse({ success: true, hasKey, encryptionReady });
     }
 
     if (parts.length === 1 && parts[0] === 'gpt-api-key' && request.method === 'POST') {

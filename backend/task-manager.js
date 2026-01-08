@@ -2993,7 +2993,8 @@ function createApp(taskManagerInstance, options = {}) {
             }
             const doc = await taskManager._getDoc(req.userId, 'gpt_api_key', 'default', null);
             const hasKey = !!(doc && typeof doc === 'object' && doc.iv && doc.ciphertext);
-            res.json({ success: true, hasKey });
+            const encryptionReady = !!process.env.GPT_API_KEY_ENCRYPTION_SECRET;
+            res.json({ success: true, hasKey, encryptionReady });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
         }
