@@ -54,7 +54,7 @@ async function callOpenAiChat({ apiKey, messages, temperature = 0.3, maxTokens =
       model: 'gpt-5.2',
       messages,
       temperature,
-      max_tokens: maxTokens,
+      max_completion_tokens: maxTokens,
     }),
   });
 

@@ -2974,7 +2974,7 @@ function createApp(taskManagerInstance, options = {}) {
                 model: 'gpt-5.2',
                 messages,
                 temperature,
-                max_tokens: maxTokens,
+                max_completion_tokens: maxTokens,
             })
         });
         const data = await r.json().catch(() => null);
