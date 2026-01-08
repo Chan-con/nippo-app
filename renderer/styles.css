@@ -1698,6 +1698,7 @@ input[type='number']::-webkit-inner-spin-button {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 8px;
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -1724,21 +1725,13 @@ input[type='number']::-webkit-inner-spin-button {
   min-width: 135px;
 }
 
-.report-gpt-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
 .report-gpt-generate-btn {
   height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  margin-left: auto;
 }
 
 @media (max-width: 520px) {

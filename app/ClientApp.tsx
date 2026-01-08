@@ -3909,28 +3909,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     }}
                   />
 
-                  <div className="report-gpt-controls">
-                    <div className="report-date-range">
-                      <span className="report-date-label">対象期間</span>
-                      <input
-                        type="date"
-                        value={gptReportRangeStart}
-                        onChange={(e) => setGptReportRangeStart(normalizeYmd(e.target.value))}
-                        disabled={!accessToken || busy}
-                        aria-label="対象期間（開始日）"
-                        className="report-date-input"
-                      />
-                      <span className="report-date-sep">〜</span>
-                      <input
-                        type="date"
-                        value={gptReportRangeEnd}
-                        onChange={(e) => setGptReportRangeEnd(normalizeYmd(e.target.value))}
-                        disabled={!accessToken || busy}
-                        aria-label="対象期間（終了日）"
-                        className="report-date-input"
-                      />
-                    </div>
-
+                  <div className="report-date-range">
+                    <span className="report-date-label">対象期間</span>
+                    <input
+                      type="date"
+                      value={gptReportRangeStart}
+                      onChange={(e) => setGptReportRangeStart(normalizeYmd(e.target.value))}
+                      disabled={!accessToken || busy}
+                      aria-label="対象期間（開始日）"
+                      className="report-date-input"
+                    />
+                    <span className="report-date-sep">〜</span>
+                    <input
+                      type="date"
+                      value={gptReportRangeEnd}
+                      onChange={(e) => setGptReportRangeEnd(normalizeYmd(e.target.value))}
+                      disabled={!accessToken || busy}
+                      aria-label="対象期間（終了日）"
+                      className="report-date-input"
+                    />
                     <button
                       type="button"
                       className="btn-secondary report-gpt-generate-btn"
