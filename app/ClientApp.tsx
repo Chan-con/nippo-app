@@ -1204,32 +1204,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  async function gptPolishReportText() {
-    if (!accessToken) return;
-    if (busy) return;
-    const input = getActiveReportText();
-    if (!String(input || '').trim()) return;
-
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await apiFetch('/api/gpt/polish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input }),
-      });
-      const body = await res.json().catch(() => null as any);
-      if (!res.ok || !body?.success) throw new Error(body?.error || '変換に失敗しました');
-      const text = String(body?.text || '').trim();
-      if (!text) throw new Error('変換結果が空です');
-      setActiveReportText(text);
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function fetchBillingSummary(offset = billingPeriodOffset) {
     if (!accessToken) return;
     setBillingLoading(true);
@@ -3964,17 +3938,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     >
                       <span className="material-icons">auto_awesome</span>
                       タイムラインから生成
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      title="丁寧な文章に変換"
-                      aria-label="丁寧な文章に変換"
-                      onClick={() => void gptPolishReportText()}
-                      disabled={!accessToken || busy}
-                    >
-                      <span className="material-icons">spellcheck</span>
-                      丁寧な文章に変換
                     </button>
                   </div>
                 </div>

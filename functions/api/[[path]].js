@@ -184,35 +184,6 @@ export async function onRequest(context) {
       return jsonResponse({ success: true, text });
     }
 
-    if (parts.length === 2 && parts[0] === 'gpt' && parts[1] === 'polish' && request.method === 'POST') {
-      const secret = env.GPT_API_KEY_ENCRYPTION_SECRET;
-      if (!secret) return jsonResponse({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' }, 500);
-
-      const doc = await taskManager._getDoc(userId, 'gpt_api_key', 'default', null);
-      if (!doc?.iv || !doc?.ciphertext) return jsonResponse({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' }, 400);
-
-      const apiKey = await decryptStringAesGcm(doc.iv, doc.ciphertext, secret);
-      if (!apiKey) return jsonResponse({ success: false, error: 'GPT APIキーの復号に失敗しました' }, 500);
-
-      const textIn = String(body?.text || '').trim();
-      if (!textIn) return jsonResponse({ success: false, error: '変換する本文が必要です' }, 400);
-
-      const messages = [
-        {
-          role: 'system',
-          content:
-            'あなたは日本語文章のリライト編集者です。入力の内容を保持しつつ、箇条書きやメモ書きを丁寧な文章(です/ます)に整形してください。新しい事実は追加せず、曖昧な点は断定しないでください。',
-        },
-        {
-          role: 'user',
-          content: '次のテキストを、丁寧で読みやすい報告文に変換してください。\n\n---\n' + textIn,
-        },
-      ];
-
-      const text = await callOpenAiChat({ apiKey, messages, temperature: 0.2, maxTokens: 900 });
-      return jsonResponse({ success: true, text });
-    }
-
     // /api/tasks
     if (request.method === 'GET' && parts.length === 1 && parts[0] === 'tasks') {
       const dateString = url.searchParams.get('dateString') || null;

@@ -3064,34 +3064,6 @@ function createApp(taskManagerInstance, options = {}) {
         }
     });
 
-    app.post('/api/gpt/polish', async (req, res) => {
-        try {
-            if (!hasDocStore(taskManager)) {
-                return res.status(501).json({ success: false, error: 'gpt is not supported' });
-            }
-            const secret = process.env.GPT_API_KEY_ENCRYPTION_SECRET;
-            if (!secret) return res.status(500).json({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' });
-
-            const doc = await taskManager._getDoc(req.userId, 'gpt_api_key', 'default', null);
-            if (!doc?.iv || !doc?.ciphertext) return res.status(400).json({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' });
-            const apiKey = decryptStringAesGcmNode(doc.iv, doc.ciphertext, secret);
-            if (!apiKey) return res.status(500).json({ success: false, error: 'GPT APIキーの復号に失敗しました' });
-
-            const textIn = String(req.body?.text || '').trim();
-            if (!textIn) return res.status(400).json({ success: false, error: '変換する本文が必要です' });
-
-            const messages = [
-                { role: 'system', content: 'あなたは日本語文章のリライト編集者です。入力の内容を保持しつつ、箇条書きやメモ書きを丁寧な文章(です/ます)に整形してください。新しい事実は追加せず、曖昧な点は断定しないでください。' },
-                { role: 'user', content: '次のテキストを、丁寧で読みやすい報告文に変換してください。\n\n---\n' + textIn }
-            ];
-
-            const text = await callOpenAiChatNode({ apiKey, messages, temperature: 0.2, maxTokens: 900 });
-            res.json({ success: true, text });
-        } catch (error) {
-            res.status(500).json({ success: false, error: error.message });
-        }
-    });
-
     // Web版用: 設定API（Electron版はIPCで扱うが、WebではこのAPIを使う）
     app.get('/api/settings', async (req, res) => {
         try {
