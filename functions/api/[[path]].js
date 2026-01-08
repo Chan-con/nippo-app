@@ -149,20 +149,33 @@ export async function onRequest(context) {
 
       const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
       const limited = tasks.slice(0, 80).map((t) => ({
+        dateString: String(t?.dateString || '').slice(0, 20),
         name: String(t?.name || '').slice(0, 200),
         memo: String(t?.memo || '').slice(0, 1400),
       }));
 
       if (limited.length === 0) return jsonResponse({ success: false, error: 'タイムラインが空です' }, 400);
 
-      const timeline = limited
-        .map((t) => {
-          const title = String(t.name || '').trim();
-          const memo = String(t.memo || '').trim();
-          if (!title && !memo) return '';
-          if (!memo) return `【${title}】`;
-          if (!title) return `【メモ】\n${memo}`;
-          return `【${title}】\n${memo}`;
+      const byDate = new Map();
+      for (const t of limited) {
+        const dateKey = String(t?.dateString || '').trim() || null;
+        const key = dateKey && /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : '（日付未指定）';
+        if (!byDate.has(key)) byDate.set(key, []);
+        byDate.get(key).push(t);
+      }
+
+      const timeline = Array.from(byDate.entries())
+        .map(([dateKey, items]) => {
+          const lines = [`日付: ${dateKey}`];
+          for (const t of items) {
+            const title = String(t?.name || '').trim();
+            const memo = String(t?.memo || '').trim();
+            if (!title && !memo) continue;
+            if (title) lines.push(`タイトル: ${title}`);
+            if (memo) lines.push(`メモ: ${memo}`);
+            lines.push('');
+          }
+          return lines.join('\n').trim();
         })
         .filter(Boolean)
         .join('\n\n');
@@ -176,7 +189,7 @@ export async function onRequest(context) {
         {
           role: 'user',
           content:
-            '次の入力から「本日の報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 箇条書きは使わず、読みやすい文章\n- 改行は段落区切りのみ（文の途中で不自然に改行しない）\n- 2〜4段落程度に収める（必要なら段落を分ける）\n- 作業時間・工数・時間帯など時間情報には一切触れない（推測もしない）\n- 入力に無い事実は追加しない\n- メモがあれば自然に文章へ反映する\n\n入力（作業タイトル/メモ）:\n' + timeline,
+            '次の入力から「対象期間の報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 箇条書きは使わず、読みやすい文章\n- 改行は段落区切りのみ（文の途中で不自然に改行しない）\n- 2〜4段落程度に収める（必要なら段落を分ける）\n- 作業時間・工数・時間帯など時間情報には一切触れない（推測もしない）\n- 入力に無い事実は追加しない\n- メモがあれば自然に文章へ反映する\n\n入力（作業タイトル/メモ）:\n' + timeline,
         },
       ];
 

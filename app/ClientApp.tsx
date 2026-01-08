@@ -431,6 +431,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
   }
 
+  const [gptReportRangeStart, setGptReportRangeStart] = useState(() => ymdKeyFromDate(new Date()));
+  const [gptReportRangeEnd, setGptReportRangeEnd] = useState(() => ymdKeyFromDate(new Date()));
+
+  useEffect(() => {
+    if (!reportOpen) return;
+    const today = ymdKeyFromDate(new Date());
+    setGptReportRangeStart(today);
+    setGptReportRangeEnd(today);
+  }, [reportOpen]);
+
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string>('');
@@ -1110,18 +1120,72 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setBusy(true);
     setError(null);
     try {
-      const base = viewMode === 'today' ? tasks : historyTasks;
-      const payloadTasks = (Array.isArray(base) ? base : [])
-        .filter((t) => t && t.status !== 'reserved')
-        .filter((t) => !isWorkTimeExcludedTaskName(t?.name))
-        .map((t) => ({
-          name: String(t.name || ''),
-          memo: typeof t.memo === 'string' ? t.memo : '',
-          tag: String(t.tag || ''),
-          startTime: String(t.startTime || ''),
-          endTime: String(t.endTime || ''),
-          status: t.status ?? null,
-        }));
+      const parseYmdToUtcDate = (ymd: string) => {
+        const m = String(ymd || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return null;
+        const y = Number(m[1]);
+        const mo = Number(m[2]);
+        const d = Number(m[3]);
+        const dt = new Date(Date.UTC(y, mo - 1, d, 0, 0, 0));
+        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+        return dt;
+      };
+
+      const listDatesInclusive = (startYmd: string, endYmd: string) => {
+        const start = parseYmdToUtcDate(startYmd);
+        const end = parseYmdToUtcDate(endYmd);
+        if (!start || !end) return [] as string[];
+        const out: string[] = [];
+        const cur = new Date(start.getTime());
+        while (cur.getTime() <= end.getTime()) {
+          out.push(ymdKeyFromParts(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate()));
+          cur.setUTCDate(cur.getUTCDate() + 1);
+          if (out.length > 366) break;
+        }
+        return out;
+      };
+
+      const todayYmd = ymdKeyFromDate(new Date());
+      let startYmd = String(gptReportRangeStart || '').trim();
+      let endYmd = String(gptReportRangeEnd || '').trim();
+      if (!startYmd) startYmd = todayYmd;
+      if (!endYmd) endYmd = todayYmd;
+      startYmd = normalizeYmd(startYmd);
+      endYmd = normalizeYmd(endYmd);
+      if (startYmd > endYmd) {
+        const tmp = startYmd;
+        startYmd = endYmd;
+        endYmd = tmp;
+      }
+
+      const dateList = listDatesInclusive(startYmd, endYmd);
+      if (dateList.length === 0) throw new Error('期間の形式が不正です（yyyy-mm-dd）');
+      if (dateList.length > 31) throw new Error('期間が長すぎます（最大31日まで）');
+
+      const payloadTasks: Array<{ dateString: string; name: string; memo: string }> = [];
+      for (const dateString of dateList) {
+        let dayTasks: any[] = [];
+        if (dateString === todayYmd && viewMode === 'today') {
+          dayTasks = Array.isArray(tasks) ? tasks : [];
+        } else {
+          const resTasks = await apiFetch(`/api/tasks?dateString=${encodeURIComponent(dateString)}`);
+          const bodyTasks = await resTasks.json().catch(() => null as any);
+          if (!resTasks.ok || !bodyTasks?.success) {
+            throw new Error(bodyTasks?.error || 'タスクの取得に失敗しました');
+          }
+          dayTasks = Array.isArray(bodyTasks?.tasks) ? bodyTasks.tasks : [];
+        }
+
+        for (const t of dayTasks) {
+          if (!t || t.status === 'reserved') continue;
+          if (isWorkTimeExcludedTaskName(t?.name)) continue;
+          payloadTasks.push({
+            dateString,
+            name: String(t?.name || ''),
+            memo: typeof t?.memo === 'string' ? t.memo : '',
+          });
+        }
+      }
 
       const res = await apiFetch('/api/gpt/report-from-timeline', {
         method: 'POST',
@@ -3867,6 +3931,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       }
                     }}
                   />
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    <span style={{ opacity: 0.8 }}>対象期間</span>
+                    <input
+                      type="date"
+                      value={gptReportRangeStart}
+                      onChange={(e) => setGptReportRangeStart(normalizeYmd(e.target.value))}
+                      disabled={!accessToken || busy}
+                      aria-label="対象期間（開始日）"
+                    />
+                    <span style={{ opacity: 0.8 }}>〜</span>
+                    <input
+                      type="date"
+                      value={gptReportRangeEnd}
+                      onChange={(e) => setGptReportRangeEnd(normalizeYmd(e.target.value))}
+                      disabled={!accessToken || busy}
+                      aria-label="対象期間（終了日）"
+                    />
+                  </div>
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                     <button
