@@ -1685,6 +1685,50 @@ input[type='number']::-webkit-inner-spin-button {
   margin-bottom: 12px;
 }
 
+.report-date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.report-date-label,
+.report-date-sep {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.report-date-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 36px;
+  box-sizing: border-box;
+}
+
+.report-date-input:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.report-date-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.report-date-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .task-summary,
 .goal-summary {
   background: var(--bg-primary);

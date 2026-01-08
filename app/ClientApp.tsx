@@ -3932,22 +3932,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     }}
                   />
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                    <span style={{ opacity: 0.8 }}>対象期間</span>
+                  <div className="report-date-range">
+                    <span className="report-date-label">対象期間</span>
                     <input
                       type="date"
                       value={gptReportRangeStart}
                       onChange={(e) => setGptReportRangeStart(normalizeYmd(e.target.value))}
                       disabled={!accessToken || busy}
                       aria-label="対象期間（開始日）"
+                      className="report-date-input"
                     />
-                    <span style={{ opacity: 0.8 }}>〜</span>
+                    <span className="report-date-sep">〜</span>
                     <input
                       type="date"
                       value={gptReportRangeEnd}
                       onChange={(e) => setGptReportRangeEnd(normalizeYmd(e.target.value))}
                       disabled={!accessToken || busy}
                       aria-label="対象期間（終了日）"
+                      className="report-date-input"
                     />
                   </div>
 
