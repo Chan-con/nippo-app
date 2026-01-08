@@ -176,6 +176,7 @@ export class SupabaseTaskManager {
       endTime: '',
       name: taskName,
       tag: tag || '',
+      memo: '',
       status: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -201,6 +202,7 @@ export class SupabaseTaskManager {
       endTime: null,
       name: taskName,
       tag: tag || '',
+      memo: '',
       status: 'reserved',
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -489,6 +491,7 @@ export class SupabaseTaskManager {
       endTime: taskData?.endTime || '',
       name: taskData?.name || taskData?.title || '',
       tag: taskData?.tag || '',
+      memo: typeof taskData?.memo === 'string' ? taskData.memo : '',
       status: taskData?.status || null,
       createdAt: taskData?.createdAt || nowIso,
       updatedAt: nowIso,
@@ -505,7 +508,7 @@ export class SupabaseTaskManager {
     return { success: true, task: newTask };
   }
 
-  async updateHistoryTask(dateString: string, taskId: string, taskName: string, startTime: string, endTime: string, tag: string | null, userId: string) {
+  async updateHistoryTask(dateString: string, taskId: string, taskName: string, startTime: string, endTime: string, tag: string | null, memo: string | undefined, userId: string) {
     const current = await this.loadHistoryByDate(dateString, userId);
     if (!(current as any).success) {
       return { success: false, message: '指定された日付の履歴が見つかりません' };
@@ -524,6 +527,7 @@ export class SupabaseTaskManager {
       startTime,
       endTime: endTime || '',
       tag: tag || '',
+      memo: typeof memo === 'string' ? memo : (tasks[idx] as any)?.memo || '',
       updatedAt: nowIso,
     };
 
@@ -554,7 +558,7 @@ export class SupabaseTaskManager {
     return { success: true, task: deleted };
   }
 
-  async updateTask(taskId: string, taskName: string, startTime: string, endTime: string, tag: string | null, userId: string) {
+  async updateTask(taskId: string, taskName: string, startTime: string, endTime: string, tag: string | null, memo: string | undefined, userId: string) {
     const today = getTodayDateStringJST();
     const tasks = await this.loadSchedule(today, userId);
     const idx = tasks.findIndex((t: any) => String(t.id) === String(taskId));
@@ -567,6 +571,7 @@ export class SupabaseTaskManager {
       startTime,
       endTime: endTime || '',
       tag: tag || '',
+      memo: typeof memo === 'string' ? memo : (tasks[idx] as any)?.memo || '',
       updatedAt: nowIso,
     };
 

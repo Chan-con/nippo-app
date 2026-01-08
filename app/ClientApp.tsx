@@ -9,6 +9,7 @@ type Task = {
   startTime?: string;
   endTime?: string;
   tag?: string;
+  memo?: string;
   status?: string | null;
 };
 
@@ -356,6 +357,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsTimeRoundingMode, setSettingsTimeRoundingMode] = useState<'nearest' | 'floor' | 'ceil'>('nearest');
   const [settingsExcludeTaskNames, setSettingsExcludeTaskNames] = useState<string[]>([]);
   const [settingsExcludeTaskNameInput, setSettingsExcludeTaskNameInput] = useState('');
+  const [settingsGptApiKeyInput, setSettingsGptApiKeyInput] = useState('');
+  const [settingsGptApiKeySaved, setSettingsGptApiKeySaved] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsRemoteUpdatePending, setSettingsRemoteUpdatePending] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -435,6 +438,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [editTag, setEditTag] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
+  const [editMemo, setEditMemo] = useState('');
 
   const editNameTrimmed = String(editName ?? '').trim();
   const editNameInTaskStock = !!editNameTrimmed && taskStock.includes(editNameTrimmed);
@@ -1020,6 +1024,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setBillingHourlyCapHours(Number.isFinite(capHours) ? String(capHours) : '');
       setBillingDirty(false);
       setBillingRemoteUpdatePending(false);
+
+      try {
+        const r2 = await apiFetch('/api/gpt-api-key');
+        const b2 = await r2.json().catch(() => null as any);
+        if (r2.ok && b2?.success) {
+          setSettingsGptApiKeySaved(!!b2?.hasKey);
+        }
+      } catch {
+        // ignore
+      }
     } catch {
       // ignore
     }
@@ -1048,9 +1062,97 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       });
       const body = await res.json();
       if (!res.ok || !body?.success) throw new Error(body?.error || '保存に失敗しました');
+
+      const gptKey = settingsGptApiKeyInput.trim();
+      if (gptKey) {
+        const r2 = await apiFetch('/api/gpt-api-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: gptKey }),
+        });
+        const b2 = await r2.json().catch(() => null as any);
+        if (!r2.ok || !b2?.success) throw new Error(b2?.error || 'GPT APIキーの保存に失敗しました');
+        setSettingsGptApiKeyInput('');
+        setSettingsGptApiKeySaved(true);
+      }
+
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
       setSettingsOpen(false);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function getActiveReportText() {
+    if (activeReportTabId) return reportTabContent[activeReportTabId] ?? '';
+    return reportSingleContent;
+  }
+
+  function setActiveReportText(next: string) {
+    if (activeReportTabId) {
+      setReportTabContent((p) => ({ ...p, [activeReportTabId]: next }));
+    } else {
+      setReportSingleContent(next);
+    }
+  }
+
+  async function gptGenerateReportFromTimeline() {
+    if (!accessToken) return;
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const base = viewMode === 'today' ? tasks : historyTasks;
+      const payloadTasks = (Array.isArray(base) ? base : [])
+        .filter((t) => t && t.status !== 'reserved')
+        .map((t) => ({
+          name: String(t.name || ''),
+          memo: typeof t.memo === 'string' ? t.memo : '',
+          tag: String(t.tag || ''),
+          startTime: String(t.startTime || ''),
+          endTime: String(t.endTime || ''),
+          status: t.status ?? null,
+        }));
+
+      const res = await apiFetch('/api/gpt/report-from-timeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: payloadTasks }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || '生成に失敗しました');
+      const text = String(body?.text || '').trim();
+      if (!text) throw new Error('生成結果が空です');
+      setActiveReportText(text);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function gptPolishReportText() {
+    if (!accessToken) return;
+    if (busy) return;
+    const input = getActiveReportText();
+    if (!String(input || '').trim()) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch('/api/gpt/polish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || '変換に失敗しました');
+      const text = String(body?.text || '').trim();
+      if (!text) throw new Error('変換結果が空です');
+      setActiveReportText(text);
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -2495,6 +2597,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setEditTag(String(task.tag || ''));
     setEditStartTime(formatTimeDisplay(task.startTime) || '');
     setEditEndTime(formatTimeDisplay(task.endTime) || '');
+    setEditMemo(String(task.memo || ''));
     setEditOpen(true);
   }
 
@@ -2505,6 +2608,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const startTime = editStartTime.trim();
     const endTime = editEndTime.trim();
     const tag = editTag.trim();
+    const memo = editMemo;
 
     if (!name || !startTime) return;
 
@@ -2517,7 +2621,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startTime, endTime, tag: tag || null }),
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo }),
         });
         const body = await res.json().catch(() => null as any);
         if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
@@ -2526,7 +2630,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const res = await apiFetch(`/api/tasks/${editingTaskId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startTime, endTime, tag: tag || null }),
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo }),
         });
         const body = await res.json().catch(() => null as any);
         if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
@@ -3504,6 +3608,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 disabled={busy}
               />
             </div>
+
+            <div className="edit-field">
+              <label htmlFor="edit-task-memo">メモ（任意）</label>
+              <textarea
+                id="edit-task-memo"
+                className="edit-input"
+                value={editMemo}
+                onChange={(e) => setEditMemo(e.target.value)}
+                placeholder="メモ"
+                rows={3}
+                disabled={busy}
+              />
+            </div>
           </div>
           <div className="edit-footer">
             <button className="btn-cancel" id="edit-cancel" title="キャンセル" aria-label="キャンセル" type="button" onClick={() => setEditOpen(false)} disabled={busy}>
@@ -3744,6 +3861,31 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       }
                     }}
                   />
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      title="タイムラインから生成"
+                      aria-label="タイムラインから生成"
+                      onClick={() => void gptGenerateReportFromTimeline()}
+                      disabled={!accessToken || busy}
+                    >
+                      <span className="material-icons">auto_awesome</span>
+                      タイムラインから生成
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      title="丁寧な文章に変換"
+                      aria-label="丁寧な文章に変換"
+                      onClick={() => void gptPolishReportText()}
+                      disabled={!accessToken || busy}
+                    >
+                      <span className="material-icons">spellcheck</span>
+                      丁寧な文章に変換
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -4029,6 +4171,32 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   >
                     <span className="material-icons">add</span>
                   </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <h4>🤖 GPT</h4>
+              <p className="settings-hint">GPTのAPIキーを保存します（DBには暗号化して保存されます）。</p>
+              <div className="settings-grid-2col">
+                <div className="settings-field">
+                  <label htmlFor="gpt-api-key" className="settings-label">
+                    GPT APIキー
+                  </label>
+                  <input
+                    id="gpt-api-key"
+                    className="edit-input"
+                    type="password"
+                    value={settingsGptApiKeyInput}
+                    onChange={(e) => setSettingsGptApiKeyInput(e.target.value)}
+                    placeholder={settingsGptApiKeySaved ? '設定済み（変更する場合のみ入力）' : 'sk-...'}
+                    disabled={!accessToken || busy}
+                  />
+                </div>
+                <div className="settings-field" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <div className="settings-hint" style={{ margin: 0 }}>
+                    {settingsGptApiKeySaved ? '現在: 設定済み' : '現在: 未設定'}
+                  </div>
                 </div>
               </div>
             </div>

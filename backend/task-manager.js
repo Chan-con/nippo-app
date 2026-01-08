@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 
 class TaskManager {
     constructor(userDataPath = null) {
@@ -2513,6 +2514,7 @@ function createApp(taskManagerInstance, options = {}) {
             const startTime = (data.startTime || '').trim();
             const endTime = (data.endTime || '').trim();
             const tag = data.tag || null;
+            const memo = typeof data.memo === 'string' ? data.memo : undefined;
             
             console.log(`履歴タスク更新リクエストを受信: ${dateString}, taskId: ${taskId}`, data);
             
@@ -2529,7 +2531,7 @@ function createApp(taskManagerInstance, options = {}) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, req.userId);
+            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, req.userId);
             if (result.success) {
                 res.json(result);
             } else {
@@ -2549,12 +2551,13 @@ function createApp(taskManagerInstance, options = {}) {
             const startTime = (data.startTime || '').trim();
             const endTime = (data.endTime || '').trim();
             const tag = data.tag || null;
+            const memo = typeof data.memo === 'string' ? data.memo : undefined;
             
             if (!taskName || !startTime) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, req.userId);
+            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, memo, req.userId);
             if (result) {
                 const responseData = { success: true, task: result.task };
                 if (result.adjustments) {
@@ -2929,6 +2932,162 @@ function createApp(taskManagerInstance, options = {}) {
         } catch (error) {
             console.error('履歴クリーンアップエラー:', error);
             res.status(500).json({ success: false, message: '履歴クリーンアップに失敗しました' });
+        }
+    });
+
+    function hasDocStore(tm) {
+        return tm && typeof tm._getDoc === 'function' && typeof tm._setDoc === 'function';
+    }
+
+    function encryptStringAesGcmNode(plaintext, secret) {
+        const key = crypto.createHash('sha256').update(String(secret)).digest();
+        const iv = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+        const ciphertext = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()]);
+        const tag = cipher.getAuthTag();
+        const combined = Buffer.concat([ciphertext, tag]);
+        return { iv: iv.toString('base64'), ciphertext: combined.toString('base64') };
+    }
+
+    function decryptStringAesGcmNode(ivB64, cipherB64, secret) {
+        const key = crypto.createHash('sha256').update(String(secret)).digest();
+        const iv = Buffer.from(String(ivB64 || ''), 'base64');
+        const combined = Buffer.from(String(cipherB64 || ''), 'base64');
+        if (combined.length < 16) throw new Error('ciphertext is too short');
+        const tag = combined.subarray(combined.length - 16);
+        const ciphertext = combined.subarray(0, combined.length - 16);
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(tag);
+        const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+        return plain.toString('utf8');
+    }
+
+    async function callOpenAiChatNode({ apiKey, messages, temperature = 0.3, maxTokens = 800 }) {
+        if (typeof fetch !== 'function') throw new Error('fetch is not available in this Node runtime');
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model: 'gpt-5.2',
+                messages,
+                temperature,
+                max_tokens: maxTokens,
+            })
+        });
+        const data = await r.json().catch(() => null);
+        if (!r.ok) {
+            const msg = data?.error?.message || data?.error || 'OpenAI API error';
+            throw new Error(msg);
+        }
+        return String(data?.choices?.[0]?.message?.content || '');
+    }
+
+    // GPT API key (encrypted, stored in nippo_docs)
+    app.get('/api/gpt-api-key', async (req, res) => {
+        try {
+            if (!hasDocStore(taskManager)) {
+                return res.status(501).json({ success: false, error: 'gpt-api-key is not supported' });
+            }
+            const doc = await taskManager._getDoc(req.userId, 'gpt_api_key', 'default', null);
+            const hasKey = !!(doc && typeof doc === 'object' && doc.iv && doc.ciphertext);
+            res.json({ success: true, hasKey });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/gpt-api-key', async (req, res) => {
+        try {
+            if (!hasDocStore(taskManager)) {
+                return res.status(501).json({ success: false, error: 'gpt-api-key is not supported' });
+            }
+            const apiKey = String(req.body?.apiKey || '').trim();
+            if (!apiKey) return res.status(400).json({ success: false, error: 'APIキーが必要です' });
+
+            const secret = process.env.GPT_API_KEY_ENCRYPTION_SECRET;
+            if (!secret) return res.status(500).json({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' });
+
+            const encrypted = encryptStringAesGcmNode(apiKey, secret);
+            await taskManager._setDoc(req.userId, 'gpt_api_key', 'default', { ...encrypted, updatedAt: new Date().toISOString() });
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/gpt/report-from-timeline', async (req, res) => {
+        try {
+            if (!hasDocStore(taskManager)) {
+                return res.status(501).json({ success: false, error: 'gpt is not supported' });
+            }
+            const secret = process.env.GPT_API_KEY_ENCRYPTION_SECRET;
+            if (!secret) return res.status(500).json({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' });
+
+            const doc = await taskManager._getDoc(req.userId, 'gpt_api_key', 'default', null);
+            if (!doc?.iv || !doc?.ciphertext) return res.status(400).json({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' });
+            const apiKey = decryptStringAesGcmNode(doc.iv, doc.ciphertext, secret);
+            if (!apiKey) return res.status(500).json({ success: false, error: 'GPT APIキーの復号に失敗しました' });
+
+            const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
+            const limited = tasks.slice(0, 80).map((t) => ({
+                name: String(t?.name || '').slice(0, 200),
+                memo: String(t?.memo || '').slice(0, 1000),
+                tag: String(t?.tag || '').slice(0, 80),
+                startTime: String(t?.startTime || '').slice(0, 20),
+                endTime: String(t?.endTime || '').slice(0, 20),
+            }));
+
+            if (limited.length === 0) return res.status(400).json({ success: false, error: 'タイムラインが空です' });
+
+            const timeline = limited
+                .map((t) => {
+                    const time = t.startTime ? (t.endTime ? `${t.startTime}-${t.endTime}` : `${t.startTime}-`) : '';
+                    const tag = t.tag ? ` [${t.tag}]` : '';
+                    const memo = t.memo ? `\nメモ: ${t.memo}` : '';
+                    return `${time} ${t.name}${tag}${memo}`.trim();
+                })
+                .join('\n');
+
+            const messages = [
+                { role: 'system', content: 'あなたは日本語の業務日報を作成するアシスタントです。入力のタイムライン(作業名/メモ)から、社内向けの丁寧で簡潔な報告文を作成してください。誇張せず、事実ベースでまとめます。' },
+                { role: 'user', content: '次のタイムラインから「本日の報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 箇条書きではなく、読みやすい文章(必要なら短い段落分けはOK)\n- メモがあれば内容に反映\n\nタイムライン:\n' + timeline }
+            ];
+
+            const text = await callOpenAiChatNode({ apiKey, messages, temperature: 0.2, maxTokens: 900 });
+            res.json({ success: true, text });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/gpt/polish', async (req, res) => {
+        try {
+            if (!hasDocStore(taskManager)) {
+                return res.status(501).json({ success: false, error: 'gpt is not supported' });
+            }
+            const secret = process.env.GPT_API_KEY_ENCRYPTION_SECRET;
+            if (!secret) return res.status(500).json({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' });
+
+            const doc = await taskManager._getDoc(req.userId, 'gpt_api_key', 'default', null);
+            if (!doc?.iv || !doc?.ciphertext) return res.status(400).json({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' });
+            const apiKey = decryptStringAesGcmNode(doc.iv, doc.ciphertext, secret);
+            if (!apiKey) return res.status(500).json({ success: false, error: 'GPT APIキーの復号に失敗しました' });
+
+            const textIn = String(req.body?.text || '').trim();
+            if (!textIn) return res.status(400).json({ success: false, error: '変換する本文が必要です' });
+
+            const messages = [
+                { role: 'system', content: 'あなたは日本語文章のリライト編集者です。入力の内容を保持しつつ、箇条書きやメモ書きを丁寧な文章(です/ます)に整形してください。新しい事実は追加せず、曖昧な点は断定しないでください。' },
+                { role: 'user', content: '次のテキストを、丁寧で読みやすい報告文に変換してください。\n\n---\n' + textIn }
+            ];
+
+            const text = await callOpenAiChatNode({ apiKey, messages, temperature: 0.2, maxTokens: 900 });
+            res.json({ success: true, text });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
         }
     });
 

@@ -267,6 +267,7 @@ export class SupabaseTaskManagerEdge {
       endTime: '',
       name: taskName,
       tag: tag || '',
+      memo: '',
       status: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -292,6 +293,7 @@ export class SupabaseTaskManagerEdge {
       endTime: null,
       name: taskName,
       tag: tag || '',
+      memo: '',
       status: 'reserved',
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -487,6 +489,7 @@ export class SupabaseTaskManagerEdge {
       endTime: taskData?.endTime || '',
       name: taskData?.name || taskData?.title || '',
       tag: taskData?.tag || '',
+      memo: typeof taskData?.memo === 'string' ? taskData.memo : '',
       status: taskData?.status || null,
       createdAt: taskData?.createdAt || nowIso,
       updatedAt: nowIso,
@@ -503,7 +506,7 @@ export class SupabaseTaskManagerEdge {
     return { success: true, task: newTask };
   }
 
-  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, userId) {
+  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -525,6 +528,7 @@ export class SupabaseTaskManagerEdge {
       startTime,
       endTime: endTime || '',
       tag: tag || '',
+      memo: typeof memo === 'string' ? memo : (tasks[idx]?.memo || ''),
       updatedAt: nowIso,
     };
 
@@ -537,7 +541,7 @@ export class SupabaseTaskManagerEdge {
     return { success: true, task: tasks[idx] };
   }
 
-  async updateTask(taskId, taskName, startTime, endTime, tag, userId) {
+  async updateTask(taskId, taskName, startTime, endTime, tag, memo, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -553,6 +557,7 @@ export class SupabaseTaskManagerEdge {
       startTime,
       endTime: endTime || '',
       tag: tag || '',
+      memo: typeof memo === 'string' ? memo : (tasks[idx]?.memo || ''),
       updatedAt: nowIso,
     };
 

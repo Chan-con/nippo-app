@@ -2,6 +2,71 @@ import { jsonResponse, readJsonBody, withCors } from '../_lib/http.js';
 import { getUserIdFromRequest } from '../_lib/supabase-auth.js';
 import { SupabaseTaskManagerEdge } from '../_lib/supabase-task-manager-edge.js';
 
+function bytesToBase64(bytes) {
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+  const bin = atob(String(b64 || ''));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function getAesGcmKeyFromSecret(secret) {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(String(secret)));
+  return await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function encryptStringAesGcm(plaintext, secret) {
+  const key = await getAesGcmKeyFromSecret(secret);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(String(plaintext)));
+  const cipherBytes = new Uint8Array(cipherBuf);
+  return { iv: bytesToBase64(iv), ciphertext: bytesToBase64(cipherBytes) };
+}
+
+async function decryptStringAesGcm(ivB64, cipherB64, secret) {
+  const key = await getAesGcmKeyFromSecret(secret);
+  const iv = base64ToBytes(ivB64);
+  const cipherBytes = base64ToBytes(cipherB64);
+  const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipherBytes);
+  const dec = new TextDecoder();
+  return dec.decode(plainBuf);
+}
+
+async function callOpenAiChat({ apiKey, messages, temperature = 0.3, maxTokens = 800 }) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-5.2',
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.error || 'OpenAI API error';
+    throw new Error(msg);
+  }
+  const text = data?.choices?.[0]?.message?.content;
+  return String(text || '');
+}
+
 function getParts(pathname) {
   return pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
 }
@@ -48,6 +113,105 @@ export async function onRequest(context) {
   const body = await readJsonBody(request);
 
   try {
+    // GPT API key (encrypted)
+    if (parts.length === 1 && parts[0] === 'gpt-api-key' && request.method === 'GET') {
+      const doc = await taskManager._getDoc(userId, 'gpt_api_key', 'default', null);
+      const hasKey = !!(doc && typeof doc === 'object' && doc.iv && doc.ciphertext);
+      return jsonResponse({ success: true, hasKey });
+    }
+
+    if (parts.length === 1 && parts[0] === 'gpt-api-key' && request.method === 'POST') {
+      const apiKey = String(body?.apiKey || '').trim();
+      if (!apiKey) return jsonResponse({ success: false, error: 'APIキーが必要です' }, 400);
+
+      const secret = env.GPT_API_KEY_ENCRYPTION_SECRET;
+      if (!secret) return jsonResponse({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' }, 500);
+
+      const encrypted = await encryptStringAesGcm(apiKey, secret);
+      await taskManager._setDoc(userId, 'gpt_api_key', 'default', {
+        ...encrypted,
+        updatedAt: new Date().toISOString(),
+      });
+      return jsonResponse({ success: true });
+    }
+
+    // GPT helpers
+    if (parts.length === 2 && parts[0] === 'gpt' && parts[1] === 'report-from-timeline' && request.method === 'POST') {
+      const secret = env.GPT_API_KEY_ENCRYPTION_SECRET;
+      if (!secret) return jsonResponse({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' }, 500);
+
+      const doc = await taskManager._getDoc(userId, 'gpt_api_key', 'default', null);
+      if (!doc?.iv || !doc?.ciphertext) return jsonResponse({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' }, 400);
+
+      const apiKey = await decryptStringAesGcm(doc.iv, doc.ciphertext, secret);
+      if (!apiKey) return jsonResponse({ success: false, error: 'GPT APIキーの復号に失敗しました' }, 500);
+
+      const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
+      const limited = tasks.slice(0, 80).map((t) => ({
+        name: String(t?.name || '').slice(0, 200),
+        memo: String(t?.memo || '').slice(0, 1000),
+        tag: String(t?.tag || '').slice(0, 80),
+        startTime: String(t?.startTime || '').slice(0, 20),
+        endTime: String(t?.endTime || '').slice(0, 20),
+      }));
+
+      if (limited.length === 0) return jsonResponse({ success: false, error: 'タイムラインが空です' }, 400);
+
+      const timeline = limited
+        .map((t) => {
+          const time = t.startTime ? (t.endTime ? `${t.startTime}-${t.endTime}` : `${t.startTime}-`) : '';
+          const tag = t.tag ? ` [${t.tag}]` : '';
+          const memo = t.memo ? `\nメモ: ${t.memo}` : '';
+          return `${time} ${t.name}${tag}${memo}`.trim();
+        })
+        .join('\n');
+
+      const messages = [
+        {
+          role: 'system',
+          content:
+            'あなたは日本語の業務日報を作成するアシスタントです。入力のタイムライン(作業名/メモ)から、社内向けの丁寧で簡潔な報告文を作成してください。誇張せず、事実ベースでまとめます。',
+        },
+        {
+          role: 'user',
+          content:
+            '次のタイムラインから「本日の報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 箇条書きではなく、読みやすい文章(必要なら短い段落分けはOK)\n- メモがあれば内容に反映\n\nタイムライン:\n' + timeline,
+        },
+      ];
+
+      const text = await callOpenAiChat({ apiKey, messages, temperature: 0.2, maxTokens: 900 });
+      return jsonResponse({ success: true, text });
+    }
+
+    if (parts.length === 2 && parts[0] === 'gpt' && parts[1] === 'polish' && request.method === 'POST') {
+      const secret = env.GPT_API_KEY_ENCRYPTION_SECRET;
+      if (!secret) return jsonResponse({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' }, 500);
+
+      const doc = await taskManager._getDoc(userId, 'gpt_api_key', 'default', null);
+      if (!doc?.iv || !doc?.ciphertext) return jsonResponse({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' }, 400);
+
+      const apiKey = await decryptStringAesGcm(doc.iv, doc.ciphertext, secret);
+      if (!apiKey) return jsonResponse({ success: false, error: 'GPT APIキーの復号に失敗しました' }, 500);
+
+      const textIn = String(body?.text || '').trim();
+      if (!textIn) return jsonResponse({ success: false, error: '変換する本文が必要です' }, 400);
+
+      const messages = [
+        {
+          role: 'system',
+          content:
+            'あなたは日本語文章のリライト編集者です。入力の内容を保持しつつ、箇条書きやメモ書きを丁寧な文章(です/ます)に整形してください。新しい事実は追加せず、曖昧な点は断定しないでください。',
+        },
+        {
+          role: 'user',
+          content: '次のテキストを、丁寧で読みやすい報告文に変換してください。\n\n---\n' + textIn,
+        },
+      ];
+
+      const text = await callOpenAiChat({ apiKey, messages, temperature: 0.2, maxTokens: 900 });
+      return jsonResponse({ success: true, text });
+    }
+
     // /api/tasks
     if (request.method === 'GET' && parts.length === 1 && parts[0] === 'tasks') {
       const dateString = url.searchParams.get('dateString') || null;
@@ -133,12 +297,13 @@ export async function onRequest(context) {
       const startTime = String(body?.startTime || '').trim();
       const endTime = String(body?.endTime || '').trim();
       const tag = body?.tag || null;
+      const memo = typeof body?.memo === 'string' ? body.memo : undefined;
 
       if (!taskName || !startTime) {
         return jsonResponse({ success: false, error: 'タスク名と開始時刻は必須です' }, 400);
       }
 
-      const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, userId);
+      const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, memo, userId);
       if (!result) return jsonResponse({ success: false, error: 'タスクが見つかりません' }, 404);
       return jsonResponse({ success: true, task: result.task });
     }
@@ -193,6 +358,7 @@ export async function onRequest(context) {
       const startTime = String(body?.startTime || '').trim();
       const endTime = String(body?.endTime || '').trim();
       const tag = body?.tag || null;
+      const memo = typeof body?.memo === 'string' ? body.memo : undefined;
 
       if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         return jsonResponse(
@@ -204,7 +370,7 @@ export async function onRequest(context) {
         return jsonResponse({ success: false, error: 'タスク名と開始時刻は必須です' }, 400);
       }
 
-      const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, userId);
+      const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, userId);
       return jsonResponse(result, result.success ? 200 : 400);
     }
 
