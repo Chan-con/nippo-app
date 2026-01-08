@@ -1113,6 +1113,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const base = viewMode === 'today' ? tasks : historyTasks;
       const payloadTasks = (Array.isArray(base) ? base : [])
         .filter((t) => t && t.status !== 'reserved')
+        .filter((t) => !isWorkTimeExcludedTaskName(t?.name))
         .map((t) => ({
           name: String(t.name || ''),
           memo: typeof t.memo === 'string' ? t.memo : '',
