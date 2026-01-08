@@ -3929,13 +3929,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     <button
                       type="button"
                       className="btn-secondary"
-                      title="目標から進捗テンプレ生成"
-                      aria-label="目標から進捗テンプレ生成"
+                      title="目標から記入欄生成"
+                      aria-label="目標から記入欄生成"
                       onClick={() => void gptGenerateProgressTemplateFromGoals()}
                       disabled={!accessToken || busy}
                     >
                       <span className="material-icons">auto_awesome</span>
-                      目標から進捗テンプレ生成
+                      目標から記入欄生成
                     </button>
                     <button
                       type="button"

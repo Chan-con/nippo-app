@@ -67,6 +67,45 @@ async function callOpenAiChat({ apiKey, messages, temperature = 0.3, maxTokens =
   return String(text || '');
 }
 
+function sanitizePlainTextTemplate(input) {
+  const raw = String(input || '');
+  const lines = raw.split(/\r?\n/);
+  const out = [];
+  let seenContent = 0;
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    // remove code fences
+    if (/^\s*```/.test(line)) continue;
+    // strip markdown headings
+    line = line.replace(/^\s{0,3}#{1,6}\s+/, '');
+    // strip bold markers
+    line = line.replace(/\*\*(.+?)\*\*/g, '$1');
+    // convert markdown bullets to plain bullets
+    line = line.replace(/^\s*[-*+]\s+/, '・');
+    // first non-empty line: drop if it's a template title-ish
+    const trimmed = line.trim();
+    if (!trimmed) {
+      out.push('');
+      continue;
+    }
+    if (seenContent === 0) {
+      if ((/進捗報告/.test(trimmed) && trimmed.length <= 40) || (/テンプレート/.test(trimmed) && trimmed.length <= 40)) {
+        continue;
+      }
+    }
+    seenContent++;
+    out.push(line);
+  }
+
+  // collapse excessive blank lines
+  const collapsed = [];
+  for (const line of out) {
+    if (line.trim() === '' && collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === '') continue;
+    collapsed.push(line);
+  }
+  return collapsed.join('\n').trim();
+}
+
 function getParts(pathname) {
   return pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
 }
@@ -213,16 +252,17 @@ export async function onRequest(context) {
         {
           role: 'system',
           content:
-            'あなたは日本語の進捗報告テンプレートを作るアシスタントです。入力の目標一覧をもとに、ユーザーがコピペして埋められる「進捗報告テンプレート」を作成してください。',
+            'あなたは日本語の記入用ひな形を作るアシスタントです。入力の目標一覧をもとに、ユーザーがそのままコピペして記入できる「記入欄だけの本文」を作成してください。Markdownは使いません。',
         },
         {
           role: 'user',
           content:
-            '次の目標一覧をもとに、進捗報告のテンプレートを作ってください。\n\n要件:\n- 日本語\n- 箇条書きはテンプレート内で利用OK\n- 各目標ごとに「現状/完了したこと/課題・懸念/次にやること」を記入できる枠を作る\n- 入力に無い事実は追加しない（テンプレートなのでプレースホルダ表現にする）\n- 作業時間・工数・時間帯など時間情報には触れない\n- 出力はテンプレート本文のみ（前置き説明は不要）\n\n目標一覧:\n' + goalList,
+            '次の目標一覧をもとに、記入用の本文を作ってください。\n\n要件:\n- 日本語\n- Markdown記法は使わない（#, -, *, ** など）\n- タイトル行（例: 進捗報告、テンプレート等）は不要\n- 各目標ごとに次の4項目を用意し、各項目の下に「（ここに記入）」の行を置く\n  - 現状：\n  - 完了したこと：\n  - 課題・懸念：\n  - 次にやること：\n- 目標の区切りは空行で分ける\n- 入力に無い事実は追加しない\n- 作業時間・工数・時間帯など時間情報には触れない\n- 出力は本文のみ（前置き説明は不要）\n\n目標一覧:\n' + goalList,
         },
       ];
 
-      const text = await callOpenAiChat({ apiKey, messages, temperature: 0.1, maxTokens: 700 });
+      const textRaw = await callOpenAiChat({ apiKey, messages, temperature: 0.1, maxTokens: 700 });
+      const text = sanitizePlainTextTemplate(textRaw);
       return jsonResponse({ success: true, text });
     }
 
