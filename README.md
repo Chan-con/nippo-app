@@ -47,6 +47,7 @@ npm install
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`（ブラウザへ公開してOK）
 - `SUPABASE_SERVICE_ROLE_KEY`（サーバー専用。絶対にクライアントへ出さない）
+- `GPT_API_KEY_ENCRYPTION_SECRET`（サーバー専用。GPTのAPIキーを暗号化してDB保存するために必須）
 
 ### 3) 起動
 
@@ -78,6 +79,10 @@ Pagesプロジェクトの Settings → Environment variables に以下を設定
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`（サーバー専用。絶対にクライアントへ出さない）
+- `GPT_API_KEY_ENCRYPTION_SECRET`（サーバー専用。GPTのAPIキーを暗号化してDB保存するために必須）
+
+> `GPT_API_KEY_ENCRYPTION_SECRET` は長めのランダム文字列を設定してください。
+> これを変更すると、過去に保存したGPT APIキーを復号できなくなるため、再設定が必要になります。
 
 ### SupabaseのRedirect URL
 
