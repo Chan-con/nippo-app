@@ -81,82 +81,100 @@ function getJpPublicHolidayKeysForYear(year: number) {
   if (cached) return cached;
 
   const holidays = new Set<string>();
-  const add = (date: Date) => holidays.add(ymdKeyFromDate(date));
-  const addParts = (m0: number, d: number) => holidays.add(ymdKeyFromParts(year, m0, d));
+  const key = (y: number, m0: number, d: number) => `${y}-${String(m0 + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-  // Fixed holidays
-  addParts(0, 1); // 元日
-  addParts(1, 11); // 建国記念の日
-  if (year >= 2020) addParts(1, 23); // 天皇誕生日 (2020-)
-  if (year >= 1989 && year <= 2018) addParts(11, 23); // 天皇誕生日 (1989-2018)
-  addParts(3, 29); // 昭和の日
-  addParts(4, 3); // 憲法記念日
-  addParts(4, 4); // みどりの日
-  addParts(4, 5); // こどもの日
-  if (year >= 2016) addParts(7, 11); // 山の日 (2016-)
-  addParts(10, 3); // 文化の日
-  addParts(10, 23); // 勤労感謝の日
+  const add = (date: Date) => {
+    holidays.add(key(date.getFullYear(), date.getMonth(), date.getDate()));
+  };
 
-  // Happy Monday system
-  add(nthWeekdayOfMonth(year, 0, 1, 2)); // 成人の日: 1月第2月曜
-  add(nthWeekdayOfMonth(year, 6, 1, 3)); // 海の日: 7月第3月曜
-  add(nthWeekdayOfMonth(year, 8, 1, 3)); // 敬老の日: 9月第3月曜
-  add(nthWeekdayOfMonth(year, 9, 1, 2)); // スポーツの日: 10月第2月曜
+  // Fixed-date holidays
+  add(new Date(year, 0, 1)); // 元日
+  add(new Date(year, 1, 11)); // 建国記念の日
+  if (year >= 2020) add(new Date(year, 1, 23)); // 天皇誕生日
+  add(new Date(year, 3, 29)); // 昭和の日
+  add(new Date(year, 4, 3)); // 憲法記念日
+  add(new Date(year, 4, 4)); // みどりの日
+  add(new Date(year, 4, 5)); // こどもの日
+  add(new Date(year, 10, 3)); // 文化の日
+  add(new Date(year, 10, 23)); // 勤労感謝の日
+
+  // Movable holidays (Happy Monday system)
+  // 成人の日: 2000+ 1月第2月曜
+  add(nthWeekdayOfMonth(year, 0, 1, 2));
+  // 海の日: 2003+ 7月第3月曜 (Olympics special cases below)
+  add(nthWeekdayOfMonth(year, 6, 1, 3));
+  // 敬老の日: 2003+ 9月第3月曜
+  add(nthWeekdayOfMonth(year, 8, 1, 3));
+  // スポーツの日（体育の日）: 2000+ 10月第2月曜 (Olympics special cases below)
+  add(nthWeekdayOfMonth(year, 9, 1, 2));
 
   // Equinoxes
-  addParts(2, vernalEquinoxDay(year));
-  addParts(8, autumnalEquinoxDay(year));
+  add(new Date(year, 2, vernalEquinoxDay(year)));
+  add(new Date(year, 8, autumnalEquinoxDay(year)));
 
-  // One-off adjustments (recent years)
+  // 山の日: 2016+
+  if (year >= 2016) add(new Date(year, 7, 11));
+
+  // Special one-off holidays
   if (year === 2019) {
-    addParts(4, 1); // 即位の日
-    addParts(9, 22); // 即位礼正殿の儀
+    add(new Date(2019, 4, 1)); // 即位の日
+    add(new Date(2019, 9, 22)); // 即位礼正殿の儀
   }
+
+  // Olympics move (2020/2021)
   if (year === 2020) {
-    // Olympics shifts
-    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 6, 1, 3)));
-    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 9, 1, 2)));
-    if (year >= 2016) holidays.delete(ymdKeyFromParts(year, 7, 11));
-    addParts(6, 23); // 海の日
-    addParts(6, 24); // スポーツの日
-    addParts(7, 10); // 山の日
+    // Override 海の日/スポーツの日/山の日
+    holidays.delete(key(2020, 6, nthWeekdayOfMonth(2020, 6, 1, 3).getDate()));
+    holidays.delete(key(2020, 9, nthWeekdayOfMonth(2020, 9, 1, 2).getDate()));
+    holidays.delete(key(2020, 7, 11));
+    add(new Date(2020, 6, 23));
+    add(new Date(2020, 6, 24));
+    add(new Date(2020, 7, 10));
   }
   if (year === 2021) {
-    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 6, 1, 3)));
-    holidays.delete(ymdKeyFromDate(nthWeekdayOfMonth(year, 9, 1, 2)));
-    if (year >= 2016) holidays.delete(ymdKeyFromParts(year, 7, 11));
-    addParts(6, 22); // 海の日
-    addParts(6, 23); // スポーツの日
-    addParts(7, 8); // 山の日
+    holidays.delete(key(2021, 6, nthWeekdayOfMonth(2021, 6, 1, 3).getDate()));
+    holidays.delete(key(2021, 9, nthWeekdayOfMonth(2021, 9, 1, 2).getDate()));
+    holidays.delete(key(2021, 7, 11));
+    add(new Date(2021, 6, 22));
+    add(new Date(2021, 6, 23));
+    add(new Date(2021, 7, 8));
   }
 
-  // Substitute holidays (振替休日): Sunday -> next non-holiday weekday
-  for (const key of Array.from(holidays)) {
-    const [yy, mm, dd] = key.split('-').map((v) => parseInt(v, 10));
-    const date = new Date(yy, (mm ?? 1) - 1, dd ?? 1);
-    if (date.getDay() !== 0) continue;
-    const sub = new Date(date);
-    do {
-      sub.setDate(sub.getDate() + 1);
-    } while (holidays.has(ymdKeyFromDate(sub)));
-    holidays.add(ymdKeyFromDate(sub));
-  }
-
-  // Citizen's holidays (国民の休日): weekday between two holidays
-  const cur = new Date(year, 0, 2);
-  const end = new Date(year, 11, 30);
-  while (cur <= end) {
-    const key = ymdKeyFromDate(cur);
-    if (!holidays.has(key) && cur.getDay() !== 0) {
-      const prev = new Date(cur);
-      prev.setDate(prev.getDate() - 1);
-      const next = new Date(cur);
-      next.setDate(next.getDate() + 1);
-      if (holidays.has(ymdKeyFromDate(prev)) && holidays.has(ymdKeyFromDate(next))) {
-        holidays.add(key);
+  // Substitute holidays (振替休日): if holiday falls on Sunday, next weekday becomes holiday
+  for (const k of Array.from(holidays)) {
+    const m = k.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) continue;
+    const y = parseInt(m[1], 10);
+    const m0 = parseInt(m[2], 10) - 1;
+    const d = parseInt(m[3], 10);
+    const dt = new Date(y, m0, d);
+    if (dt.getDay() !== 0) continue;
+    // next day that is not already a holiday
+    for (let i = 1; i <= 7; i++) {
+      const nd = new Date(y, m0, d + i);
+      const nk = key(nd.getFullYear(), nd.getMonth(), nd.getDate());
+      if (!holidays.has(nk)) {
+        holidays.add(nk);
+        break;
       }
     }
-    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Citizen's holiday (国民の休日): a weekday between two holidays becomes a holiday
+  for (let m0 = 0; m0 < 12; m0++) {
+    const days = new Date(year, m0 + 1, 0).getDate();
+    for (let d = 1; d <= days; d++) {
+      const dt = new Date(year, m0, d);
+      const dow = dt.getDay();
+      if (dow === 0 || dow === 6) continue;
+      const k0 = key(year, m0, d);
+      if (holidays.has(k0)) continue;
+      const prev = new Date(year, m0, d - 1);
+      const next = new Date(year, m0, d + 1);
+      const pk = key(prev.getFullYear(), prev.getMonth(), prev.getDate());
+      const nk = key(next.getFullYear(), next.getMonth(), next.getDate());
+      if (holidays.has(pk) && holidays.has(nk)) holidays.add(k0);
+    }
   }
 
   jpPublicHolidayCache.set(year, holidays);
@@ -165,36 +183,37 @@ function getJpPublicHolidayKeysForYear(year: number) {
 
 function isJpPublicHoliday(date: Date) {
   const set = getJpPublicHolidayKeysForYear(date.getFullYear());
-  return set.has(ymdKeyFromDate(date));
+  const k = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return set.has(k);
 }
 
-function parseTimeToMinutesFlexible(timeStr?: string) {
-  if (!timeStr) return null;
-  const raw = String(timeStr).trim();
-  if (!raw.includes(':')) return null;
+function parseTimeToMinutesFlexible(input?: string) {
+  const s = String(input ?? '').trim();
+  if (!s) return null;
 
-  // 24h HH:mm
-  const hhmmMatch = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (hhmmMatch) {
-    return parseInt(hhmmMatch[1], 10) * 60 + parseInt(hhmmMatch[2], 10);
+  const m1 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m1) {
+    const hh = parseInt(m1[1], 10);
+    const mm = parseInt(m1[2], 10);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    if (hh < 0 || hh > 23) return null;
+    if (mm < 0 || mm > 59) return null;
+    return hh * 60 + mm;
   }
 
-  // JP 午前/午後
-  const hasAm = raw.includes('午前');
-  const hasPm = raw.includes('午後');
-  if (!hasAm && !hasPm) return null;
+  // Also accept HHMM / HMM (e.g. "930" -> 09:30, "1530" -> 15:30)
+  const m2 = s.match(/^(\d{3,4})$/);
+  if (m2) {
+    const digits = m2[1];
+    const hh = parseInt(digits.slice(0, digits.length - 2), 10);
+    const mm = parseInt(digits.slice(-2), 10);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    if (hh < 0 || hh > 23) return null;
+    if (mm < 0 || mm > 59) return null;
+    return hh * 60 + mm;
+  }
 
-  const timeOnly = raw.replace('午前', '').replace('午後', '').trim();
-  const parts = timeOnly.split(':');
-  if (parts.length !== 2) return null;
-
-  let hour = parseInt(parts[0], 10);
-  const minute = parseInt(parts[1], 10);
-  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
-
-  if (hasPm && hour !== 12) hour += 12;
-  if (hasAm && hour === 12) hour = 0;
-  return hour * 60 + minute;
+  return null;
 }
 
 function calcDurationMinutes(start?: string, end?: string) {
@@ -381,11 +400,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!v) return false;
     return workTimeExcludedNameSet.has(v);
   }
-
-  const [tagWorkSummary, setTagWorkSummary] = useState<TagWorkSummary[]>([]);
-  const [activeTag, setActiveTag] = useState<string>('');
-  const [tagWorkLoading, setTagWorkLoading] = useState(false);
-  const [tagWorkError, setTagWorkError] = useState<string | null>(null);
 
   // tag work report (range)
   const [tagWorkReportRangeStart, setTagWorkReportRangeStart] = useState(() => ymdKeyFromDate(new Date()));
@@ -2558,101 +2572,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return date.replace(/-/g, '/');
   }
 
-  function formatDateYYYYMMDD(d: Date) {
-    return formatDateISO(d).replace(/-/g, '');
-  }
-
-  async function loadTagWorkSummary() {
-    if (!accessToken) return;
-    setTagWorkLoading(true);
-    setTagWorkError(null);
-    try {
-      const tagMap = new Map<string, { totalMinutes: number; byDate: Map<string, TagWorkTask[]> }>();
-
-      const addTasksToMap = (date: string, tasksInDay: any[]) => {
-        for (const t of tasksInDay) {
-          const tag = typeof t?.tag === 'string' ? t.tag.trim() : '';
-          const startTime = typeof t?.startTime === 'string' ? t.startTime : '';
-          const endTime = typeof t?.endTime === 'string' ? t.endTime : '';
-          const name = String(t?.name || t?.title || '').trim();
-          const status = t?.status ?? null;
-
-          if (!tag || !name) continue;
-          if (!startTime || !endTime) continue;
-          if (status === 'reserved') continue;
-
-          const minutes = calcDurationMinutes(startTime, endTime);
-          if (minutes == null) continue;
-
-          if (!tagMap.has(tag)) tagMap.set(tag, { totalMinutes: 0, byDate: new Map() });
-          const entry = tagMap.get(tag)!;
-          entry.totalMinutes += minutes;
-          if (!entry.byDate.has(date)) entry.byDate.set(date, []);
-          entry.byDate.get(date)!.push({ date, name, startTime, endTime, minutes });
-        }
-      };
-
-      // 今日のタスクも含める（/api/history/dates は今日を含まないため）
-      const todayIso = formatDateISO(new Date());
-      const resToday = await apiFetch('/api/tasks', { method: 'GET' });
-      const bodyToday = await resToday.json().catch(() => null as any);
-      const todayTasks: any[] = Array.isArray(bodyToday?.tasks) ? bodyToday.tasks : [];
-      addTasksToMap(todayIso, todayTasks);
-
-      // 履歴日付
-      const resDates = await apiFetch('/api/history/dates', { method: 'GET' });
-      const bodyDates = await resDates.json().catch(() => null as any);
-      const dates: string[] = Array.isArray(bodyDates?.dates)
-        ? bodyDates.dates
-        : Array.isArray(bodyDates?.data)
-          ? bodyDates.data
-          : [];
-
-      for (const date of dates) {
-        const res = await apiFetch(`/api/history/${encodeURIComponent(date)}`, { method: 'GET' });
-        if (!res.ok) continue;
-        const body = await res.json().catch(() => null as any);
-        const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
-
-        addTasksToMap(date, tasksInDay);
-      }
-
-      const summaries: TagWorkSummary[] = Array.from(tagMap.entries())
-        .map(([tag, v]) => {
-          const groups: TagWorkDateGroup[] = Array.from(v.byDate.entries())
-            .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
-            .map(([date, tasks]) => {
-              const sorted = tasks.slice().sort((a, b) => {
-                const ma = parseTimeToMinutesFlexible(a.startTime);
-                const mb = parseTimeToMinutesFlexible(b.startTime);
-                if (ma == null && mb == null) return 0;
-                if (ma == null) return 1;
-                if (mb == null) return -1;
-                return ma - mb;
-              });
-              const totalMinutes = sorted.reduce((s, x) => s + x.minutes, 0);
-              return { date, totalMinutes, count: sorted.length, tasks: sorted };
-            });
-
-          return { tag, totalMinutes: v.totalMinutes, groups };
-        })
-        .sort((a, b) => b.totalMinutes - a.totalMinutes);
-
-      setTagWorkSummary(summaries);
-      if (summaries.length > 0) {
-        setActiveTag((prev) => (prev && summaries.some((s) => s.tag === prev) ? prev : summaries[0].tag));
-      } else {
-        setActiveTag('');
-      }
-    } catch (e: any) {
-      setTagWorkError(e?.message || 'タグ別作業時間の取得に失敗しました');
-      setTagWorkSummary([]);
-      setActiveTag('');
-    } finally {
-      setTagWorkLoading(false);
-    }
-  }
-
   function isYmdInRange(date: string, start: string, end: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return false;
@@ -2766,14 +2685,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setTagWorkReportLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!reportOpen) return;
-    if (!accessToken) return;
-    // 画面を開いたタイミングで最新を取得（旧UIと同じ）
-    void loadTagWorkSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportOpen, accessToken]);
 
   function openEditForTask(task: Task) {
     if (!accessToken || busy) return;
@@ -3889,126 +3800,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       </div>
                     );
                   })
-                )}
-              </div>
-            </div>
-
-            <div className="report-section">
-              <h4>🏷️ タグ別作業時間</h4>
-              <div className="tag-summary">
-                {tagWorkLoading ? (
-                  <div className="sub-text">読み込み中...</div>
-                ) : tagWorkError ? (
-                  <div style={{ color: 'var(--error)', fontSize: 12 }}>{tagWorkError}</div>
-                ) : tagWorkSummary.length === 0 ? (
-                  <div className="sub-text">タグ付きの履歴タスクがありません</div>
-                ) : (
-                  <>
-                    <div className="tag-tabs-container">
-                      <div className="tag-tabs-navigation" role="tablist" aria-label="タグ別作業時間">
-                        {tagWorkSummary.map((s) => {
-                          const label = `${s.tag} (${formatDurationJa(s.totalMinutes)})`;
-                          return (
-                            <button
-                              key={`tag-tab-${s.tag}`}
-                              type="button"
-                              className={`tag-tab ${activeTag === s.tag ? 'active' : ''}`}
-                              role="tab"
-                              aria-selected={activeTag === s.tag}
-                              onClick={() => setActiveTag(s.tag)}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="tag-tabs-content">
-                      {tagWorkSummary.map((s) => {
-                        const isActive = s.tag === activeTag;
-                        return (
-                          <div key={`tag-panel-${s.tag}`} className={`tag-tab-panel ${isActive ? 'active' : ''}`} role="tabpanel">
-                            <div className="tag-tasks">
-                              {s.groups.map((g) => (
-                                <div key={`tag-date-${s.tag}-${g.date}`} className="tag-date-group">
-                                  <div className="date-header-with-stats">
-                                    <div className="date-header">{formatDateISOToJaShort(g.date)}</div>
-                                    <div className="date-total">
-                                      <span>{formatDurationJa(g.totalMinutes)}</span>
-                                      <span>({g.count}件)</span>
-                                    </div>
-                                  </div>
-
-                                  {g.tasks.map((t, idx) => (
-                                    <div key={`tag-task-${s.tag}-${g.date}-${idx}`} className="task-item">
-                                      <div>
-                                        <div className="task-item-name">{t.name}</div>
-                                        <div className="task-item-time">
-                                          {formatTimeDisplay(t.startTime)} - {formatTimeDisplay(t.endTime)}
-                                        </div>
-                                      </div>
-                                      <div className="task-item-duration">{formatDurationJa(t.minutes)}</div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
-
-                            <div className="tag-total">
-                              <span>合計: {formatDurationJa(s.totalMinutes)}（履歴含む）</span>
-                              <div className="tag-total-actions">
-                                <button
-                                  type="button"
-                                  className="tag-copy-btn"
-                                  onClick={async () => {
-                                    try {
-                                      await navigator.clipboard.writeText(`${s.tag} - ${formatDurationJa(s.totalMinutes)}`);
-                                    } catch {
-                                      // ignore
-                                    }
-                                  }}
-                                >
-                                  <span className="material-icons">content_copy</span>
-                                  コピー
-                                </button>
-                                <button
-                                  type="button"
-                                  className="tag-copy-btn tag-csv-btn"
-                                  onClick={() => {
-                                    const rows: string[] = ['作業日,作業内容,作業開始時刻,作業終了時刻'];
-                                    for (const g of s.groups) {
-                                      for (const t of g.tasks) {
-                                        const safe = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
-                                        const dateCell = formatDateISOToSlash(g.date);
-                                        const start = formatTimeDisplay(t.startTime);
-                                        const end = formatTimeDisplay(t.endTime);
-                                        rows.push(
-                                          [safe(dateCell), safe(t.name), safe(start), safe(end)].join(',')
-                                        );
-                                      }
-                                    }
-                                    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-                                    const url = URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.href = url;
-                                    a.download = `tag_${s.tag}_${formatDateYYYYMMDD(new Date())}.csv`;
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    a.remove();
-                                    URL.revokeObjectURL(url);
-                                  }}
-                                >
-                                  <span className="material-icons">download</span>
-                                  CSV
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
                 )}
               </div>
             </div>
