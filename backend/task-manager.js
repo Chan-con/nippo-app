@@ -3064,6 +3064,52 @@ function createApp(taskManagerInstance, options = {}) {
         }
     });
 
+    app.post('/api/gpt/progress-template-from-goals', async (req, res) => {
+        try {
+            if (!hasDocStore(taskManager)) {
+                return res.status(501).json({ success: false, error: 'gpt is not supported' });
+            }
+            const secret = process.env.GPT_API_KEY_ENCRYPTION_SECRET;
+            if (!secret) return res.status(500).json({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' });
+
+            const doc = await taskManager._getDoc(req.userId, 'gpt_api_key', 'default', null);
+            if (!doc?.iv || !doc?.ciphertext) return res.status(400).json({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' });
+            const apiKey = decryptStringAesGcmNode(doc.iv, doc.ciphertext, secret);
+            if (!apiKey) return res.status(500).json({ success: false, error: 'GPT APIキーの復号に失敗しました' });
+
+            const goalsRaw = Array.isArray(req.body?.goals) ? req.body.goals : [];
+            const goals = goalsRaw
+                .slice(0, 30)
+                .map((g) => {
+                    if (typeof g === 'string') return g;
+                    return g?.name;
+                })
+                .map((v) => String(v || '').trim())
+                .filter(Boolean)
+                .map((v) => v.slice(0, 200));
+
+            if (goals.length === 0) return res.status(400).json({ success: false, error: '目標が空です（目標を登録してください）' });
+
+            const goalList = goals.map((g, i) => `${i + 1}. ${g}`).join('\n');
+
+            const messages = [
+                {
+                    role: 'system',
+                    content: 'あなたは日本語の進捗報告テンプレートを作るアシスタントです。入力の目標一覧をもとに、ユーザーがコピペして埋められる「進捗報告テンプレート」を作成してください。'
+                },
+                {
+                    role: 'user',
+                    content: '次の目標一覧をもとに、進捗報告のテンプレートを作ってください。\n\n要件:\n- 日本語\n- 箇条書きはテンプレート内で利用OK\n- 各目標ごとに「現状/完了したこと/課題・懸念/次にやること」を記入できる枠を作る\n- 入力に無い事実は追加しない（テンプレートなのでプレースホルダ表現にする）\n- 作業時間・工数・時間帯など時間情報には触れない\n- 出力はテンプレート本文のみ（前置き説明は不要）\n\n目標一覧:\n' + goalList
+                }
+            ];
+
+            const text = await callOpenAiChatNode({ apiKey, messages, temperature: 0.1, maxTokens: 700 });
+            res.json({ success: true, text });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
     app.post('/api/gpt/polish', async (req, res) => {
         try {
             if (!hasDocStore(taskManager)) {

@@ -184,6 +184,48 @@ export async function onRequest(context) {
       return jsonResponse({ success: true, text });
     }
 
+    if (parts.length === 2 && parts[0] === 'gpt' && parts[1] === 'progress-template-from-goals' && request.method === 'POST') {
+      const secret = env.GPT_API_KEY_ENCRYPTION_SECRET;
+      if (!secret) return jsonResponse({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' }, 500);
+
+      const doc = await taskManager._getDoc(userId, 'gpt_api_key', 'default', null);
+      if (!doc?.iv || !doc?.ciphertext) return jsonResponse({ success: false, error: 'GPT APIキーが未設定です（設定から登録してください）' }, 400);
+
+      const apiKey = await decryptStringAesGcm(doc.iv, doc.ciphertext, secret);
+      if (!apiKey) return jsonResponse({ success: false, error: 'GPT APIキーの復号に失敗しました' }, 500);
+
+      const goalsRaw = Array.isArray(body?.goals) ? body.goals : [];
+      const goals = goalsRaw
+        .slice(0, 30)
+        .map((g) => {
+          if (typeof g === 'string') return g;
+          return g?.name;
+        })
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .map((v) => v.slice(0, 200));
+
+      if (goals.length === 0) return jsonResponse({ success: false, error: '目標が空です（目標を登録してください）' }, 400);
+
+      const goalList = goals.map((g, i) => `${i + 1}. ${g}`).join('\n');
+
+      const messages = [
+        {
+          role: 'system',
+          content:
+            'あなたは日本語の進捗報告テンプレートを作るアシスタントです。入力の目標一覧をもとに、ユーザーがコピペして埋められる「進捗報告テンプレート」を作成してください。',
+        },
+        {
+          role: 'user',
+          content:
+            '次の目標一覧をもとに、進捗報告のテンプレートを作ってください。\n\n要件:\n- 日本語\n- 箇条書きはテンプレート内で利用OK\n- 各目標ごとに「現状/完了したこと/課題・懸念/次にやること」を記入できる枠を作る\n- 入力に無い事実は追加しない（テンプレートなのでプレースホルダ表現にする）\n- 作業時間・工数・時間帯など時間情報には触れない\n- 出力はテンプレート本文のみ（前置き説明は不要）\n\n目標一覧:\n' + goalList,
+        },
+      ];
+
+      const text = await callOpenAiChat({ apiKey, messages, temperature: 0.1, maxTokens: 700 });
+      return jsonResponse({ success: true, text });
+    }
+
     if (parts.length === 2 && parts[0] === 'gpt' && parts[1] === 'polish' && request.method === 'POST') {
       const secret = env.GPT_API_KEY_ENCRYPTION_SECRET;
       if (!secret) return jsonResponse({ success: false, error: 'Missing env var: GPT_API_KEY_ENCRYPTION_SECRET' }, 500);

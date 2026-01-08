@@ -1140,6 +1140,52 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  async function gptGenerateProgressTemplateFromGoals() {
+    if (!accessToken) return;
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let goals: Array<{ name: string }> = [];
+
+      try {
+        const res0 = await apiFetch('/api/goals');
+        const body0 = await res0.json().catch(() => null as any);
+        if (res0.ok && body0?.success && Array.isArray(body0?.goals)) {
+          goals = body0.goals;
+        }
+      } catch {
+        // ignore and fallback to local state
+      }
+
+      if (!Array.isArray(goals) || goals.length === 0) {
+        goals = goalStock;
+      }
+
+      const payloadGoals = (Array.isArray(goals) ? goals : [])
+        .map((g) => ({ name: String((g as any)?.name || '').trim() }))
+        .filter((g) => g.name)
+        .slice(0, 30);
+
+      if (payloadGoals.length === 0) throw new Error('目標が空です（目標を登録してください）');
+
+      const res = await apiFetch('/api/gpt/progress-template-from-goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goals: payloadGoals }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || '生成に失敗しました');
+      const text = String(body?.text || '').trim();
+      if (!text) throw new Error('生成結果が空です');
+      setActiveReportText(text);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function gptPolishReportText() {
     if (!accessToken) return;
     if (busy) return;
@@ -3879,6 +3925,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     >
                       <span className="material-icons">auto_awesome</span>
                       タイムラインから生成
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      title="目標から進捗テンプレ生成"
+                      aria-label="目標から進捗テンプレ生成"
+                      onClick={() => void gptGenerateProgressTemplateFromGoals()}
+                      disabled={!accessToken || busy}
+                    >
+                      <span className="material-icons">auto_awesome</span>
+                      目標から進捗テンプレ生成
                     </button>
                     <button
                       type="button"
