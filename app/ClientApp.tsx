@@ -3310,6 +3310,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <span className="material-icons">description</span>
                 報告書作成
               </button>
+              <div style={{ paddingLeft: 16 }}>
+                <button
+                  id="tag-work-report-btn"
+                  className="btn-secondary"
+                  title="タグ別作業報告"
+                  aria-label="タグ別作業報告"
+                  type="button"
+                  onClick={() => setTagWorkReportOpen(true)}
+                  disabled={!accessToken || busy}
+                >
+                  <span className="material-icons">label</span>
+                  タグ別作業報告
+                </button>
+              </div>
               <button
                 id="goal-stock-btn"
                 className="btn-secondary"
