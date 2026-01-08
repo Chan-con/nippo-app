@@ -289,6 +289,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [viewMode, setViewMode] = useState<'today' | 'history'>('today');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [tagWorkReportOpen, setTagWorkReportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [goalStockOpen, setGoalStockOpen] = useState(false);
   const [taskStockOpen, setTaskStockOpen] = useState(false);
@@ -386,6 +387,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tagWorkLoading, setTagWorkLoading] = useState(false);
   const [tagWorkError, setTagWorkError] = useState<string | null>(null);
 
+  // tag work report (range)
+  const [tagWorkReportRangeStart, setTagWorkReportRangeStart] = useState(() => ymdKeyFromDate(new Date()));
+  const [tagWorkReportRangeEnd, setTagWorkReportRangeEnd] = useState(() => ymdKeyFromDate(new Date()));
+  const [tagWorkReportSummary, setTagWorkReportSummary] = useState<TagWorkSummary[]>([]);
+  const [tagWorkReportActiveTag, setTagWorkReportActiveTag] = useState<string>('');
+  const [tagWorkReportLoading, setTagWorkReportLoading] = useState(false);
+  const [tagWorkReportError, setTagWorkReportError] = useState<string | null>(null);
+
   // holiday calendar
   const [holidayCalendarOpen, setHolidayCalendarOpen] = useState(false);
   const [holidayCalendarMonth, setHolidayCalendarMonth] = useState(() => {
@@ -440,6 +449,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setGptReportRangeStart(today);
     setGptReportRangeEnd(today);
   }, [reportOpen]);
+
+  useEffect(() => {
+    if (!tagWorkReportOpen) return;
+    const today = ymdKeyFromDate(new Date());
+    setTagWorkReportRangeStart(today);
+    setTagWorkReportRangeEnd(today);
+  }, [tagWorkReportOpen]);
 
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
@@ -1789,7 +1805,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function SidebarNav(props: { onNavigate?: () => void }) {
     const onNavigate = props.onNavigate;
 
-    const navButton = (id: 'today' | 'history' | 'report', label: string) => {
+    const navButton = (id: 'today' | 'history' | 'report' | 'tag-report', label: string) => {
       const isActive = id === 'today' ? viewMode === 'today' : id === 'history' ? viewMode === 'history' : false;
       return (
         <button
@@ -1802,6 +1818,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           onClick={() => {
             if (id === 'report') {
               setReportOpen(true);
+            } else if (id === 'tag-report') {
+              setTagWorkReportOpen(true);
             } else {
               setViewMode(id);
             }
@@ -1818,7 +1836,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       <div className="space-y-2">
         {navButton('today', '今日')}
         {navButton('history', '履歴')}
-        {navButton('report', '報告書')}
+        {navButton('report', '報告書作成')}
+        <div className="pl-3">{navButton('tag-report', 'タグ別作業報告')}</div>
 
         <div className="mt-4 rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-primary)] p-3">
           <div className="text-xs text-[var(--text-muted)]">ログイン</div>
@@ -2631,6 +2650,120 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setActiveTag('');
     } finally {
       setTagWorkLoading(false);
+    }
+  }
+
+  function isYmdInRange(date: string, start: string, end: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return false;
+    return date >= start && date <= end;
+  }
+
+  async function loadTagWorkReportSummaryRange() {
+    if (!accessToken) return;
+    const startYmd = normalizeYmd(tagWorkReportRangeStart);
+    const endYmd = normalizeYmd(tagWorkReportRangeEnd);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(endYmd)) {
+      setTagWorkReportError('期間の形式が不正です');
+      setTagWorkReportSummary([]);
+      setTagWorkReportActiveTag('');
+      return;
+    }
+    if (startYmd > endYmd) {
+      setTagWorkReportError('開始日は終了日以前にしてください');
+      setTagWorkReportSummary([]);
+      setTagWorkReportActiveTag('');
+      return;
+    }
+
+    setTagWorkReportLoading(true);
+    setTagWorkReportError(null);
+    try {
+      const tagMap = new Map<string, { totalMinutes: number; byDate: Map<string, TagWorkTask[]> }>();
+
+      const addTasksToMap = (date: string, tasksInDay: any[]) => {
+        for (const t of tasksInDay) {
+          const tag = typeof t?.tag === 'string' ? t.tag.trim() : '';
+          const startTime = typeof t?.startTime === 'string' ? t.startTime : '';
+          const endTime = typeof t?.endTime === 'string' ? t.endTime : '';
+          const name = String(t?.name || t?.title || '').trim();
+          const status = t?.status ?? null;
+
+          if (!tag || !name) continue;
+          if (!startTime || !endTime) continue;
+          if (status === 'reserved') continue;
+
+          const minutes = calcDurationMinutes(startTime, endTime);
+          if (minutes == null) continue;
+
+          if (!tagMap.has(tag)) tagMap.set(tag, { totalMinutes: 0, byDate: new Map() });
+          const entry = tagMap.get(tag)!;
+          entry.totalMinutes += minutes;
+          if (!entry.byDate.has(date)) entry.byDate.set(date, []);
+          entry.byDate.get(date)!.push({ date, name, startTime, endTime, minutes });
+        }
+      };
+
+      const todayIso = formatDateISO(new Date());
+      if (isYmdInRange(todayIso, startYmd, endYmd)) {
+        const resToday = await apiFetch('/api/tasks', { method: 'GET' });
+        const bodyToday = await resToday.json().catch(() => null as any);
+        const todayTasks: any[] = Array.isArray(bodyToday?.tasks) ? bodyToday.tasks : [];
+        addTasksToMap(todayIso, todayTasks);
+      }
+
+      const resDates = await apiFetch('/api/history/dates', { method: 'GET' });
+      const bodyDates = await resDates.json().catch(() => null as any);
+      const dates: string[] = Array.isArray(bodyDates?.dates)
+        ? bodyDates.dates
+        : Array.isArray(bodyDates?.data)
+          ? bodyDates.data
+          : [];
+
+      const inRangeDates = dates.filter((d) => isYmdInRange(d, startYmd, endYmd));
+      for (const date of inRangeDates) {
+        const res = await apiFetch(`/api/history/${encodeURIComponent(date)}`, { method: 'GET' });
+        if (!res.ok) continue;
+        const body = await res.json().catch(() => null as any);
+        const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
+        addTasksToMap(date, tasksInDay);
+      }
+
+      const summaries: TagWorkSummary[] = Array.from(tagMap.entries())
+        .map(([tag, v]) => {
+          const groups: TagWorkDateGroup[] = Array.from(v.byDate.entries())
+            .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+            .map(([date, tasks]) => {
+              const sorted = tasks.slice().sort((a, b) => {
+                const ma = parseTimeToMinutesFlexible(a.startTime);
+                const mb = parseTimeToMinutesFlexible(b.startTime);
+                if (ma == null && mb == null) return 0;
+                if (ma == null) return 1;
+                if (mb == null) return -1;
+                return ma - mb;
+              });
+              const totalMinutes = sorted.reduce((s, x) => s + x.minutes, 0);
+              return { date, totalMinutes, count: sorted.length, tasks: sorted };
+            });
+
+          return { tag, totalMinutes: v.totalMinutes, groups };
+        })
+        .sort((a, b) => b.totalMinutes - a.totalMinutes);
+
+      setTagWorkReportSummary(summaries);
+      if (summaries.length > 0) {
+        setTagWorkReportActiveTag((prev) => (prev && summaries.some((s) => s.tag === prev) ? prev : summaries[0].tag));
+      } else {
+        setTagWorkReportActiveTag('');
+      }
+    } catch (e: any) {
+      setTagWorkReportError(e?.message || 'タグ別作業時間の取得に失敗しました');
+      setTagWorkReportSummary([]);
+      setTagWorkReportActiveTag('');
+    } finally {
+      setTagWorkReportLoading(false);
     }
   }
 
@@ -4062,6 +4195,236 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               disabled={!accessToken || busy}
             >
               <span className="material-icons">save</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className={`report-dialog ${tagWorkReportOpen ? 'show' : ''}`} id="tag-work-report-dialog" aria-hidden={!tagWorkReportOpen}>
+        <div className="report-content">
+          <div className="report-header">
+            <h3>🏷️ タグ別作業報告</h3>
+            <button
+              className="report-close"
+              id="tag-work-report-close"
+              title="閉じる"
+              aria-label="閉じる"
+              type="button"
+              onClick={() => setTagWorkReportOpen(false)}
+            >
+              <span className="material-icons">close</span>
+            </button>
+          </div>
+
+          <div className="report-body">
+            <div className="report-section">
+              <h4>🗓️ 対象期間</h4>
+              <div className="task-summary">
+                <div className="report-gpt-controls" style={{ marginTop: 0 }}>
+                  <div className="report-date-range">
+                    <span className="report-date-label">対象期間</span>
+                    <input
+                      type="date"
+                      value={tagWorkReportRangeStart}
+                      onChange={(e) => setTagWorkReportRangeStart(normalizeYmd(e.target.value))}
+                      disabled={!accessToken || tagWorkReportLoading}
+                      aria-label="対象期間（開始日）"
+                      className="report-date-input"
+                    />
+                    <span className="report-date-sep">〜</span>
+                    <input
+                      type="date"
+                      value={tagWorkReportRangeEnd}
+                      onChange={(e) => setTagWorkReportRangeEnd(normalizeYmd(e.target.value))}
+                      disabled={!accessToken || tagWorkReportLoading}
+                      aria-label="対象期間（終了日）"
+                      className="report-date-input"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary report-gpt-generate-btn"
+                    title="表示"
+                    aria-label="表示"
+                    onClick={() => void loadTagWorkReportSummaryRange()}
+                    disabled={!accessToken || tagWorkReportLoading}
+                  >
+                    <span className="material-icons">refresh</span>
+                    表示
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="report-section">
+              <h4>⏱️ 合計時間</h4>
+              <div className="tag-summary">
+                {(() => {
+                  const total = tagWorkReportSummary.reduce((s, x) => s + (x.totalMinutes || 0), 0);
+                  const rangeText = `${formatDateISOToSlash(normalizeYmd(tagWorkReportRangeStart))}〜${formatDateISOToSlash(
+                    normalizeYmd(tagWorkReportRangeEnd)
+                  )}`;
+                  const totalText = formatDurationJa(total);
+
+                  return (
+                    <>
+                      {tagWorkReportError ? <div style={{ color: 'var(--error)', fontSize: 12 }}>{tagWorkReportError}</div> : null}
+                      <div className="tag-total" style={{ marginTop: 0 }}>
+                        <span>
+                          対象期間: {rangeText} / 合計: {totalText}
+                        </span>
+                        <div className="tag-total-actions">
+                          <button
+                            type="button"
+                            className="tag-copy-btn"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(`${rangeText} 合計 ${totalText}`);
+                              } catch {
+                                // ignore
+                              }
+                            }}
+                            disabled={total <= 0}
+                          >
+                            <span className="material-icons">content_copy</span>
+                            コピー
+                          </button>
+                          <button
+                            type="button"
+                            className="tag-copy-btn tag-csv-btn"
+                            onClick={() => {
+                              const rows: string[] = ['タグ,合計(分),合計(表示)'];
+                              for (const s of tagWorkReportSummary) {
+                                const safe = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+                                rows.push([safe(s.tag), String(s.totalMinutes), safe(formatDurationJa(s.totalMinutes))].join(','));
+                              }
+
+                              const start = normalizeYmd(tagWorkReportRangeStart);
+                              const end = normalizeYmd(tagWorkReportRangeEnd);
+                              const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `tag_summary_${start}_${end}.csv`;
+                              document.body.appendChild(a);
+                              a.click();
+                              a.remove();
+                              URL.revokeObjectURL(url);
+                            }}
+                            disabled={tagWorkReportSummary.length === 0}
+                          >
+                            <span className="material-icons">download</span>
+                            CSV
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="report-section">
+              <h4>🏷️ タグ別作業時間</h4>
+              <div className="tag-summary">
+                {tagWorkReportLoading ? (
+                  <div className="sub-text">読み込み中...</div>
+                ) : tagWorkReportError ? (
+                  <div style={{ color: 'var(--error)', fontSize: 12 }}>{tagWorkReportError}</div>
+                ) : tagWorkReportSummary.length === 0 ? (
+                  <div className="sub-text">対象期間にタグ付きのタスクがありません</div>
+                ) : (
+                  <>
+                    <div className="tag-tabs-container">
+                      <div className="tag-tabs-navigation" role="tablist" aria-label="タグ別作業時間（対象期間）">
+                        {tagWorkReportSummary.map((s) => {
+                          const label = `${s.tag} (${formatDurationJa(s.totalMinutes)})`;
+                          return (
+                            <button
+                              key={`tag-report-tab-${s.tag}`}
+                              type="button"
+                              className={`tag-tab ${tagWorkReportActiveTag === s.tag ? 'active' : ''}`}
+                              role="tab"
+                              aria-selected={tagWorkReportActiveTag === s.tag}
+                              onClick={() => setTagWorkReportActiveTag(s.tag)}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="tag-tabs-content">
+                      {tagWorkReportSummary.map((s) => {
+                        const isActive = s.tag === tagWorkReportActiveTag;
+                        return (
+                          <div key={`tag-report-panel-${s.tag}`} className={`tag-tab-panel ${isActive ? 'active' : ''}`} role="tabpanel">
+                            <div className="tag-tasks">
+                              {s.groups.map((g) => (
+                                <div key={`tag-report-date-${s.tag}-${g.date}`} className="tag-date-group">
+                                  <div className="date-header-with-stats">
+                                    <div className="date-header">{formatDateISOToJaShort(g.date)}</div>
+                                    <div className="date-total">
+                                      <span>{formatDurationJa(g.totalMinutes)}</span>
+                                      <span>({g.count}件)</span>
+                                    </div>
+                                  </div>
+
+                                  {g.tasks.map((t, idx) => (
+                                    <div key={`tag-report-task-${s.tag}-${g.date}-${idx}`} className="task-item">
+                                      <div>
+                                        <div className="task-item-name">{t.name}</div>
+                                        <div className="task-item-time">
+                                          {formatTimeDisplay(t.startTime)} - {formatTimeDisplay(t.endTime)}
+                                        </div>
+                                      </div>
+                                      <div className="task-item-duration">{formatDurationJa(t.minutes)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="tag-total">
+                              <span>合計: {formatDurationJa(s.totalMinutes)}</span>
+                              <div className="tag-total-actions">
+                                <button
+                                  type="button"
+                                  className="tag-copy-btn"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(`${s.tag} - ${formatDurationJa(s.totalMinutes)}`);
+                                    } catch {
+                                      // ignore
+                                    }
+                                  }}
+                                >
+                                  <span className="material-icons">content_copy</span>
+                                  コピー
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="report-footer">
+            <button
+              className="btn-cancel"
+              id="tag-work-report-cancel"
+              title="戻る"
+              aria-label="戻る"
+              type="button"
+              onClick={() => setTagWorkReportOpen(false)}
+            >
+              <span className="material-icons">arrow_back</span>
             </button>
           </div>
         </div>
