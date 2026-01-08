@@ -359,6 +359,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsExcludeTaskNameInput, setSettingsExcludeTaskNameInput] = useState('');
   const [settingsGptApiKeyInput, setSettingsGptApiKeyInput] = useState('');
   const [settingsGptApiKeySaved, setSettingsGptApiKeySaved] = useState(false);
+  const [settingsGptEncryptionReady, setSettingsGptEncryptionReady] = useState<boolean | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsRemoteUpdatePending, setSettingsRemoteUpdatePending] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1030,6 +1031,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const b2 = await r2.json().catch(() => null as any);
         if (r2.ok && b2?.success) {
           setSettingsGptApiKeySaved(!!b2?.hasKey);
+          setSettingsGptEncryptionReady(typeof b2?.encryptionReady === 'boolean' ? b2.encryptionReady : null);
         }
       } catch {
         // ignore
@@ -1065,6 +1067,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       const gptKey = settingsGptApiKeyInput.trim();
       if (gptKey) {
+        if (settingsGptEncryptionReady === false) {
+          throw new Error('サーバ側の GPT_API_KEY_ENCRYPTION_SECRET が未設定のため、APIキーを保存できません');
+        }
         const r2 = await apiFetch('/api/gpt-api-key', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3998,6 +4003,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </button>
           </div>
           <div className="settings-body">
+            {error ? (
+              <div className="settings-section">
+                <p className="settings-hint" style={{ color: 'var(--error)' }}>{error}</p>
+              </div>
+            ) : null}
             {settingsRemoteUpdatePending ? (
               <div className="settings-section">
                 <p className="settings-hint">他端末で設定が更新されました。保存すると上書きされるため、必要なら閉じてから開き直してください。</p>
@@ -4196,6 +4206,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <div className="settings-field" style={{ display: 'flex', alignItems: 'flex-end' }}>
                   <div className="settings-hint" style={{ margin: 0 }}>
                     {settingsGptApiKeySaved ? '現在: 設定済み' : '現在: 未設定'}
+                    {settingsGptEncryptionReady === false ? '（サーバ設定不足）' : ''}
                   </div>
                 </div>
               </div>
