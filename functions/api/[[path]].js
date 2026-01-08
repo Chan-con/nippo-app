@@ -150,37 +150,37 @@ export async function onRequest(context) {
       const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
       const limited = tasks.slice(0, 80).map((t) => ({
         name: String(t?.name || '').slice(0, 200),
-        memo: String(t?.memo || '').slice(0, 1000),
-        tag: String(t?.tag || '').slice(0, 80),
-        startTime: String(t?.startTime || '').slice(0, 20),
-        endTime: String(t?.endTime || '').slice(0, 20),
+        memo: String(t?.memo || '').slice(0, 1400),
       }));
 
       if (limited.length === 0) return jsonResponse({ success: false, error: 'タイムラインが空です' }, 400);
 
       const timeline = limited
         .map((t) => {
-          const time = t.startTime ? (t.endTime ? `${t.startTime}-${t.endTime}` : `${t.startTime}-`) : '';
-          const tag = t.tag ? ` [${t.tag}]` : '';
-          const memo = t.memo ? `\nメモ: ${t.memo}` : '';
-          return `${time} ${t.name}${tag}${memo}`.trim();
+          const title = String(t.name || '').trim();
+          const memo = String(t.memo || '').trim();
+          if (!title && !memo) return '';
+          if (!memo) return `【${title}】`;
+          if (!title) return `【メモ】\n${memo}`;
+          return `【${title}】\n${memo}`;
         })
-        .join('\n');
+        .filter(Boolean)
+        .join('\n\n');
 
       const messages = [
         {
           role: 'system',
           content:
-            'あなたは日本語の業務日報を作成するアシスタントです。入力のタイムライン(作業名/メモ)から、社内向けの丁寧で簡潔な報告文を作成してください。誇張せず、事実ベースでまとめます。',
+            'あなたは日本語の業務日報を作成するアシスタントです。入力(作業タイトル/メモ)のみを根拠に、社内向けの丁寧で簡潔な報告文を作成してください。誇張せず、事実ベースでまとめます。',
         },
         {
           role: 'user',
           content:
-            '次のタイムラインから「本日の報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 箇条書きではなく、読みやすい文章(必要なら短い段落分けはOK)\n- メモがあれば内容に反映\n\nタイムライン:\n' + timeline,
+            '次の入力から「本日の報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 箇条書きは使わず、読みやすい文章\n- 改行は段落区切りのみ（文の途中で不自然に改行しない）\n- 2〜4段落程度に収める（必要なら段落を分ける）\n- 作業時間・工数・時間帯など時間情報には一切触れない（推測もしない）\n- 入力に無い事実は追加しない\n- メモがあれば自然に文章へ反映する\n\n入力（作業タイトル/メモ）:\n' + timeline,
         },
       ];
 
-      const text = await callOpenAiChat({ apiKey, messages, temperature: 0.2, maxTokens: 900 });
+      const text = await callOpenAiChat({ apiKey, messages, temperature: 0.1, maxTokens: 900 });
       return jsonResponse({ success: true, text });
     }
 
