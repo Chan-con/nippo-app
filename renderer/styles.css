@@ -871,6 +871,15 @@ input[type='number']::-webkit-inner-spin-button {
   margin-top: 4px;
 }
 
+.timeline-memo {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .task-tag {
   font-size: 11px;
   color: var(--text-primary);

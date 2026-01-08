@@ -3509,6 +3509,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               <span>{t.name}</span>
                             </span>
                           </div>
+                          {typeof (t as any)?.memo === 'string' && String((t as any).memo).trim() ? (
+                            <div className="timeline-memo">{String((t as any).memo).trim()}</div>
+                          ) : null}
                           <div className="timeline-meta">
                             {duration ? <span className="timeline-duration">{duration}</span> : null}
                             {t.tag ? <span className="task-tag">{t.tag}</span> : null}
