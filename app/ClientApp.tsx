@@ -3906,31 +3906,31 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     }}
                   />
 
-                  <div className="report-date-range">
-                    <span className="report-date-label">対象期間</span>
-                    <input
-                      type="date"
-                      value={gptReportRangeStart}
-                      onChange={(e) => setGptReportRangeStart(normalizeYmd(e.target.value))}
-                      disabled={!accessToken || busy}
-                      aria-label="対象期間（開始日）"
-                      className="report-date-input"
-                    />
-                    <span className="report-date-sep">〜</span>
-                    <input
-                      type="date"
-                      value={gptReportRangeEnd}
-                      onChange={(e) => setGptReportRangeEnd(normalizeYmd(e.target.value))}
-                      disabled={!accessToken || busy}
-                      aria-label="対象期間（終了日）"
-                      className="report-date-input"
-                    />
-                  </div>
+                  <div className="report-gpt-controls">
+                    <div className="report-date-range">
+                      <span className="report-date-label">対象期間</span>
+                      <input
+                        type="date"
+                        value={gptReportRangeStart}
+                        onChange={(e) => setGptReportRangeStart(normalizeYmd(e.target.value))}
+                        disabled={!accessToken || busy}
+                        aria-label="対象期間（開始日）"
+                        className="report-date-input"
+                      />
+                      <span className="report-date-sep">〜</span>
+                      <input
+                        type="date"
+                        value={gptReportRangeEnd}
+                        onChange={(e) => setGptReportRangeEnd(normalizeYmd(e.target.value))}
+                        disabled={!accessToken || busy}
+                        aria-label="対象期間（終了日）"
+                        className="report-date-input"
+                      />
+                    </div>
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                     <button
                       type="button"
-                      className="btn-secondary"
+                      className="btn-secondary report-gpt-generate-btn"
                       title="タイムラインから生成"
                       aria-label="タイムラインから生成"
                       onClick={() => void gptGenerateReportFromTimeline()}

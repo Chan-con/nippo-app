@@ -1689,8 +1689,8 @@ input[type='number']::-webkit-inner-spin-button {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .report-date-label,
@@ -1712,6 +1712,31 @@ input[type='number']::-webkit-inner-spin-button {
   transition: all 0.2s ease;
   height: 36px;
   box-sizing: border-box;
+  min-width: 135px;
+}
+
+.report-gpt-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.report-gpt-generate-btn {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .report-gpt-generate-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .report-date-input:hover:not(:disabled) {
