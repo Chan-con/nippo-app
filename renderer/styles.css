@@ -1734,6 +1734,9 @@ input[type='number']::-webkit-inner-spin-button {
   white-space: nowrap;
   margin-left: auto;
   flex-shrink: 0;
+  width: auto;
+  justify-content: center;
+  padding: 8px 12px;
 }
 
 .report-date-input:hover:not(:disabled) {
