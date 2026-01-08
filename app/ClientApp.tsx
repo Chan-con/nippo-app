@@ -4208,6 +4208,39 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                   <span className="material-icons">content_copy</span>
                                   コピー
                                 </button>
+                                <button
+                                  type="button"
+                                  className="tag-copy-btn tag-csv-btn"
+                                  onClick={() => {
+                                    const rows: string[] = ['作業日,作業内容,作業開始時刻,作業終了時刻'];
+                                    for (const g of s.groups) {
+                                      for (const t of g.tasks) {
+                                        const safe = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+                                        const dateCell = formatDateISOToSlash(g.date);
+                                        const start = formatTimeDisplay(t.startTime);
+                                        const end = formatTimeDisplay(t.endTime);
+                                        rows.push([safe(dateCell), safe(t.name), safe(start), safe(end)].join(','));
+                                      }
+                                    }
+
+                                    const start = normalizeYmd(tagWorkReportRangeStart);
+                                    const end = normalizeYmd(tagWorkReportRangeEnd);
+                                    const fileTag = String(s.tag || 'tag').replace(/[\\/:*?"<>|]/g, '_');
+                                    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `tag_${fileTag}_${start}_${end}.csv`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+                                    URL.revokeObjectURL(url);
+                                  }}
+                                  disabled={s.groups.length === 0}
+                                >
+                                  <span className="material-icons">download</span>
+                                  CSV
+                                </button>
                               </div>
                             </div>
                           </div>
