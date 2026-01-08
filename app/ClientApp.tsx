@@ -453,6 +453,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const editNameTrimmed = String(editName ?? '').trim();
   const editNameInTaskStock = !!editNameTrimmed && taskStock.includes(editNameTrimmed);
+  const editTagTrimmed = String(editTag ?? '').trim();
 
   // history
   const [historyDates, setHistoryDates] = useState<string[]>([]);
@@ -2052,13 +2053,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 placeholder="タスク名"
                 disabled={busy}
               />
-              <input
+              <select
                 className="w-full rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm"
-                value={historyEditing.tag}
+                aria-label="タグを選択"
+                value={String(historyEditing.tag || '').trim()}
                 onChange={(e) => setHistoryEditing((p) => (p ? { ...p, tag: e.target.value } : p))}
-                placeholder="タグ (任意)"
                 disabled={busy}
-              />
+              >
+                <option value="">タグを選択</option>
+                {String(historyEditing.tag || '').trim() &&
+                !tagStock.some((t) => String(t?.name || '').trim() === String(historyEditing.tag || '').trim()) ? (
+                  <option value={String(historyEditing.tag || '').trim()}>{String(historyEditing.tag || '').trim()}</option>
+                ) : null}
+                {tagStock.map((t) => (
+                  <option key={`${t.id ?? ''}:${t.name}`} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
               <input
                 className="w-full rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm"
                 value={historyEditing.startTime}
@@ -2638,7 +2650,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setEditingTaskId(String(task.id));
     setEditingTaskDateKey(viewMode === 'history' ? historyDate : null);
     setEditName(String(task.name || ''));
-    setEditTag(String(task.tag || ''));
+    setEditTag(String(task.tag || '').trim());
     setEditStartTime(formatTimeDisplay(task.startTime) || '');
     setEditEndTime(formatTimeDisplay(task.endTime) || '');
     setEditMemo(String(task.memo || ''));
@@ -3608,14 +3620,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
             <div className="edit-field">
               <label htmlFor="edit-task-tag">タグ（任意）</label>
-              <input
+              <select
                 id="edit-task-tag"
                 className="edit-input"
-                value={editTag}
+                aria-label="タグを選択"
+                value={editTagTrimmed}
                 onChange={(e) => setEditTag(e.target.value)}
-                placeholder="タグ"
                 disabled={busy}
-              />
+              >
+                <option value="">タグを選択</option>
+                {editTagTrimmed && !tagStock.some((t) => String(t?.name || '').trim() === editTagTrimmed) ? (
+                  <option value={editTagTrimmed}>{editTagTrimmed}</option>
+                ) : null}
+                {tagStock.map((t) => (
+                  <option key={`${t.id ?? ''}:${t.name}`} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="edit-field">
               <label htmlFor="edit-task-start">作業開始時刻</label>
