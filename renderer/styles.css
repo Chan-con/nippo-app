@@ -1722,7 +1722,8 @@ input[type='number']::-webkit-inner-spin-button {
   transition: all 0.2s ease;
   height: 36px;
   box-sizing: border-box;
-  min-width: 135px;
+  width: 130px;
+  min-width: 120px;
 }
 
 .report-gpt-generate-btn {
@@ -1732,13 +1733,7 @@ input[type='number']::-webkit-inner-spin-button {
   gap: 6px;
   white-space: nowrap;
   margin-left: auto;
-}
-
-@media (max-width: 520px) {
-  .report-gpt-generate-btn {
-    width: 100%;
-    justify-content: center;
-  }
+  flex-shrink: 0;
 }
 
 .report-date-input:hover:not(:disabled) {
