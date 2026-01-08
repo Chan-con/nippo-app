@@ -1726,17 +1726,28 @@ input[type='number']::-webkit-inner-spin-button {
   min-width: 120px;
 }
 
+.report-gpt-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .report-gpt-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
 .report-gpt-generate-btn {
   height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  margin-left: auto;
   flex-shrink: 0;
-  width: auto;
+  width: 100%;
   justify-content: center;
-  padding: 8px 12px;
 }
 
 .report-date-input:hover:not(:disabled) {
