@@ -13,6 +13,12 @@ type Task = {
   status?: string | null;
 };
 
+type TaskLineCard = {
+  id: string;
+  text: string;
+  color: string;
+};
+
 type ReportUrl = {
   id: number;
   name: string;
@@ -275,6 +281,16 @@ function arrayMove<T>(arr: T[], fromIndex: number, toIndex: number) {
   return copy;
 }
 
+function newId() {
+  try {
+    const c: any = typeof crypto !== 'undefined' ? crypto : null;
+    if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  } catch {
+    // ignore
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function getSafeLocalStorage(): Storage | undefined {
   try {
     return window.localStorage;
@@ -509,6 +525,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
 
+  // task line (sticky notes) - horizontal, reorderable, per-day (synced via Supabase)
+  // Keep colors aligned with the app theme (subtle dark tones)
+  const taskLineColors = ['var(--bg-tertiary)', 'var(--surface)', 'var(--bg-secondary)'];
+  const [taskLineCards, setTaskLineCards] = useState<TaskLineCard[]>([]);
+  const [taskLineInput, setTaskLineInput] = useState('');
+  const [taskLineEditingId, setTaskLineEditingId] = useState<string | null>(null);
+  const [taskLineLoadedDateKey, setTaskLineLoadedDateKey] = useState<string | null>(null);
+  const [taskLineLoading, setTaskLineLoading] = useState(false);
+  const [taskLineSaving, setTaskLineSaving] = useState(false);
+  const [taskLineError, setTaskLineError] = useState<string | null>(null);
+  const [taskLineDraggingId, setTaskLineDraggingId] = useState<string | null>(null);
+  const taskLineLastDragAtRef = useRef(0);
+  const taskLineDragJustEndedAtRef = useRef(0);
+  const taskLineSaveTimerRef = useRef<number | null>(null);
+
   function nowHHMM() {
     const d = new Date();
     const hh = String(d.getHours()).padStart(2, '0');
@@ -528,6 +559,298 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  }
+
+  const taskLineDateKey = useMemo(() => {
+    return formatDateISO(now);
+  }, [now]);
+
+  function normalizeTaskLineCards(input: unknown): TaskLineCard[] {
+    const list = Array.isArray(input) ? input : [];
+    const out: TaskLineCard[] = [];
+    for (const item of list) {
+      const id = typeof (item as any)?.id === 'string' ? String((item as any).id) : '';
+      const text = typeof (item as any)?.text === 'string' ? String((item as any).text) : '';
+      const color = typeof (item as any)?.color === 'string' ? String((item as any).color) : '';
+      if (!id) continue;
+      const normalizedColor =
+        color && ['var(--warning)', 'var(--pink)', 'var(--purple)', 'var(--success)', 'var(--accent)'].includes(color)
+          ? 'var(--bg-tertiary)'
+          : color;
+      out.push({ id, text, color: normalizedColor || 'var(--bg-tertiary)' });
+    }
+    return out;
+  }
+
+  function autoResizeTextarea(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    try {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    } catch {
+      // ignore
+    }
+  }
+
+  function shortenUrlForDisplay(rawUrl: string) {
+    const cleaned = String(rawUrl || '').trim();
+    if (!cleaned) return '';
+    let display = cleaned.replace(/^https?:\/\//i, '');
+    // keep it compact but recognizable
+    const maxLen = 38;
+    if (display.length <= maxLen) return display;
+    const head = display.slice(0, 28);
+    const tail = display.slice(-6);
+    return `${head}…${tail}`;
+  }
+
+  function renderTextWithLinks(text: string) {
+    const s = String(text ?? '');
+    if (!s) return s;
+
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+    const nodes: React.ReactNode[] = [];
+
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let idx = 0;
+    while ((match = urlRegex.exec(s)) !== null) {
+      const start = match.index;
+      const rawToken = match[0];
+
+      if (start > lastIndex) nodes.push(s.slice(lastIndex, start));
+
+      // Trim trailing punctuation that often sticks to URLs in plain text.
+      let token = rawToken;
+      let trailing = '';
+      while (token && /[\]\)\}\.,;:!?]$/.test(token)) {
+        trailing = token.slice(-1) + trailing;
+        token = token.slice(0, -1);
+      }
+
+      const href = token.toLowerCase().startsWith('www.') ? `https://${token}` : token;
+      nodes.push(
+        <a
+          key={`url-${idx}-${start}`}
+          href={href}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-url"
+          title={href}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+          onMouseDown={(e) => {
+            // prevent parent handlers from reacting to this click
+            e.stopPropagation();
+          }}
+        >
+          {shortenUrlForDisplay(token)}
+        </a>
+      );
+      if (trailing) nodes.push(trailing);
+
+      lastIndex = start + rawToken.length;
+      idx += 1;
+    }
+
+    if (lastIndex < s.length) nodes.push(s.slice(lastIndex));
+    return nodes.length ? nodes : s;
+  }
+
+  function readTaskLineDraftFromLocal(dateKey: string) {
+    try {
+      // migration from previous localStorage-based implementation + unauthenticated drafts
+      const keys = [`nippoTaskLineDraft:${dateKey}`];
+      // old key format: nippoTaskLine:<uid|anon>:<date>
+      const uid = userId || 'anon';
+      keys.push(`nippoTaskLine:${uid}:${dateKey}`);
+      keys.push(`nippoTaskLine:anon:${dateKey}`);
+
+      for (const k of keys) {
+        const raw = window.localStorage.getItem(k);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const cards = normalizeTaskLineCards(parsed);
+        return { key: k, cards };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeTaskLineDraftToLocal(dateKey: string, cards: TaskLineCard[]) {
+    try {
+      window.localStorage.setItem(`nippoTaskLineDraft:${dateKey}`, JSON.stringify(cards));
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadTaskLineFromServer(dateKey: string) {
+    if (!accessToken) return;
+    if (!dateKey) return;
+    setTaskLineLoading(true);
+    setTaskLineError(null);
+    try {
+      const res = await apiFetch(`/api/taskline?dateString=${encodeURIComponent(dateKey)}`);
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'タスクラインの取得に失敗しました');
+
+      const remoteCards = normalizeTaskLineCards(body?.taskline?.cards);
+
+      // One-time migration: if remote empty, but local has data, push it to server.
+      const draft = readTaskLineDraftFromLocal(dateKey);
+      if (remoteCards.length === 0 && draft?.cards?.length) {
+        setTaskLineCards(draft.cards);
+        setTaskLineLoadedDateKey(dateKey);
+        try {
+          window.localStorage.removeItem(draft.key);
+        } catch {
+          // ignore
+        }
+        try {
+          window.localStorage.removeItem(`nippoTaskLineDraft:${dateKey}`);
+        } catch {
+          // ignore
+        }
+        // Save migrated data to server
+        void saveTaskLineToServer(dateKey, draft.cards);
+        return;
+      }
+
+      setTaskLineCards(remoteCards);
+      setTaskLineLoadedDateKey(dateKey);
+    } catch (e: any) {
+      setTaskLineError(e?.message || String(e));
+      setTaskLineCards([]);
+      setTaskLineLoadedDateKey(dateKey);
+    } finally {
+      setTaskLineLoading(false);
+    }
+  }
+
+  async function saveTaskLineToServer(dateKey: string, cards: TaskLineCard[]) {
+    if (!accessToken) return;
+    if (!dateKey) return;
+    setTaskLineSaving(true);
+    setTaskLineError(null);
+    try {
+      const res = await apiFetch('/api/taskline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dateString: dateKey, cards }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'タスクラインの保存に失敗しました');
+    } catch (e: any) {
+      setTaskLineError(e?.message || String(e));
+    } finally {
+      setTaskLineSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (viewMode === 'history') return;
+    if (!taskLineDateKey) return;
+
+    if (accessToken) {
+      void loadTaskLineFromServer(taskLineDateKey);
+      return;
+    }
+
+    // login required
+    setTaskLineCards([]);
+    setTaskLineLoadedDateKey(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, taskLineDateKey, viewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'history') return;
+    if (!taskLineDateKey) return;
+    if (taskLineLoadedDateKey !== taskLineDateKey) return;
+    if (taskLineEditingId) return;
+    if (taskLineDraggingId) return;
+
+    // login required
+    if (!accessToken) return;
+
+    if (taskLineSaveTimerRef.current) window.clearTimeout(taskLineSaveTimerRef.current);
+    taskLineSaveTimerRef.current = window.setTimeout(() => {
+      void saveTaskLineToServer(taskLineDateKey, taskLineCards);
+    }, 600);
+
+    return () => {
+      if (taskLineSaveTimerRef.current) window.clearTimeout(taskLineSaveTimerRef.current);
+      taskLineSaveTimerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskLineCards, taskLineDateKey, taskLineLoadedDateKey, taskLineEditingId, taskLineDraggingId, accessToken, viewMode]);
+
+  function focusTaskInputWithName(name: string) {
+    setNewTaskName(name);
+    const isMobile =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 639px)').matches;
+    if (isMobile) setSidebarOpen(true);
+
+    window.setTimeout(() => {
+      const input = document.getElementById('task-input') as HTMLInputElement | null;
+      input?.focus();
+      if (input) {
+        try {
+          input.scrollIntoView({ block: 'center' });
+        } catch {
+          // ignore
+        }
+        const len = input.value.length;
+        try {
+          input.setSelectionRange(len, len);
+        } catch {
+          // ignore
+        }
+      }
+    }, 0);
+  }
+
+  function addTaskLineCard(text?: string) {
+    const v = String(text ?? taskLineInput ?? '').trim();
+    if (!v) return;
+    const id = newId();
+    setTaskLineCards((prev) => {
+      const color = taskLineColors[prev.length % taskLineColors.length] || 'var(--bg-tertiary)';
+      return [...prev, { id, text: v, color }];
+    });
+    setTaskLineInput('');
+  }
+
+  function addTaskLineCardAtStart() {
+    const id = newId();
+    setTaskLineCards((prev) => {
+      const color = taskLineColors[prev.length % taskLineColors.length] || 'var(--bg-tertiary)';
+      return [{ id, text: '', color }, ...prev];
+    });
+    setTaskLineEditingId(id);
+  }
+
+  function updateTaskLineCardText(id: string, text: string) {
+    setTaskLineCards((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
+  }
+
+  function deleteTaskLineCard(id: string) {
+    setTaskLineCards((prev) => prev.filter((c) => c.id !== id));
+    setTaskLineEditingId((cur) => (cur === id ? null : cur));
+  }
+
+  function reorderTaskLineCard(dragId: string, overId: string) {
+    setTaskLineCards((prev) => {
+      const from = prev.findIndex((c) => c.id === dragId);
+      const to = prev.findIndex((c) => c.id === overId);
+      if (from < 0 || to < 0) return prev;
+      return arrayMove(prev, from, to);
+    });
   }
 
   useEffect(() => {
@@ -1338,6 +1661,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             return;
           }
 
+          if (docType === 'taskline' && typeof docKey === 'string' && docKey === taskLineDateKey) {
+            if (viewMode === 'history') return;
+            if (taskLineEditingId || taskLineDraggingId) return;
+            void loadTaskLineFromServer(taskLineDateKey);
+            return;
+          }
+
           if (docType === 'tasks' && billingOpen) {
             void fetchBillingSummary();
           }
@@ -1352,7 +1682,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         // ignore
       }
     };
-  }, [supabase, accessToken, userId, settingsOpen, settingsDirty, billingOpen, billingDirty, holidayCalendarOpen, holidayCalendarDirty]);
+  }, [
+    supabase,
+    accessToken,
+    userId,
+    settingsOpen,
+    settingsDirty,
+    billingOpen,
+    billingDirty,
+    holidayCalendarOpen,
+    holidayCalendarDirty,
+    taskLineDateKey,
+    taskLineEditingId,
+    taskLineDraggingId,
+  ]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -3016,7 +3359,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   return (
-    <>
+    <div style={{ display: 'contents' }}>
       <div className="titlebar">
         <div className="titlebar-drag">
           <button
@@ -3471,6 +3814,152 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
 
           <div className="main-body">
+            {viewMode === 'today' && accessToken ? (
+              <div className="taskline-section">
+              <div className="taskline-header">
+                <h3>🗂️ タスクライン</h3>
+                <div className="taskline-status" aria-live="polite">
+                  {taskLineLoading ? <span className="taskline-status-item">同期中…</span> : null}
+                  {!taskLineLoading && taskLineSaving ? <span className="taskline-status-item">保存中…</span> : null}
+                  {taskLineError ? <span className="taskline-status-item error">{taskLineError}</span> : null}
+                </div>
+              </div>
+
+              <div
+                className="taskline-scroll"
+                onDragOver={(e) => {
+                  // allow dropping into the lane (e.g., end)
+                  if (taskLineDraggingId) e.preventDefault();
+                }}
+                onDrop={() => {
+                  setTaskLineDraggingId(null);
+                  taskLineDragJustEndedAtRef.current = Date.now();
+                }}
+              >
+                <button
+                  type="button"
+                  className="taskline-add-slot"
+                  onClick={() => {
+                    if (busy) return;
+                    addTaskLineCardAtStart();
+                  }}
+                  title="先頭に付箋を追加"
+                  aria-label="先頭に付箋を追加"
+                  disabled={busy}
+                >
+                  <span className="material-icons" aria-hidden="true">
+                    add
+                  </span>
+                </button>
+
+                {taskLineCards.map((card) => {
+                  const isEditing = taskLineEditingId === card.id;
+                  return (
+                    <div
+                      key={card.id}
+                      className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}`}
+                      style={{ background: card.color || 'var(--bg-tertiary)' }}
+                      draggable={!isEditing && !busy}
+                      onDragStart={(e) => {
+                        setTaskLineDraggingId(card.id);
+                        try {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', card.id);
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      onDragEnd={() => {
+                        setTaskLineDraggingId(null);
+                        taskLineDragJustEndedAtRef.current = Date.now();
+                      }}
+                      onDragOver={(e) => {
+                        if (!taskLineDraggingId) return;
+                        if (taskLineDraggingId === card.id) return;
+                        e.preventDefault();
+
+                        const nowMs = Date.now();
+                        if (nowMs - taskLineLastDragAtRef.current < 40) return;
+                        taskLineLastDragAtRef.current = nowMs;
+                        reorderTaskLineCard(taskLineDraggingId, card.id);
+                      }}
+                      onClick={() => {
+                        // NOTE: Do not auto-fill the task input from taskline clicks.
+                        // (URLs and memo text should be safely clickable/selectable without side effects.)
+                        if (isEditing) return;
+                        if (Date.now() - taskLineDragJustEndedAtRef.current < 200) return;
+                      }}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (busy) return;
+                        setTaskLineEditingId(card.id);
+                      }}
+                      title={isEditing ? '' : 'ダブルクリックで編集'}
+                    >
+                      <button
+                        type="button"
+                        className="taskline-delete"
+                        title="削除"
+                        aria-label="削除"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          deleteTaskLineCard(card.id);
+                        }}
+                        disabled={busy}
+                      >
+                        <span className="material-icons">close</span>
+                      </button>
+
+                      {isEditing ? (
+                        <textarea
+                          className="taskline-card-input"
+                          autoFocus
+                          value={card.text}
+                          onChange={(e) => {
+                            updateTaskLineCardText(card.id, e.target.value);
+                            autoResizeTextarea(e.currentTarget);
+                          }}
+                          onFocus={(e) => autoResizeTextarea(e.currentTarget)}
+                          onBlur={() => {
+                            // If left empty, auto-delete the new card to keep things tidy.
+                            const v = String(card.text ?? '').trim();
+                            if (!v) {
+                              deleteTaskLineCard(card.id);
+                              return;
+                            }
+                            setTaskLineEditingId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              deleteTaskLineCard(card.id);
+                              return;
+                            }
+
+                            // Finish editing with Ctrl+Enter / Cmd+Enter
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                              e.preventDefault();
+                              const v = String(card.text ?? '').trim();
+                              if (!v) {
+                                deleteTaskLineCard(card.id);
+                                return;
+                              }
+                              setTaskLineEditingId(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="taskline-card-text">{renderTextWithLinks(card.text)}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              </div>
+            ) : null}
+
             <div className={`timeline-section ${viewMode === 'history' ? 'history-mode' : ''}`}>
               <h3>📈 タイムライン</h3>
               <div className="timeline-container" id="timeline-container">
@@ -3531,6 +4020,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             className="timeline-task"
                             title="クリックでタスク名をコピー"
                             onClick={(e) => {
+                              if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
                               e.preventDefault();
                               setNewTaskName(t.name);
                               const isMobile =
@@ -3558,6 +4048,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               }, 0);
                             }}
                             onContextMenu={(e) => {
+                              if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
                               e.preventDefault();
                               setNewTaskName(t.name);
                               const input = document.getElementById('task-input') as HTMLInputElement | null;
@@ -3575,11 +4066,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                   local_cafe
                                 </span>
                               ) : null}
-                              <span>{t.name}</span>
+                              <span>{renderTextWithLinks(t.name)}</span>
                             </span>
                           </div>
                           {typeof (t as any)?.memo === 'string' && String((t as any).memo).trim() ? (
-                            <div className="timeline-memo">{String((t as any).memo).trim()}</div>
+                            <div
+                              className="timeline-memo"
+                              onMouseDownCapture={(e) => {
+                                if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                                e.stopPropagation();
+                              }}
+                              onClickCapture={(e) => {
+                                if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                                e.stopPropagation();
+                              }}
+                            >
+                              {renderTextWithLinks(String((t as any).memo).trim())}
+                            </div>
                           ) : null}
                           <div className="timeline-meta">
                             {duration ? <span className="timeline-duration">{duration}</span> : null}
@@ -5460,6 +5963,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

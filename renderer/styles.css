@@ -588,6 +588,7 @@ input[type='number']::-webkit-inner-spin-button {
   display: flex;
   flex-direction: column;
   min-height: 0; /* 子要素のスクロールを効かせる */
+  min-width: 0;  /* 横方向のはみ出しでUIが広がるのを防ぐ */
 }
 
 .main-header {
@@ -615,6 +616,8 @@ input[type='number']::-webkit-inner-spin-button {
 .main-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden; /* 横スクロールはタスクライン内に閉じ込める */
+  min-width: 0;
   /* スクロールバーを右端に寄せる（main-content の右paddingを相殺） */
   margin-right: -24px;
   padding-right: 24px;
@@ -709,7 +712,181 @@ input[type='number']::-webkit-inner-spin-button {
 /* タイムライン */
 .timeline-section {
   margin-bottom: 32px;
+  min-width: 0;
 }
+
+/* タスクライン（付箋レーン） */
+.taskline-section {
+  margin-bottom: 18px;
+  min-width: 0;
+}
+
+.taskline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.taskline-status {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-height: 18px;
+}
+
+.taskline-status-item {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.taskline-status-item.error {
+  color: var(--error);
+  max-width: 48vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskline-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.taskline-header h3 {
+  white-space: nowrap;
+}
+
+.taskline-scroll {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-medium);
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.taskline-add-slot {
+  flex: 0 0 auto;
+  width: 54px;
+  min-width: 54px;
+  max-width: 54px;
+  height: 140px;
+  border-radius: 10px;
+  border: 2px dashed rgba(108, 112, 134, 0.75);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.taskline-add-slot:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(137, 180, 250, 0.06);
+}
+
+.taskline-add-slot:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.taskline-card {
+  position: relative;
+  flex: 0 0 auto;
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
+  min-height: 140px;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  padding: 10px;
+  cursor: grab;
+  user-select: none;
+  color: var(--text-primary);
+}
+
+.taskline-card:active {
+  cursor: grabbing;
+}
+
+.taskline-card.dragging {
+  opacity: 0.7;
+}
+
+.taskline-card-text {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.taskline-card-input {
+  width: 100%;
+  max-width: 100%;
+  min-height: 120px;
+  height: auto;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.taskline-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(30, 30, 46, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.taskline-delete .material-icons {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.taskline-delete:hover {
+  background: rgba(30, 30, 46, 0.8);
+}
+
+.taskline-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 
 .timeline-section h3 {
   font-size: 20px;
@@ -857,6 +1034,21 @@ input[type='number']::-webkit-inner-spin-button {
   margin-bottom: 4px;
   cursor: pointer;
   transition: color 0.2s ease;
+}
+
+.inline-url {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  display: inline;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.inline-url:hover {
+  color: var(--accent-hover);
 }
 
 .timeline-task:hover {

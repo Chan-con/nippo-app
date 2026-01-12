@@ -28,3 +28,25 @@ with check (auth.uid() = user_id);
 create policy "nippo_docs_delete_own" on public.nippo_docs
 for delete
 using (auth.uid() = user_id);
+
+-- Optional: taskline (sticky notes lane) helpers
+-- This app stores taskline data in nippo_docs as:
+--   doc_type = 'taskline'
+--   doc_key  = 'YYYY-MM-DD'
+--   content  = { date: 'YYYY-MM-DD', cards: [{ id, text, color }], updatedAt }
+
+create or replace view public.nippo_tasklines as
+select
+  user_id,
+  doc_key as ymd,
+  content,
+  updated_at
+from public.nippo_docs
+where doc_type = 'taskline';
+
+alter table public.nippo_docs
+  add constraint nippo_docs_taskline_doc_key_ymd_chk
+  check (
+    doc_type <> 'taskline'
+    or doc_key ~ '^\\d{4}-\\d{2}-\\d{2}$'
+  );

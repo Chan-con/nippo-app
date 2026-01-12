@@ -71,6 +71,32 @@ function getParts(pathname) {
   return pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
 }
 
+function getTodayDateStringJST() {
+  const today = new Date();
+  const parts = today
+    .toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Tokyo',
+    })
+    .split('/');
+  return `${parts[0]}-${parts[1]}-${parts[2]}`;
+}
+
+function normalizeTaskLineCards(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = [];
+  for (const item of list) {
+    const id = typeof item?.id === 'string' ? String(item.id) : '';
+    const text = typeof item?.text === 'string' ? String(item.text) : '';
+    const color = typeof item?.color === 'string' ? String(item.color) : '';
+    if (!id) continue;
+    out.push({ id, text, color });
+  }
+  return out;
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -476,6 +502,43 @@ export async function onRequest(context) {
       const month = typeof body?.month === 'string' ? body.month : null;
       const holidays = Array.isArray(body?.holidays) ? body.holidays : [];
       await taskManager.saveHolidayCalendar({ month, holidays }, userId);
+      return jsonResponse({ success: true });
+    }
+
+    // taskline (sticky notes lane)
+    if (parts.length === 1 && parts[0] === 'taskline' && request.method === 'GET') {
+      const dateString = url.searchParams.get('dateString') || null;
+      const dateKey = dateString || getTodayDateStringJST();
+      if (dateString && !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        return jsonResponse({ success: false, error: '無効な日付形式です。YYYY-MM-DD形式で指定してください。' }, 400);
+      }
+
+      const doc = await taskManager._getDoc(userId, 'taskline', dateKey, {
+        date: dateKey,
+        cards: [],
+      });
+      const cards = normalizeTaskLineCards(doc?.cards);
+      return jsonResponse({ success: true, taskline: { date: dateKey, cards } });
+    }
+
+    if (parts.length === 1 && parts[0] === 'taskline' && request.method === 'POST') {
+      const dateString = typeof body?.dateString === 'string' ? body.dateString : null;
+      const dateKey = dateString || getTodayDateStringJST();
+      if (dateString && !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        return jsonResponse({ success: false, error: '無効な日付形式です。YYYY-MM-DD形式で指定してください。' }, 400);
+      }
+
+      const cards = normalizeTaskLineCards(body?.cards).slice(0, 200).map((c) => ({
+        id: String(c.id).slice(0, 80),
+        text: String(c.text || '').slice(0, 200),
+        color: String(c.color || '').slice(0, 80),
+      }));
+
+      await taskManager._setDoc(userId, 'taskline', dateKey, {
+        date: dateKey,
+        cards,
+        updatedAt: new Date().toISOString(),
+      });
       return jsonResponse({ success: true });
     }
 
