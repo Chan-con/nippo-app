@@ -540,7 +540,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
 
-  // task line (sticky notes) - horizontal, reorderable, per-day (synced via Supabase)
+  // task line (sticky notes) - horizontal, reorderable (synced via Supabase)
+  // NOTE: タスクラインは日付ごとの管理ではなく「常に同じ内容」を表示する
+  const TASK_LINE_GLOBAL_KEY = 'global';
   // Keep colors aligned with the app theme (subtle dark tones)
   const taskLineColors = ['var(--bg-tertiary)', 'var(--surface)', 'var(--bg-secondary)'];
   const [taskLineCards, setTaskLineCards] = useState<TaskLineCard[]>([]);
@@ -580,9 +582,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `${y}-${m}-${day}`;
   }
 
-  const taskLineDateKey = useMemo(() => {
-    return formatDateISO(now);
-  }, [now]);
+  const taskLineDateKey = TASK_LINE_GLOBAL_KEY;
 
   function normalizeTaskLineCards(input: unknown): TaskLineCard[] {
     const list = Array.isArray(input) ? input : [];
@@ -699,7 +699,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         if (!raw) continue;
         const parsed = JSON.parse(raw);
         const cards = normalizeTaskLineCards(parsed);
-        return { key: k, cards };
+        return { key: k, dateKey, cards };
       }
       return null;
     } catch {
@@ -727,8 +727,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       const remoteCards = normalizeTaskLineCards(body?.taskline?.cards);
 
-      // One-time migration: if remote empty, but local has data, push it to server.
-      const draft = readTaskLineDraftFromLocal(dateKey);
+      const isGlobalTaskLine = dateKey === TASK_LINE_GLOBAL_KEY;
+
+      // One-time migration (localStorage -> server). For global taskline, also look at today's/yesterday's drafts.
+      const todayKey = formatDateISO(new Date());
+      const yday = new Date();
+      yday.setDate(yday.getDate() - 1);
+      const yesterdayKey = formatDateISO(yday);
+      const draftCandidates = isGlobalTaskLine ? [TASK_LINE_GLOBAL_KEY, todayKey, yesterdayKey] : [dateKey];
+
+      // If remote empty, but local has data, push it to server.
+      const draft = remoteCards.length === 0 ? draftCandidates.map((k) => readTaskLineDraftFromLocal(k)).find((x) => !!x) : null;
       if (remoteCards.length === 0 && draft?.cards?.length) {
         setTaskLineCards(draft.cards);
         setTaskLineLoadedDateKey(dateKey);
@@ -740,13 +749,36 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           // ignore
         }
         try {
-          window.localStorage.removeItem(`nippoTaskLineDraft:${dateKey}`);
+          window.localStorage.removeItem(`nippoTaskLineDraft:${draft.dateKey}`);
         } catch {
           // ignore
         }
         // Save migrated data to server
         void saveTaskLineToServer(dateKey, draft.cards, taskLineSnapshot(draft.cards));
         return;
+      }
+
+      // One-time migration (server per-day -> server global):
+      // If global is empty, try copying from today's/yesterday's server docs.
+      if (isGlobalTaskLine && remoteCards.length === 0) {
+        const serverCandidates = [todayKey, yesterdayKey].filter((k) => k !== TASK_LINE_GLOBAL_KEY);
+        for (const k of serverCandidates) {
+          try {
+            const r = await apiFetch(`/api/taskline?dateString=${encodeURIComponent(k)}`);
+            const b = await r.json().catch(() => null as any);
+            if (!r.ok || !b?.success) continue;
+            const cards = normalizeTaskLineCards(b?.taskline?.cards);
+            if (!cards.length) continue;
+            setTaskLineCards(cards);
+            setTaskLineLoadedDateKey(dateKey);
+            setTaskLineDirty(true);
+            setTaskLineRemoteUpdatePending(false);
+            void saveTaskLineToServer(dateKey, cards, taskLineSnapshot(cards));
+            return;
+          } catch {
+            // ignore and try next candidate
+          }
+        }
       }
 
       setTaskLineCards(remoteCards);

@@ -84,6 +84,8 @@ function getTodayDateStringJST() {
   return `${parts[0]}-${parts[1]}-${parts[2]}`;
 }
 
+const TASKLINE_GLOBAL_KEY = 'global';
+
 function normalizeTaskLineCards(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
@@ -509,7 +511,7 @@ export async function onRequest(context) {
     if (parts.length === 1 && parts[0] === 'taskline' && request.method === 'GET') {
       const dateString = url.searchParams.get('dateString') || null;
       const dateKey = dateString || getTodayDateStringJST();
-      if (dateString && !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      if (dateString && dateString !== TASKLINE_GLOBAL_KEY && !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         return jsonResponse({ success: false, error: '無効な日付形式です。YYYY-MM-DD形式で指定してください。' }, 400);
       }
 
@@ -524,7 +526,7 @@ export async function onRequest(context) {
     if (parts.length === 1 && parts[0] === 'taskline' && request.method === 'POST') {
       const dateString = typeof body?.dateString === 'string' ? body.dateString : null;
       const dateKey = dateString || getTodayDateStringJST();
-      if (dateString && !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      if (dateString && dateString !== TASKLINE_GLOBAL_KEY && !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         return jsonResponse({ success: false, error: '無効な日付形式です。YYYY-MM-DD形式で指定してください。' }, 400);
       }
 
