@@ -784,6 +784,9 @@ input[type='number']::-webkit-inner-spin-button {
   max-width: 72px;
   height: auto;
   min-height: 0;
+  position: relative;
+  --taskline-plus-size: 22px;
+  --taskline-plus-stroke: 4px;
   border-radius: 10px;
   border: 2px dashed rgba(108, 112, 134, 0.75);
   background: var(--bg-tertiary);
@@ -803,7 +806,27 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .taskline-add-slot .material-icons {
-  font-size: 22px;
+  display: none;
+}
+
+.taskline-add-slot::before,
+.taskline-add-slot::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--taskline-plus-size);
+  height: var(--taskline-plus-stroke);
+  background: currentColor;
+  border-radius: 999px;
+}
+
+.taskline-add-slot::before {
+  transform: translate(-50%, -50%);
+}
+
+.taskline-add-slot::after {
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 
 .taskline-add-slot:hover {
@@ -882,6 +905,7 @@ input[type='number']::-webkit-inner-spin-button {
   position: absolute;
   top: 6px;
   right: 6px;
+  z-index: 2;
   width: 22px;
   height: 22px;
   border-radius: 999px;
