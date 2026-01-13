@@ -53,6 +53,79 @@ function parseTimeToMinutesFlexible(timeStr) {
   return hour * 60 + minute;
 }
 
+function minutesToHHMM(minutes) {
+  if (minutes == null) return '';
+  const total = Math.max(0, Math.min(23 * 60 + 59, Math.trunc(minutes)));
+  const hh = Math.floor(total / 60);
+  const mm = total % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function adjustConflictingTasksByEditedTask(tasks, editedTaskId) {
+  const adjustments = [];
+  if (!Array.isArray(tasks) || !editedTaskId) return { tasks, adjustments };
+
+  const taskIdStr = String(editedTaskId);
+  const entries = tasks
+    .map((t, idx) => ({ idx, task: t, startMinutes: parseTimeToMinutesFlexible(t?.startTime) }))
+    .filter((x) => x.task && !isReservedTask(x.task))
+    .sort((a, b) => {
+      const am = a.startMinutes;
+      const bm = b.startMinutes;
+      if (am == null && bm == null) return a.idx - b.idx;
+      if (am == null) return 1;
+      if (bm == null) return -1;
+      if (am !== bm) return am - bm;
+      return a.idx - b.idx;
+    });
+
+  const pos = entries.findIndex((e) => String(e.task?.id) === taskIdStr);
+  if (pos === -1) return { tasks, adjustments };
+
+  const edited = entries[pos].task;
+  const editedStart = parseTimeToMinutesFlexible(edited?.startTime);
+  if (editedStart == null) return { tasks, adjustments };
+
+  let editedEnd = parseTimeToMinutesFlexible(edited?.endTime);
+  if (editedEnd != null && editedEnd < editedStart) {
+    const old = String(edited?.endTime || '');
+    editedEnd = editedStart;
+    edited.endTime = minutesToHHMM(editedEnd);
+    adjustments.push({ id: edited?.id, field: 'endTime', oldValue: old, newValue: edited.endTime, reason: '開始時刻より前の終了を補正' });
+  }
+
+  if (pos > 0) {
+    const prev = entries[pos - 1].task;
+    const prevEnd = parseTimeToMinutesFlexible(prev?.endTime);
+    if (prevEnd != null && prevEnd > editedStart) {
+      const old = String(prev?.endTime || '');
+      const prevStart = parseTimeToMinutesFlexible(prev?.startTime);
+      const clamped = prevStart != null ? Math.max(prevStart, editedStart) : editedStart;
+      prev.endTime = minutesToHHMM(clamped);
+      adjustments.push({ id: prev?.id, field: 'endTime', oldValue: old, newValue: prev.endTime, reason: '次タスクとの重複を解消' });
+    }
+  }
+
+  if (editedEnd != null && pos < entries.length - 1) {
+    const next = entries[pos + 1].task;
+    const nextStart = parseTimeToMinutesFlexible(next?.startTime);
+    if (nextStart != null && nextStart < editedEnd) {
+      const old = String(next?.startTime || '');
+      next.startTime = minutesToHHMM(editedEnd);
+      adjustments.push({ id: next?.id, field: 'startTime', oldValue: old, newValue: next.startTime, reason: '前タスクとの重複を解消' });
+
+      const nextEnd = parseTimeToMinutesFlexible(next?.endTime);
+      if (nextEnd != null && nextEnd < editedEnd) {
+        const oldEnd = String(next?.endTime || '');
+        next.endTime = minutesToHHMM(editedEnd);
+        adjustments.push({ id: next?.id, field: 'endTime', oldValue: oldEnd, newValue: next.endTime, reason: '開始時刻変更に伴う終了補正' });
+      }
+    }
+  }
+
+  return { tasks, adjustments };
+}
+
 function safeRandomId(prefix = 'id') {
   if (typeof crypto.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -455,13 +528,15 @@ class SupabaseTaskManager {
       updatedAt: nowIso,
     };
 
+    const adjusted = adjustConflictingTasksByEditedTask(tasks, taskId);
+
     await this._setDoc(userId, 'tasks', dateString, {
       date: dateString,
-      tasks,
+      tasks: adjusted.tasks,
       updatedAt: nowIso,
     });
 
-    return { success: true, task: tasks[idx] };
+    return { success: true, task: tasks[idx], adjustments: adjusted.adjustments };
   }
 
   async updateTask(taskId, taskName, startTime, endTime, tag, memo, userId) {
@@ -484,8 +559,10 @@ class SupabaseTaskManager {
       updatedAt: nowIso,
     };
 
-    await this._saveSchedule(tasks, today, userId);
-    return { task: tasks[idx] };
+    const adjusted = adjustConflictingTasksByEditedTask(tasks, taskId);
+
+    await this._saveSchedule(adjusted.tasks, today, userId);
+    return { task: tasks[idx], adjustments: adjusted.adjustments };
   }
 
   async deleteTask(taskId, userId) {
