@@ -534,11 +534,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskLineLoadedDateKey, setTaskLineLoadedDateKey] = useState<string | null>(null);
   const [taskLineLoading, setTaskLineLoading] = useState(false);
   const [taskLineSaving, setTaskLineSaving] = useState(false);
+  const [taskLineDirty, setTaskLineDirty] = useState(false);
+  const [taskLineRemoteUpdatePending, setTaskLineRemoteUpdatePending] = useState(false);
   const [taskLineError, setTaskLineError] = useState<string | null>(null);
   const [taskLineDraggingId, setTaskLineDraggingId] = useState<string | null>(null);
   const taskLineLastDragAtRef = useRef(0);
   const taskLineDragJustEndedAtRef = useRef(0);
   const taskLineSaveTimerRef = useRef<number | null>(null);
+  const taskLineLastSavedSnapshotRef = useRef<string>('');
+  const taskLineIsSavingRef = useRef(false);
 
   function nowHHMM() {
     const d = new Date();
@@ -580,6 +584,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       out.push({ id, text, color: normalizedColor || 'var(--bg-tertiary)' });
     }
     return out;
+  }
+
+  function taskLineSnapshot(cards: TaskLineCard[]) {
+    try {
+      return JSON.stringify(cards.map((c) => ({ id: c.id, text: c.text, color: c.color })));
+    } catch {
+      return '';
+    }
   }
 
   function autoResizeTextarea(el: HTMLTextAreaElement | null) {
@@ -705,6 +717,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (remoteCards.length === 0 && draft?.cards?.length) {
         setTaskLineCards(draft.cards);
         setTaskLineLoadedDateKey(dateKey);
+        setTaskLineDirty(true);
+        setTaskLineRemoteUpdatePending(false);
         try {
           window.localStorage.removeItem(draft.key);
         } catch {
@@ -716,27 +730,35 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           // ignore
         }
         // Save migrated data to server
-        void saveTaskLineToServer(dateKey, draft.cards);
+        void saveTaskLineToServer(dateKey, draft.cards, taskLineSnapshot(draft.cards));
         return;
       }
 
       setTaskLineCards(remoteCards);
       setTaskLineLoadedDateKey(dateKey);
+      taskLineLastSavedSnapshotRef.current = taskLineSnapshot(remoteCards);
+      setTaskLineDirty(false);
+      setTaskLineRemoteUpdatePending(false);
     } catch (e: any) {
       setTaskLineError(e?.message || String(e));
       setTaskLineCards([]);
       setTaskLineLoadedDateKey(dateKey);
+      taskLineLastSavedSnapshotRef.current = '';
+      setTaskLineDirty(false);
     } finally {
       setTaskLineLoading(false);
     }
   }
 
-  async function saveTaskLineToServer(dateKey: string, cards: TaskLineCard[]) {
+  async function saveTaskLineToServer(dateKey: string, cards: TaskLineCard[], snapshotOverride?: string) {
     if (!accessToken) return;
     if (!dateKey) return;
+    if (taskLineIsSavingRef.current) return;
+    taskLineIsSavingRef.current = true;
     setTaskLineSaving(true);
     setTaskLineError(null);
     try {
+      const snapshot = snapshotOverride ?? taskLineSnapshot(cards);
       const res = await apiFetch('/api/taskline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -744,10 +766,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       });
       const body = await res.json().catch(() => null as any);
       if (!res.ok || !body?.success) throw new Error(body?.error || 'タスクラインの保存に失敗しました');
+
+      taskLineLastSavedSnapshotRef.current = snapshot;
+      if (taskLineDateKey === dateKey) {
+        setTaskLineDirty(false);
+        setTaskLineRemoteUpdatePending(false);
+      }
     } catch (e: any) {
       setTaskLineError(e?.message || String(e));
     } finally {
       setTaskLineSaving(false);
+      taskLineIsSavingRef.current = false;
     }
   }
 
@@ -756,6 +785,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!taskLineDateKey) return;
 
     if (accessToken) {
+      setTaskLineDirty(false);
+      setTaskLineRemoteUpdatePending(false);
+      taskLineLastSavedSnapshotRef.current = '';
       void loadTaskLineFromServer(taskLineDateKey);
       return;
     }
@@ -763,6 +795,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // login required
     setTaskLineCards([]);
     setTaskLineLoadedDateKey(null);
+    setTaskLineDirty(false);
+    setTaskLineRemoteUpdatePending(false);
+    taskLineLastSavedSnapshotRef.current = '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, taskLineDateKey, viewMode]);
 
@@ -776,9 +811,31 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // login required
     if (!accessToken) return;
 
+    // 保存が必要な変更がない場合は何もしない（ロード/Realtime反映での無駄な保存を防ぐ）
+    if (!taskLineDirty) return;
+    if (taskLineIsSavingRef.current) return;
+
+    // 画面が非表示/オフライン時は保存を抑制（復帰後に再度dirtyで保存される）
+    try {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) return;
+    } catch {
+      // ignore
+    }
+
+    const snapshot = taskLineSnapshot(taskLineCards);
+    if (snapshot && snapshot === taskLineLastSavedSnapshotRef.current) {
+      setTaskLineDirty(false);
+      return;
+    }
+
     if (taskLineSaveTimerRef.current) window.clearTimeout(taskLineSaveTimerRef.current);
     taskLineSaveTimerRef.current = window.setTimeout(() => {
-      void saveTaskLineToServer(taskLineDateKey, taskLineCards);
+      void saveTaskLineToServer(taskLineDateKey, taskLineCards, snapshot);
     }, 600);
 
     return () => {
@@ -786,7 +843,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       taskLineSaveTimerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskLineCards, taskLineDateKey, taskLineLoadedDateKey, taskLineEditingId, taskLineDraggingId, accessToken, viewMode]);
+  }, [taskLineCards, taskLineDirty, taskLineDateKey, taskLineLoadedDateKey, taskLineEditingId, taskLineDraggingId, accessToken, viewMode]);
 
   function focusTaskInputWithName(name: string) {
     setNewTaskName(name);
@@ -824,6 +881,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       return [...prev, { id, text: v, color }];
     });
     setTaskLineInput('');
+    setTaskLineDirty(true);
   }
 
   function addTaskLineCardAtStart() {
@@ -833,15 +891,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       return [{ id, text: '', color }, ...prev];
     });
     setTaskLineEditingId(id);
+    setTaskLineDirty(true);
   }
 
   function updateTaskLineCardText(id: string, text: string) {
     setTaskLineCards((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
+    setTaskLineDirty(true);
   }
 
   function deleteTaskLineCard(id: string) {
     setTaskLineCards((prev) => prev.filter((c) => c.id !== id));
     setTaskLineEditingId((cur) => (cur === id ? null : cur));
+    setTaskLineDirty(true);
   }
 
   function reorderTaskLineCard(dragId: string, overId: string) {
@@ -851,6 +912,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (from < 0 || to < 0) return prev;
       return arrayMove(prev, from, to);
     });
+    setTaskLineDirty(true);
   }
 
   useEffect(() => {
@@ -1664,6 +1726,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           if (docType === 'taskline' && typeof docKey === 'string' && docKey === taskLineDateKey) {
             if (viewMode === 'history') return;
             if (taskLineEditingId || taskLineDraggingId) return;
+            if (taskLineDirty) {
+              setTaskLineRemoteUpdatePending(true);
+              return;
+            }
+            if (taskLineIsSavingRef.current) return;
             void loadTaskLineFromServer(taskLineDateKey);
             return;
           }
@@ -1695,6 +1762,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     taskLineDateKey,
     taskLineEditingId,
     taskLineDraggingId,
+    taskLineDirty,
   ]);
 
   useEffect(() => {
@@ -3821,6 +3889,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <div className="taskline-status" aria-live="polite">
                   {taskLineLoading ? <span className="taskline-status-item">同期中…</span> : null}
                   {!taskLineLoading && taskLineSaving ? <span className="taskline-status-item">保存中…</span> : null}
+                  {!taskLineLoading && !taskLineSaving && taskLineDirty ? <span className="taskline-status-item">未保存</span> : null}
+                  {taskLineRemoteUpdatePending ? (
+                    <span className="taskline-status-item">他端末で更新あり（保存後に反映）</span>
+                  ) : null}
                   {taskLineError ? <span className="taskline-status-item error">{taskLineError}</span> : null}
                 </div>
               </div>
