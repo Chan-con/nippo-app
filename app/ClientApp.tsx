@@ -3696,22 +3696,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 ) : null}
               </div>
 
-              {viewMode === 'today' && addMode !== 'reserve' && runningTask ? (
-                <button
-                  id="end-task-btn"
-                  className="btn-primary btn-add-task btn-end-task"
-                  type="button"
-                  title="タスク終了"
-                  aria-label="タスク終了"
-                  onClick={endTask}
-                  disabled={!accessToken || busy}
-                >
-                  <span className="material-icons">stop_circle</span>
-                </button>
-              ) : (
+              <div className="task-add-actions">
                 <button
                   id="add-task-btn"
-                  className="btn-primary btn-add-task"
+                  className={`btn-primary btn-add-task ${viewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
                   type="button"
                   title="追加"
                   aria-label="追加"
@@ -3720,7 +3708,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 >
                   <span className="material-icons">add</span>
                 </button>
-              )}
+
+                {viewMode === 'today' && addMode !== 'reserve' && runningTask ? (
+                  <button
+                    id="end-task-btn"
+                    className="btn-primary btn-end-task btn-end-task-small"
+                    type="button"
+                    title="タスク終了"
+                    aria-label="タスク終了"
+                    onClick={endTask}
+                    disabled={!accessToken || busy}
+                  >
+                    <span className="material-icons">stop_circle</span>
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             <div className="action-buttons">

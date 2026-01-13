@@ -390,6 +390,16 @@ input[type='number']::-webkit-inner-spin-button {
   margin-bottom: 10px;
 }
 
+.task-add-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.task-add-actions .btn-add-task {
+  flex: 1;
+}
+
 .btn-add-task {
   width: 100%;
   min-width: 0;
@@ -401,8 +411,17 @@ input[type='number']::-webkit-inner-spin-button {
   min-height: 32px;
 }
 
+.btn-add-task-big {
+  min-height: 44px;
+  font-size: 14px;
+}
+
 .btn-add-task .material-icons {
   font-size: 18px;
+}
+
+.btn-add-task-big .material-icons {
+  font-size: 20px;
 }
 
 .btn-add-task:hover:not(:disabled) {
@@ -483,6 +502,12 @@ input[type='number']::-webkit-inner-spin-button {
 
 .btn-end-task {
   background: var(--error);
+}
+
+.btn-end-task-small {
+  width: 44px;
+  min-width: 44px;
+  padding: 8px;
 }
 
 .btn-end-task:hover:not(:disabled) {
