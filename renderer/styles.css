@@ -785,8 +785,8 @@ input[type='number']::-webkit-inner-spin-button {
   height: auto;
   min-height: 0;
   position: relative;
-  --taskline-plus-size: 22px;
-  --taskline-plus-stroke: 4px;
+  --taskline-plus-size: 24px;
+  --taskline-plus-stroke: 2px;
   border-radius: 10px;
   border: 2px dashed rgba(108, 112, 134, 0.75);
   background: var(--bg-tertiary);
