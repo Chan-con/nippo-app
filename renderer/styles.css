@@ -810,7 +810,6 @@ input[type='number']::-webkit-inner-spin-button {
   width: 180px;
   min-width: 180px;
   max-width: 180px;
-  min-height: 140px;
   height: auto;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -842,7 +841,6 @@ input[type='number']::-webkit-inner-spin-button {
 .taskline-card-input {
   width: 100%;
   max-width: 100%;
-  min-height: 120px;
   height: auto;
   border: none;
   outline: none;

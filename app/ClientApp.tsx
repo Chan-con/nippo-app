@@ -4004,6 +4004,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       {isEditing ? (
                         <textarea
                           className="taskline-card-input"
+                          rows={1}
                           autoFocus
                           value={card.text}
                           onChange={(e) => {
