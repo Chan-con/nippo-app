@@ -197,6 +197,21 @@ function parseTimeToMinutesFlexible(input?: string) {
   const s = String(input ?? '').trim();
   if (!s) return null;
 
+  // Accept Japanese AM/PM format used by backend (e.g. "午前 9:30", "午後1:05")
+  const m0 = s.match(/^(午前|午後)\s*(\d{1,2}):(\d{2})$/);
+  if (m0) {
+    const ampm = m0[1];
+    const hour12 = parseInt(m0[2], 10);
+    const mm = parseInt(m0[3], 10);
+    if (!Number.isFinite(hour12) || !Number.isFinite(mm)) return null;
+    if (hour12 < 1 || hour12 > 12) return null;
+    if (mm < 0 || mm > 59) return null;
+
+    let hh24 = hour12 % 12;
+    if (ampm === '午後') hh24 += 12;
+    return hh24 * 60 + mm;
+  }
+
   const m1 = s.match(/^(\d{1,2}):(\d{2})$/);
   if (m1) {
     const hh = parseInt(m1[1], 10);
