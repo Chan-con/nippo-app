@@ -3984,20 +3984,22 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       }}
                       title={isEditing ? '' : 'ダブルクリックで編集'}
                     >
-                      <button
-                        type="button"
-                        className="taskline-delete"
-                        title="削除"
-                        aria-label="削除"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          deleteTaskLineCard(card.id);
-                        }}
-                        disabled={busy}
-                      >
-                        <span className="material-icons">close</span>
-                      </button>
+                      {isEditing ? (
+                        <button
+                          type="button"
+                          className="taskline-delete"
+                          title="削除"
+                          aria-label="削除"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            deleteTaskLineCard(card.id);
+                          }}
+                          disabled={busy}
+                        >
+                          <span className="material-icons">close</span>
+                        </button>
+                      ) : null}
 
                       {isEditing ? (
                         <textarea
