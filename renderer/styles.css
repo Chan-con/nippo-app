@@ -767,7 +767,7 @@ input[type='number']::-webkit-inner-spin-button {
   border-radius: var(--radius-medium);
   padding: 12px;
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 10px;
   width: 100%;
   max-width: 100%;
@@ -782,7 +782,8 @@ input[type='number']::-webkit-inner-spin-button {
   width: 54px;
   min-width: 54px;
   max-width: 54px;
-  height: 140px;
+  height: auto;
+  min-height: 140px;
   border-radius: 10px;
   border: 2px dashed rgba(108, 112, 134, 0.75);
   background: var(--bg-tertiary);
@@ -791,12 +792,31 @@ input[type='number']::-webkit-inner-spin-button {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  user-select: none;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.taskline-add-slot .material-icons {
+  font-size: 22px;
 }
 
 .taskline-add-slot:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: rgba(137, 180, 250, 0.06);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.taskline-add-slot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.18);
 }
 
 .taskline-add-slot:disabled {
@@ -807,6 +827,7 @@ input[type='number']::-webkit-inner-spin-button {
 .taskline-card {
   position: relative;
   flex: 0 0 auto;
+  align-self: flex-start;
   width: 180px;
   min-width: 180px;
   max-width: 180px;
