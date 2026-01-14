@@ -181,6 +181,44 @@ function getNowJstDate() {
   return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
 }
 
+function normalizeTimeRoundingConfig(raw) {
+  const intervalRaw = Number(raw?.interval);
+  const interval = Number.isFinite(intervalRaw) ? Math.max(0, Math.trunc(intervalRaw)) : 0;
+  const modeRaw = String(raw?.mode || 'nearest');
+  const mode = modeRaw === 'floor' || modeRaw === 'ceil' || modeRaw === 'nearest' ? modeRaw : 'nearest';
+  return { interval, mode };
+}
+
+function roundDateByMinuteInterval(date, interval, mode) {
+  const d = new Date(date);
+  if (!Number.isFinite(interval) || interval <= 0) return d;
+
+  const total = d.getHours() * 60 + d.getMinutes();
+  const remainder = total % interval;
+  let target = total;
+
+  if (mode === 'floor') {
+    target = total - remainder;
+  } else if (mode === 'ceil') {
+    target = remainder === 0 ? total : total + (interval - remainder);
+  } else {
+    target = remainder < interval / 2 ? total - remainder : total + (interval - remainder);
+  }
+
+  const delta = target - total;
+  d.setSeconds(0, 0);
+  d.setMinutes(d.getMinutes() + delta);
+  return d;
+}
+
+function formatJstJapaneseAmPmTime(jst) {
+  const amOrPm = jst.getHours() < 12 ? '午前' : '午後';
+  let hour12 = jst.getHours() % 12;
+  if (hour12 === 0) hour12 = 12;
+  const minute = jst.getMinutes();
+  return `${amOrPm} ${hour12}:${minute.toString().padStart(2, '0')}`;
+}
+
 function addMonthsClamped(date, deltaMonths) {
   const base = new Date(date);
   const anchor = new Date(base.getFullYear(), base.getMonth() + deltaMonths, 1);
@@ -285,15 +323,20 @@ export class SupabaseTaskManagerEdge {
     return true;
   }
 
-  _getTimeForNowJST() {
-    const now = new Date();
-    const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  async _getTimeForNowJST(userId) {
+    const jst = getNowJstDate();
+    if (!userId) return formatJstJapaneseAmPmTime(jst);
 
-    const amOrPm = jst.getHours() < 12 ? '午前' : '午後';
-    let hour12 = jst.getHours() % 12;
-    if (hour12 === 0) hour12 = 12;
-    const minute = jst.getMinutes();
-    return `${amOrPm} ${hour12}:${minute.toString().padStart(2, '0')}`;
+    let cfg = { interval: 0, mode: 'nearest' };
+    try {
+      const settings = (await this.loadSettings(userId)) || {};
+      cfg = normalizeTimeRoundingConfig(settings?.timeRounding);
+    } catch {
+      // ignore
+    }
+
+    const rounded = roundDateByMinuteInterval(jst, cfg.interval, cfg.mode);
+    return formatJstJapaneseAmPmTime(rounded);
   }
 
   async loadSchedule(dateString = null, userId) {
@@ -326,7 +369,7 @@ export class SupabaseTaskManagerEdge {
     const dateKey = dateString || getTodayDateStringJST();
     const tasks = await this.loadSchedule(dateKey, userId);
 
-    const addTime = startTime || this._getTimeForNowJST();
+    const addTime = startTime || (await this._getTimeForNowJST(userId));
     const nowIso = new Date().toISOString();
 
     for (const task of tasks) {
@@ -432,7 +475,7 @@ export class SupabaseTaskManagerEdge {
 
     const dateKey = dateString || getTodayDateStringJST();
     const tasks = await this.loadSchedule(dateKey, userId);
-    const addTime = this._getTimeForNowJST();
+    const addTime = await this._getTimeForNowJST(userId);
     const nowIso = new Date().toISOString();
 
     for (let i = tasks.length - 1; i >= 0; i--) {
@@ -558,9 +601,10 @@ export class SupabaseTaskManagerEdge {
     const tasks = existing.success ? existing.data.tasks : [];
 
     const nowIso = new Date().toISOString();
+    const fallbackStartTime = await this._getTimeForNowJST(userId);
     const newTask = {
       id: safeRandomId('task'),
-      startTime: taskData?.startTime || this._getTimeForNowJST(),
+      startTime: taskData?.startTime || fallbackStartTime,
       endTime: taskData?.endTime || '',
       name: taskData?.name || taskData?.title || '',
       tag: taskData?.tag || '',

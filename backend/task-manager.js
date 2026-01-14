@@ -3071,6 +3071,10 @@ function createApp(taskManagerInstance, options = {}) {
                 return res.json({ success: true, settings: {} });
             }
             const settings = await taskManager.loadSettings(req.userId);
+            // 可能なら、サーバ側の「開始/終了時刻生成」にも反映（ファイル版TaskManager向け）
+            if (typeof taskManager.setTimeRoundingConfig === 'function') {
+                taskManager.setTimeRoundingConfig(settings?.timeRounding);
+            }
             res.json({ success: true, settings });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
@@ -3084,6 +3088,9 @@ function createApp(taskManagerInstance, options = {}) {
             }
             const settings = req.body.settings;
             const ok = await taskManager.saveSettings(settings, req.userId);
+            if (ok && typeof taskManager.setTimeRoundingConfig === 'function') {
+                taskManager.setTimeRoundingConfig(settings?.timeRounding);
+            }
             res.json({ success: !!ok });
         } catch (error) {
             res.status(500).json({ success: false, error: error.message });
