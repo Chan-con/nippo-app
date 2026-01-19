@@ -569,6 +569,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
 
+  const mainBodyRef = useRef<HTMLDivElement | null>(null);
+
   // today main panels tab (timeline / taskline)
   const [todayMainTab, setTodayMainTab] = useState<TodayMainTab>(() => {
     if (typeof window === 'undefined') return 'timeline';
@@ -606,6 +608,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskLineDraggingId, setTaskLineDraggingId] = useState<string | null>(null);
   const taskLineLastDragAtRef = useRef(0);
   const taskLineDragJustEndedAtRef = useRef(0);
+  const taskLineBoardRef = useRef<HTMLDivElement | null>(null);
+  const taskLineLastAutoScrollAtRef = useRef(0);
   const taskLineSaveTimerRef = useRef<number | null>(null);
   const taskLineLastSavedSnapshotRef = useRef<string>('');
   const taskLineIsSavingRef = useRef(false);
@@ -732,6 +736,49 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       return rebuilt;
     });
     setTaskLineDirty(true);
+  }
+
+  function taskLineAutoScrollWhileDragging(e: React.DragEvent) {
+    if (!taskLineDraggingId) return;
+
+    const nowMs = Date.now();
+    if (nowMs - taskLineLastAutoScrollAtRef.current < 16) return;
+    taskLineLastAutoScrollAtRef.current = nowMs;
+
+    const edge = 60;
+    const maxStep = 18;
+    const x = e.clientX;
+    const y = e.clientY;
+
+    const board = taskLineBoardRef.current;
+    if (board) {
+      const r = board.getBoundingClientRect();
+      let dx = 0;
+      if (x < r.left + edge) dx = -maxStep;
+      else if (x > r.right - edge) dx = maxStep;
+      if (dx) {
+        try {
+          board.scrollBy({ left: dx });
+        } catch {
+          board.scrollLeft += dx;
+        }
+      }
+    }
+
+    const body = mainBodyRef.current;
+    if (body) {
+      const r = body.getBoundingClientRect();
+      let dy = 0;
+      if (y < r.top + edge) dy = -maxStep;
+      else if (y > r.bottom - edge) dy = maxStep;
+      if (dy) {
+        try {
+          body.scrollBy({ top: dy });
+        } catch {
+          body.scrollTop += dy;
+        }
+      }
+    }
   }
 
   function autoResizeTextarea(el: HTMLTextAreaElement | null) {
@@ -4073,7 +4120,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
 
-          <div className="main-body">
+          <div className="main-body" ref={mainBodyRef}>
             {viewMode === 'today' && accessToken ? (
               <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
                 <button
@@ -4114,9 +4161,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
               <div
                 className="taskline-scroll"
+                ref={taskLineBoardRef}
                 onDragOver={(e) => {
                   // allow dropping into the board
-                  if (taskLineDraggingId) e.preventDefault();
+                  if (taskLineDraggingId) {
+                    e.preventDefault();
+                    taskLineAutoScrollWhileDragging(e);
+                  }
                 }}
                 onDrop={() => {
                   setTaskLineDraggingId(null);
@@ -4136,6 +4187,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       onDragOver={(e) => {
                         if (!taskLineDraggingId) return;
                         e.preventDefault();
+                        taskLineAutoScrollWhileDragging(e);
                       }}
                       onDrop={(e) => {
                         e.preventDefault();
@@ -4191,6 +4243,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 if (!taskLineDraggingId) return;
                                 if (taskLineDraggingId === card.id) return;
                                 e.preventDefault();
+
+                                taskLineAutoScrollWhileDragging(e);
 
                                 const nowMs = Date.now();
                                 if (nowMs - taskLineLastDragAtRef.current < 40) return;
