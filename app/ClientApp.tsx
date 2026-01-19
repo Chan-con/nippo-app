@@ -4463,6 +4463,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           {timeColumn}
                           <div
                             className="timeline-content"
+                            onClick={(e) => {
+                              if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                              const urlValue = String((t as any)?.url || '').trim();
+                              if (!urlValue) return;
+                              e.preventDefault();
+                              e.stopPropagation();
+                              scheduleOpenExternalUrl(urlValue);
+                            }}
                             onDoubleClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -4472,16 +4480,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           >
                             <div
                               className="timeline-task"
-                              title="クリックでタスク名をコピー"
+                              title={String((t as any)?.url || '').trim() ? 'クリックでURLを開く' : 'クリックでタスク名をコピー'}
                               onClick={(e) => {
                                 if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
                                 const urlValue = String((t as any)?.url || '').trim();
-                                if (urlValue) {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  scheduleOpenExternalUrl(urlValue);
-                                  return;
-                                }
+                                // When URL exists, let the parent (timeline-content) handle opening.
+                                if (urlValue) return;
                                 e.preventDefault();
                                 setNewTaskName(t.name);
                                 const isMobile =
@@ -4546,10 +4550,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               className="timeline-memo"
                               onMouseDownCapture={(e) => {
                                 if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                                if (String((t as any)?.url || '').trim()) return;
                                 e.stopPropagation();
                               }}
                               onClickCapture={(e) => {
                                 if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                                if (String((t as any)?.url || '').trim()) return;
                                 e.stopPropagation();
                               }}
                             >
