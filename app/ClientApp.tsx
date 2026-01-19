@@ -664,18 +664,40 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const taskLineLastSavedSnapshotRef = useRef<string>('');
   const taskLineIsSavingRef = useRef(false);
 
+  function getJstDateTimeParts(d: Date) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+
+    const map = new Map<string, string>();
+    for (const p of parts) {
+      if (p.type !== 'literal') map.set(p.type, p.value);
+    }
+
+    return {
+      year: map.get('year') || '1970',
+      month2: map.get('month') || '01',
+      day2: map.get('day') || '01',
+      hour2: map.get('hour') || '00',
+      minute2: map.get('minute') || '00',
+      second2: map.get('second') || '00',
+    };
+  }
+
   function nowHHMM() {
-    const d = new Date();
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
+    return formatTimeHHMM(new Date());
   }
 
   function formatDateISO(d: Date) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    const p = getJstDateTimeParts(d);
+    return `${p.year}-${p.month2}-${p.day2}`;
   }
 
   const taskLineDateKey = TASK_LINE_GLOBAL_KEY;
@@ -1235,8 +1257,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   useEffect(() => {
-    const t = window.setInterval(() => setNow(new Date()), 30_000);
-    return () => window.clearInterval(t);
+    // Keep UI clock synced to real time (JST formatting is applied at render time).
+    // Align the first tick to the next second boundary.
+    const update = () => setNow(new Date());
+    update();
+    const nowMs = Date.now();
+    const delay = 1000 - (nowMs % 1000);
+    let intervalId: number | null = null;
+    const timeoutId = window.setTimeout(() => {
+      update();
+      intervalId = window.setInterval(update, 1000);
+    }, delay);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId != null) window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -3464,20 +3499,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function formatDateJa(d: Date) {
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
-    const day = d.getDate();
-    return `${y}年${m}月${day}日`;
+    const p = getJstDateTimeParts(d);
+    const m = Number(p.month2);
+    const day = Number(p.day2);
+    return `${p.year}年${m}月${day}日`;
   }
 
   function formatTimeHHMM(d: Date) {
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
+    const p = getJstDateTimeParts(d);
+    return `${p.hour2}:${p.minute2}`;
+  }
+
+  function formatTimeHHMMSS(d: Date) {
+    const p = getJstDateTimeParts(d);
+    return `${p.hour2}:${p.minute2}:${p.second2}`;
   }
 
   function formatNowTimeDisplay(d: Date) {
-    return formatTimeHHMM(d);
+    return formatTimeHHMMSS(d);
   }
 
   const effectiveTasks = viewMode === 'today' ? tasks : historyTasks;
@@ -4406,7 +4445,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className={`main-header ${viewMode === 'history' ? 'history-mode' : ''}`}>
             <div className="date-display">
               <h1 id="current-date">{formatDateJa(now)}</h1>
-              <p id="current-time">{formatTimeHHMM(now)}</p>
+              <p id="current-time">{formatTimeHHMMSS(now)}</p>
             </div>
             <div className="history-controls">
               <div className="view-mode-toggle">
