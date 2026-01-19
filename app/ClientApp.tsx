@@ -707,14 +707,28 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (!fromLane) return normalized;
 
       // Remove from source lane
-      laneLists.set(
-        fromLane,
-        laneLists.get(fromLane)!.filter((id) => id !== dragId)
-      );
+      const fromListBefore = laneLists.get(fromLane)!;
+      const fromIndexBefore = fromListBefore.indexOf(dragId);
+      laneLists.set(fromLane, fromListBefore.filter((id) => id !== dragId));
 
       // Insert into target lane
       const targetList = laneLists.get(targetLane)!;
-      const safeInsertIndex = Math.max(0, Math.min(targetList.length, Number.isFinite(targetIndex) ? targetIndex : targetList.length));
+      const rawTargetIndex = Number.isFinite(targetIndex) ? targetIndex : targetList.length;
+      let safeInsertIndex = Math.max(0, Math.min(targetList.length, rawTargetIndex));
+
+      // When moving within the same lane, removal shifts indices.
+      if (fromLane === targetLane) {
+        const fromIndex = fromIndexBefore;
+        if (fromIndex >= 0 && safeInsertIndex > fromIndex) {
+          safeInsertIndex = Math.max(0, safeInsertIndex - 1);
+        }
+
+        // No-op (keep stable)
+        if (fromIndex >= 0 && (safeInsertIndex === fromIndex || safeInsertIndex === fromIndex + 1)) {
+          return normalized;
+        }
+      }
+
       const nextTarget = targetList.slice();
       nextTarget.splice(safeInsertIndex, 0, dragId);
       laneLists.set(targetLane, nextTarget);
@@ -4242,6 +4256,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 if (!taskLineDraggingId) return;
                                 if (taskLineDraggingId === card.id) return;
                                 e.preventDefault();
+                                e.stopPropagation();
 
                                 taskLineAutoScrollWhileDragging(e);
 
@@ -4252,6 +4267,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 const midY = rect.top + rect.height / 2;
                                 const insertAt = e.clientY > midY ? laneIndex + 1 : laneIndex;
                                 taskLineMoveCard(taskLineDraggingId, lane.key, insertAt);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!taskLineDraggingId) return;
+                                if (taskLineDraggingId === card.id) return;
+                                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                                const midY = rect.top + rect.height / 2;
+                                const insertAt = e.clientY > midY ? laneIndex + 1 : laneIndex;
+                                taskLineMoveCard(taskLineDraggingId, lane.key, insertAt);
+                                setTaskLineDraggingId(null);
+                                taskLineDragJustEndedAtRef.current = Date.now();
                               }}
                               onClick={() => {
                                 if (isEditing) return;
