@@ -308,6 +308,23 @@ function normalizeTaskNameList(list: unknown) {
   return out;
 }
 
+function normalizeNotifyMinutesBeforeList(list: unknown) {
+  const arr = Array.isArray(list) ? list : [];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const item of arr) {
+    const n = Math.trunc(Number(item));
+    if (!Number.isFinite(n)) continue;
+    if (n < 0) continue;
+    if (n > 24 * 60) continue;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  out.sort((a, b) => a - b);
+  return out;
+}
+
 function arrayMove<T>(arr: T[], fromIndex: number, toIndex: number) {
   const from = Math.max(0, Math.min(arr.length - 1, fromIndex));
   const to = Math.max(0, Math.min(arr.length - 1, toIndex));
@@ -438,6 +455,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsTimeRoundingMode, setSettingsTimeRoundingMode] = useState<'nearest' | 'floor' | 'ceil'>('nearest');
   const [settingsExcludeTaskNames, setSettingsExcludeTaskNames] = useState<string[]>([]);
   const [settingsExcludeTaskNameInput, setSettingsExcludeTaskNameInput] = useState('');
+
+  // reservation task notifications
+  const [settingsReservationNotifyEnabled, setSettingsReservationNotifyEnabled] = useState(false);
+  const [settingsReservationNotifyMinutesBefore, setSettingsReservationNotifyMinutesBefore] = useState<number[]>([]);
+  const [settingsReservationNotifyMinutesInput, setSettingsReservationNotifyMinutesInput] = useState('');
+  const [reservationNotificationPermission, setReservationNotificationPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>(
+    'default'
+  );
+  const reservationNotifyTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const reservationNotifyFiredRef = useRef<Set<string>>(new Set());
+  const reservationNotifyIntervalRef = useRef<number | null>(null);
+  const reservationToastTimerRef = useRef<number | null>(null);
+  const [reservationToastOpen, setReservationToastOpen] = useState(false);
+  const [reservationToastMessage, setReservationToastMessage] = useState('');
+
   const [settingsGptApiKeyInput, setSettingsGptApiKeyInput] = useState('');
   const [settingsGptApiKeySaved, setSettingsGptApiKeySaved] = useState(false);
   const [settingsGptEncryptionReady, setSettingsGptEncryptionReady] = useState<boolean | null>(null);
@@ -461,6 +493,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!v) return false;
     return workTimeExcludedNameSet.has(v);
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) {
+      setReservationNotificationPermission('unsupported');
+      return;
+    }
+    try {
+      setReservationNotificationPermission(Notification.permission);
+    } catch {
+      setReservationNotificationPermission('unsupported');
+    }
+  }, []);
 
   // tag work report (range)
   const [tagWorkReportRangeStart, setTagWorkReportRangeStart] = useState(() => ymdKeyFromDate(new Date()));
@@ -1727,6 +1772,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsTimeRoundingMode(mode === 'floor' || mode === 'ceil' || mode === 'nearest' ? (mode as any) : 'nearest');
       setSettingsExcludeTaskNames(normalizeTaskNameList(s?.workTime?.excludeTaskNames));
       setSettingsExcludeTaskNameInput('');
+
+      const n = s?.notifications?.reservations || {};
+      const enabled = !!n?.enabled;
+      const minutesBefore = normalizeNotifyMinutesBeforeList(n?.minutesBefore);
+      setSettingsReservationNotifyEnabled(enabled);
+      setSettingsReservationNotifyMinutesBefore(minutesBefore);
+      setSettingsReservationNotifyMinutesInput('');
+
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
 
@@ -1766,6 +1819,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setError(null);
     try {
       const excludeTaskNames = normalizeTaskNameList(settingsExcludeTaskNames);
+      const minutesBefore = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBefore);
       const res = await apiFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1777,6 +1831,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             },
             workTime: {
               excludeTaskNames,
+            },
+            notifications: {
+              reservations: {
+                enabled: !!settingsReservationNotifyEnabled,
+                minutesBefore,
+              },
             },
           },
         }),
@@ -2125,6 +2185,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   useEffect(() => {
     if (!accessToken) return;
+    // 通知などのため、設定画面を開かなくても一度は取得しておく
+    void loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
     if (reportUrls.length === 0) return;
     const tabId = activeReportTabId ?? String(reportUrls[0]?.id ?? '');
     if (!tabId) return;
@@ -2162,6 +2229,184 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   async function reloadTasksSilent() {
     await reloadTasksInternal({ silent: true });
   }
+
+  function showReservationToast(message: string) {
+    setReservationToastMessage(message);
+    setReservationToastOpen(true);
+    if (reservationToastTimerRef.current != null) window.clearTimeout(reservationToastTimerRef.current);
+    reservationToastTimerRef.current = window.setTimeout(() => {
+      setReservationToastOpen(false);
+      reservationToastTimerRef.current = null;
+    }, 6000);
+  }
+
+  function notifyReservationTask(opts: { task: Task; startTimeMinutes: number; minutesBefore: number }) {
+    const name = String(opts.task?.name || '').trim() || '（無題）';
+    showReservationToast(name);
+
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) return;
+    if (reservationNotificationPermission !== 'granted') return;
+    try {
+      // tag を付けて同一キーの多重表示を抑制
+      const tag = `nippo:reserved:${opts.task.id}:${opts.task.startTime ?? ''}:${opts.minutesBefore}`;
+      const n = new Notification(name, { tag });
+      n.onclick = () => {
+        try {
+          setViewMode('today');
+          window.focus();
+        } catch {
+          // ignore
+        }
+
+        // 可能ならアプリのトップへ寄せる（別ルートで開いている場合の保険）
+        try {
+          if (typeof window.location?.pathname === 'string' && window.location.pathname !== '/') {
+            window.location.assign('/');
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          n.close();
+        } catch {
+          // ignore
+        }
+      };
+    } catch {
+      // ignore
+    }
+  }
+
+  function clearReservationNotificationSchedule() {
+    for (const id of reservationNotifyTimeoutsRef.current.values()) {
+      try {
+        window.clearTimeout(id);
+      } catch {
+        // ignore
+      }
+    }
+    reservationNotifyTimeoutsRef.current.clear();
+  }
+
+  function fireDueReservationNotifications() {
+    if (!settingsReservationNotifyEnabled) return;
+    if (viewMode === 'history') return;
+
+    const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBefore);
+    if (minutesBeforeList.length === 0) return;
+
+    const nowMs = Date.now();
+    const today = new Date();
+    const y = today.getFullYear();
+    const mo = today.getMonth();
+    const d = today.getDate();
+
+    // スリープ復帰などを考慮して、通知時刻を過ぎていても一定時間は拾う
+    const lateWindowMs = 10 * 60 * 1000;
+
+    for (const task of tasks) {
+      if (!task || task.status !== 'reserved') continue;
+      const startMinutes = parseTimeToMinutesFlexible(task.startTime);
+      if (startMinutes == null) continue;
+
+      for (const minutesBefore of minutesBeforeList) {
+        const key = `${task.id}|${String(task.startTime ?? '')}|${minutesBefore}`;
+        if (reservationNotifyFiredRef.current.has(key)) continue;
+
+        const fireMinutes = startMinutes - minutesBefore;
+        if (fireMinutes < 0) continue;
+        const fireAt = new Date(y, mo, d, Math.floor(fireMinutes / 60), fireMinutes % 60, 0, 0).getTime();
+
+        if (nowMs < fireAt) continue;
+        if (nowMs > fireAt + lateWindowMs) continue;
+
+        reservationNotifyFiredRef.current.add(key);
+        notifyReservationTask({ task, startTimeMinutes: startMinutes, minutesBefore });
+      }
+    }
+  }
+
+  function syncReservationNotificationSchedule() {
+    clearReservationNotificationSchedule();
+    if (!settingsReservationNotifyEnabled) return;
+    if (viewMode === 'history') return;
+
+    const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBefore);
+    if (minutesBeforeList.length === 0) return;
+
+    const nowMs = Date.now();
+    const today = new Date();
+    const y = today.getFullYear();
+    const mo = today.getMonth();
+    const d = today.getDate();
+
+    for (const task of tasks) {
+      if (!task || task.status !== 'reserved') continue;
+      const startMinutes = parseTimeToMinutesFlexible(task.startTime);
+      if (startMinutes == null) continue;
+
+      for (const minutesBefore of minutesBeforeList) {
+        const key = `${task.id}|${String(task.startTime ?? '')}|${minutesBefore}`;
+        if (reservationNotifyFiredRef.current.has(key)) continue;
+
+        const fireMinutes = startMinutes - minutesBefore;
+        if (fireMinutes < 0) continue;
+        const fireAtMs = new Date(y, mo, d, Math.floor(fireMinutes / 60), fireMinutes % 60, 0, 0).getTime();
+        const delay = fireAtMs - nowMs;
+        if (delay <= 0) continue;
+
+        const timeoutId = window.setTimeout(() => {
+          // 直前に編集/削除される可能性があるので、発火時点の状態で再判定
+          fireDueReservationNotifications();
+        }, delay);
+        reservationNotifyTimeoutsRef.current.set(key, timeoutId);
+      }
+    }
+  }
+
+  useEffect(() => {
+    // settings/tasks の変化に追従してスケジュールを組み直す
+    if (!accessToken) return;
+    if (viewMode === 'history') return;
+    syncReservationNotificationSchedule();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, viewMode, tasks, settingsReservationNotifyEnabled, settingsReservationNotifyMinutesBefore]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    if (viewMode === 'history') return;
+
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      fireDueReservationNotifications();
+    };
+
+    // 15秒程度で十分（分単位の予約なので）
+    if (reservationNotifyIntervalRef.current != null) window.clearInterval(reservationNotifyIntervalRef.current);
+    reservationNotifyIntervalRef.current = window.setInterval(tick, 15_000);
+
+    const onVisibleOrFocus = () => {
+      tick();
+    };
+    window.addEventListener('focus', onVisibleOrFocus);
+    document.addEventListener('visibilitychange', onVisibleOrFocus);
+
+    // すぐ1回
+    tick();
+
+    return () => {
+      if (reservationNotifyIntervalRef.current != null) {
+        window.clearInterval(reservationNotifyIntervalRef.current);
+        reservationNotifyIntervalRef.current = null;
+      }
+      window.removeEventListener('focus', onVisibleOrFocus);
+      document.removeEventListener('visibilitychange', onVisibleOrFocus);
+      clearReservationNotificationSchedule();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, viewMode]);
 
   useEffect(() => {
     // 予約の期限到来処理は /api/tasks(GET) のタイミングで走るため、
@@ -5465,6 +5710,149 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
 
             <div className="settings-section">
+              <h4>🔔 予約タスク通知</h4>
+              <p className="settings-hint">予約タスク（status=reserved）の開始時刻に合わせて通知します。0分前（開始時）も設定できます。</p>
+              <div className="settings-grid-2col">
+                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
+                  <label className="settings-label" htmlFor="reservation-notify-enabled">
+                    有効化
+                  </label>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <input
+                      id="reservation-notify-enabled"
+                      type="checkbox"
+                      checked={!!settingsReservationNotifyEnabled}
+                      onChange={(e) => {
+                        setSettingsReservationNotifyEnabled(!!e.target.checked);
+                        setSettingsDirty(true);
+                      }}
+                      disabled={!accessToken || busy}
+                    />
+                    <div className="settings-hint" style={{ margin: 0 }}>
+                      {settingsReservationNotifyEnabled ? 'ON' : 'OFF'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
+                  <label className="settings-label">ブラウザ通知（Web Notification）</label>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div className="settings-hint" style={{ margin: 0 }}>
+                      状態: {reservationNotificationPermission === 'unsupported' ? '未対応' : reservationNotificationPermission}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={async () => {
+                        if (typeof window === 'undefined') return;
+                        if (!('Notification' in window)) {
+                          setReservationNotificationPermission('unsupported');
+                          return;
+                        }
+                        try {
+                          const p = await Notification.requestPermission();
+                          setReservationNotificationPermission(p);
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      disabled={!accessToken || busy || reservationNotificationPermission === 'unsupported'}
+                      title="通知の許可をリクエスト"
+                      aria-label="通知の許可をリクエスト"
+                    >
+                      <span className="material-icons">notifications</span>
+                      許可する
+                    </button>
+                    <div className="settings-hint" style={{ margin: 0 }}>
+                      許可がなくても、アプリ内トーストは表示します。
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
+                  <label className="settings-label">通知タイミング（分前）</label>
+                  <div className="url-list">
+                    {settingsReservationNotifyMinutesBefore.length === 0 ? (
+                      <div className="url-list-empty">
+                        <span className="material-icons">notifications_off</span>
+                        <div>未設定です（例: 0, 5, 10）</div>
+                      </div>
+                    ) : (
+                      settingsReservationNotifyMinutesBefore.map((m) => (
+                        <div key={`reservation-notify-min-${m}`} className="url-item">
+                          <div className="url-info">
+                            <div className="url-name">{m}分前</div>
+                            <div className="url-address">{m === 0 ? '開始時刻' : `開始の${m}分前`}</div>
+                          </div>
+                          <div className="url-actions">
+                            <button
+                              className="delete"
+                              type="button"
+                              title="削除"
+                              aria-label="削除"
+                              onClick={() => {
+                                setSettingsReservationNotifyMinutesBefore((p) => p.filter((x) => x !== m));
+                                setSettingsDirty(true);
+                              }}
+                              disabled={!accessToken || busy}
+                            >
+                              <span className="material-icons">delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="add-url-form">
+                    <h5>追加</h5>
+                    <div className="input-row">
+                      <input
+                        type="number"
+                        min={0}
+                        max={1440}
+                        value={settingsReservationNotifyMinutesInput}
+                        onChange={(e) => setSettingsReservationNotifyMinutesInput(e.target.value)}
+                        placeholder="分（例: 0）"
+                        disabled={!accessToken || busy}
+                      />
+                      <button
+                        type="button"
+                        title="追加"
+                        aria-label="追加"
+                        onClick={() => {
+                          const n = Math.trunc(Number(settingsReservationNotifyMinutesInput));
+                          if (!Number.isFinite(n)) return;
+                          if (n < 0 || n > 1440) return;
+                          setSettingsReservationNotifyMinutesBefore((p) => normalizeNotifyMinutesBeforeList([...(p || []), n]));
+                          setSettingsReservationNotifyMinutesInput('');
+                          setSettingsDirty(true);
+                        }}
+                        disabled={!accessToken || busy}
+                      >
+                        <span className="material-icons">add</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        title="0/5/10 を追加"
+                        aria-label="0/5/10 を追加"
+                        onClick={() => {
+                          setSettingsReservationNotifyMinutesBefore((p) => normalizeNotifyMinutesBeforeList([...(p || []), 0, 5, 10]));
+                          setSettingsDirty(true);
+                        }}
+                        disabled={!accessToken || busy}
+                      >
+                        <span className="material-icons">playlist_add</span>
+                        0/5/10
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
               <h4>🤖 GPT</h4>
               <p className="settings-hint">GPTのAPIキーを保存します（DBには暗号化して保存されます）。</p>
               <div className="settings-grid-2col">
@@ -6465,6 +6853,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
         </div>
+      </div>
+
+      <div className={`toast ${reservationToastOpen ? 'show' : ''}`} role="status" aria-live="polite">
+        <span className="material-icons" aria-hidden="true">
+          notifications
+        </span>
+        <div id="toast-message">{reservationToastMessage}</div>
       </div>
     </div>
   );
