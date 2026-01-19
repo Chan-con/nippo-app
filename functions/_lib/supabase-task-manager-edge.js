@@ -398,11 +398,11 @@ export class SupabaseTaskManagerEdge {
     return newTask;
   }
 
-  async addReservation(taskName, startTime, tag = null, userId) {
+  async addReservation(taskName, startTime, tag = null, dateString = null, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
-    const dateKey = getTodayDateStringJST();
+    const dateKey = dateString || getTodayDateStringJST();
     const tasks = await this.loadSchedule(dateKey, userId);
     const nowIso = new Date().toISOString();
 

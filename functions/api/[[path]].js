@@ -255,9 +255,6 @@ export async function onRequest(context) {
       const startTime = body?.startTime || null;
       const dateString = body?.dateString || null;
 
-      if (dateString) {
-        return jsonResponse({ success: false, error: '予約は今日のみに対応しています' }, 400);
-      }
       if (!taskName) {
         return jsonResponse({ success: false, error: 'タスク名が必要です' }, 400);
       }
@@ -265,7 +262,27 @@ export async function onRequest(context) {
         return jsonResponse({ success: false, error: '開始時間が必要です' }, 400);
       }
 
-      const newReservation = await taskManager.addReservation(taskName, startTime, tag, userId);
+      if (dateString) {
+        const ds = String(dateString);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+          return jsonResponse({ success: false, error: '日付の形式が不正です' }, 400);
+        }
+        const today = new Date();
+        const partsJst = today
+          .toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'Asia/Tokyo',
+          })
+          .split('/');
+        const todayJst = `${partsJst[0]}-${partsJst[1]}-${partsJst[2]}`;
+        if (ds < todayJst) {
+          return jsonResponse({ success: false, error: '過去の日付には予約できません' }, 400);
+        }
+      }
+
+      const newReservation = await taskManager.addReservation(taskName, startTime, tag, dateString, userId);
       return jsonResponse({ success: true, task: newReservation, taskId: newReservation.id });
     }
 

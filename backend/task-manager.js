@@ -1064,7 +1064,7 @@ class TaskManager {
         }
     }
 
-    async addReservation(taskName, startTime, tag = null) {
+    async addReservation(taskName, startTime, tag = null, dateString = null) {
         await this.initialize();
 
         const trimmedName = (taskName || '').trim();
@@ -1075,7 +1075,7 @@ class TaskManager {
             throw new Error('開始時間が必要です');
         }
 
-        const tasks = await this.loadSchedule(null);
+        const tasks = await this.loadSchedule(dateString);
         const reserveMinutes = this.parseTimeToMinutes(startTime);
         if (reserveMinutes === null) {
             throw new Error('開始時間の形式が不正です');
@@ -1105,7 +1105,7 @@ class TaskManager {
         }
 
         const now = new Date();
-        const taskDate = this.getTodayDateString();
+        const taskDate = dateString || this.getTodayDateString();
         const newReservation = {
             id: `resv-${now.getTime()}`,
             startTime: startTime,
@@ -1119,7 +1119,7 @@ class TaskManager {
         };
 
         tasks.push(newReservation);
-        await this.saveSchedule(tasks, null);
+        await this.saveSchedule(tasks, dateString);
         await this.syncTaskToHistory(newReservation, taskDate);
         return newReservation;
     }
@@ -2339,10 +2339,6 @@ function createApp(taskManagerInstance, options = {}) {
             const startTime = data.startTime || null;
             const dateString = data.dateString || null;
 
-            // 予約は今日のみに限定（要件）
-            if (dateString) {
-                return res.status(400).json({ success: false, error: '予約は今日のみに対応しています' });
-            }
             if (!taskName) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
             }
@@ -2350,7 +2346,18 @@ function createApp(taskManagerInstance, options = {}) {
                 return res.status(400).json({ success: false, error: '開始時間が必要です' });
             }
 
-            const newReservation = await taskManager.addReservation(taskName, startTime, tag, req.userId);
+            if (dateString) {
+                const ds = String(dateString);
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+                    return res.status(400).json({ success: false, error: '日付の形式が不正です' });
+                }
+                const todayJst = taskManager.getTodayDateString();
+                if (ds < todayJst) {
+                    return res.status(400).json({ success: false, error: '過去の日付には予約できません' });
+                }
+            }
+
+            const newReservation = await taskManager.addReservation(taskName, startTime, tag, dateString, req.userId);
             res.json({ success: true, task: newReservation, taskId: newReservation.id });
         } catch (error) {
             res.status(400).json({ success: false, error: error.message });

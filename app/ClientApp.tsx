@@ -671,13 +671,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `${hh}:${mm}`;
   }
 
-  useEffect(() => {
-    // 履歴モードでは予約を扱わない（予約は「今日のみ」要件）
-    if (viewMode !== 'history') return;
-    setAddMode('now');
-    setReserveStartTime('');
-  }, [viewMode]);
-
   function formatDateISO(d: Date) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -3345,12 +3338,44 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const name = newTaskName.trim();
     if (!name) return;
 
+    const todayIso = formatDateISO(new Date());
     const isHistoryTarget = viewMode === 'history' && !!historyDate;
+    const isReserve = addMode === 'reserve';
+    const isPastReservationInCalendar = isHistoryTarget && isReserve && historyDate < todayIso;
+    const reserveDateString = isHistoryTarget ? (historyDate === todayIso ? null : historyDate) : null;
+
+    if (isPastReservationInCalendar) {
+      setError('過去の日付には予約できません');
+      return;
+    }
+
+    if (isReserve && !reserveStartTime) {
+      setError('開始時刻が必要です');
+      return;
+    }
 
     setBusy(true);
     setError(null);
     try {
-      if (isHistoryTarget) {
+      if (isHistoryTarget && isReserve) {
+        const payload: any = { name };
+        if (selectedTag) payload.tag = selectedTag;
+        if (reserveStartTime) payload.startTime = reserveStartTime;
+        if (reserveDateString) payload.dateString = reserveDateString;
+
+        const res = await apiFetch('/api/tasks/reserve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.success) throw new Error(body?.error || '追加に失敗しました');
+
+        setNewTaskName('');
+        setReserveStartTime('');
+        await loadHistory(historyDate);
+        await loadHistoryDates();
+      } else if (isHistoryTarget) {
         const payload: any = { name };
         if (selectedTag) payload.tag = selectedTag;
 
@@ -3367,7 +3392,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         await loadHistory(historyDate);
         await loadHistoryDates();
       } else {
-        const isReserve = addMode === 'reserve';
         const url = isReserve ? '/api/tasks/reserve' : '/api/tasks';
         const payload: any = { name };
         if (selectedTag) payload.tag = selectedTag;
@@ -4067,7 +4091,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   title="予約"
                   aria-label="予約"
                   onClick={() => setAddMode('reserve')}
-                  disabled={!accessToken || busy || viewMode !== 'today'}
+                  disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 >
                   <span className="material-icons">schedule</span>
                 </button>
@@ -4099,7 +4123,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   aria-label="開始時刻"
                   value={reserveStartTime}
                   onChange={(e) => setReserveStartTime(e.target.value)}
-                  disabled={!accessToken || busy || viewMode !== 'today'}
+                  disabled={!accessToken || busy || (viewMode === 'history' && (!historyDate || historyDate < formatDateISO(new Date())))}
                 />
               </div>
 
@@ -4237,12 +4261,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   id="add-task-btn"
                   className={`btn-primary btn-add-task ${viewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
                   type="button"
-                  title="追加"
-                  aria-label="追加"
+                  title={viewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
+                  aria-label={viewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
                   onClick={addTask}
-                  disabled={!accessToken || busy || !String(newTaskName || '').trim() || (viewMode === 'history' && !historyDate)}
+                  disabled={
+                    !accessToken ||
+                    busy ||
+                    !String(newTaskName || '').trim() ||
+                    (viewMode === 'history' && !historyDate) ||
+                    (viewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < formatDateISO(new Date()))
+                  }
                 >
-                  <span className="material-icons">add</span>
+                  <span className="material-icons">
+                    {viewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? 'remove' : 'add'}
+                  </span>
                 </button>
 
                 {viewMode === 'today' && addMode !== 'reserve' && runningTask ? (
