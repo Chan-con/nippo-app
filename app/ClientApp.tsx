@@ -4465,6 +4465,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             className="timeline-content"
                             onClick={(e) => {
                               if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                              // タイトルクリックは「コピー」を優先（URLがあってもここでは開かない）
+                              if (e.target instanceof HTMLElement && e.target.closest('.timeline-task')) return;
                               const urlValue = String((t as any)?.url || '').trim();
                               if (!urlValue) return;
                               e.preventDefault();
@@ -4480,12 +4482,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           >
                             <div
                               className="timeline-task"
-                              title={String((t as any)?.url || '').trim() ? 'クリックでURLを開く' : 'クリックでタスク名をコピー'}
+                              title="クリックでタスク名をコピー"
                               onClick={(e) => {
                                 if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
-                                const urlValue = String((t as any)?.url || '').trim();
-                                // When URL exists, let the parent (timeline-content) handle opening.
-                                if (urlValue) return;
+                                // タイトルクリックは常に「新しいタスクへ入力」を優先
+                                e.preventDefault();
+                                e.stopPropagation();
                                 e.preventDefault();
                                 setNewTaskName(t.name);
                                 const isMobile =
@@ -4536,9 +4538,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 {String((t as any)?.url || '').trim() ? (
                                   <span
                                     className="material-icons"
-                                    title="URLあり（クリックで開く）"
-                                    aria-label="URLあり（クリックで開く）"
-                                    style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                                    title="URLを開く"
+                                    aria-label="URLを開く"
+                                    style={{ fontSize: 16, color: 'var(--text-muted)', cursor: 'pointer' }}
+                                    onMouseDown={(ev) => ev.stopPropagation()}
+                                    onClick={(ev) => {
+                                      ev.preventDefault();
+                                      ev.stopPropagation();
+                                      scheduleOpenExternalUrl(String((t as any)?.url || ''));
+                                    }}
                                   >
                                     link
                                   </span>
