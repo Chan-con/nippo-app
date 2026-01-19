@@ -5832,6 +5832,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       >
                         <span className="material-icons">add</span>
                       </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
                       <button
                         type="button"
                         className="btn-secondary"
