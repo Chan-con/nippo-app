@@ -4460,8 +4460,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {viewMode === 'today' && accessToken ? (
               <div className="taskline-section" style={{ display: todayMainTab === 'taskline' ? undefined : 'none' }}>
-              <div className="taskline-header">
-                <h3>🗂️ タスクライン</h3>
+              <div className="taskline-header" style={{ justifyContent: 'flex-end' }}>
                 <div className="taskline-status" aria-live="polite">
                   {taskLineLoading ? <span className="taskline-status-item">同期中…</span> : null}
                   {!taskLineLoading && taskLineSaving ? <span className="taskline-status-item">保存中…</span> : null}
@@ -4659,7 +4658,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {(viewMode === 'history' || !(viewMode === 'today' && accessToken) || todayMainTab === 'timeline') ? (
               <div className={`timeline-section ${viewMode === 'history' ? 'history-mode' : ''}`}>
-                <h3>📈 タイムライン</h3>
+                {viewMode === 'today' && accessToken ? null : <h3>📈 タイムライン</h3>}
                 <div className="timeline-container" id="timeline-container">
                   {sortedTimelineTasks.length === 0 ? (
                     <div className="timeline-empty">
