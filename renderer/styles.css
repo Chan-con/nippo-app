@@ -179,6 +179,7 @@ input[type='number']::-webkit-inner-spin-button {
   cursor: pointer;
   align-items: center;
   justify-content: center;
+  -webkit-app-region: no-drag;
 }
 
 .mobile-menu-btn:hover {
@@ -188,6 +189,29 @@ input[type='number']::-webkit-inner-spin-button {
 
 .mobile-menu-btn .material-icons {
   font-size: 18px;
+}
+
+.desktop-sidebar-toggle-btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-sidebar-toggle-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.desktop-sidebar-toggle-btn .material-icons {
+  font-size: 20px;
 }
 
 .mobile-overlay {
@@ -249,6 +273,19 @@ input[type='number']::-webkit-inner-spin-button {
   flex-direction: column;
   min-height: 0; /* 子要素スクロールを有効にする */
   overflow: hidden; /* スクロールは .sidebar-content 側に集約 */
+  transition: width 0.2s ease;
+}
+
+@media (min-width: 769px) {
+  body.sidebar-desktop-collapsed .sidebar {
+    width: 0;
+    min-width: 0;
+    border-right: 0;
+  }
+
+  body.sidebar-desktop-collapsed .sidebar-content {
+    padding: 0;
+  }
 }
 
 .sidebar-header {
@@ -2796,6 +2833,10 @@ input[type='number']::-webkit-inner-spin-button {
     display: inline-flex;
     width: 36px;
     height: 36px;
+  }
+
+  .desktop-sidebar-toggle-btn {
+    display: none;
   }
 
   .mobile-menu-btn .material-icons {

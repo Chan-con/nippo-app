@@ -359,6 +359,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const [viewMode, setViewMode] = useState<'today' | 'history'>('today');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarDesktopCollapsed, setSidebarDesktopCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem('nippoSidebarDesktopCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [reportOpen, setReportOpen] = useState(false);
   const [tagWorkReportOpen, setTagWorkReportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1016,6 +1024,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(max-width: 639px)').matches;
     if (isMobile) setSidebarOpen(true);
+    if (!isMobile && sidebarDesktopCollapsed) setSidebarDesktopCollapsed(false);
 
     window.setTimeout(() => {
       const input = document.getElementById('task-input') as HTMLInputElement | null;
@@ -1084,6 +1093,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       document.body.classList.remove('sidebar-open');
     };
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-desktop-collapsed', !!sidebarDesktopCollapsed);
+    try {
+      window.localStorage.setItem('nippoSidebarDesktopCollapsed', sidebarDesktopCollapsed ? '1' : '0');
+    } catch {
+      // ignore
+    }
+    return () => {
+      document.body.classList.remove('sidebar-desktop-collapsed');
+    };
+  }, [sidebarDesktopCollapsed]);
 
   function holidayCalendarSnapshot(monthDate: Date, holidays: Set<string>) {
     const y = monthDate.getFullYear();
@@ -3600,6 +3621,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             <span className="material-icons">menu</span>
           </button>
 
+          <button
+            id="desktop-sidebar-toggle-btn"
+            className="desktop-sidebar-toggle-btn"
+            type="button"
+            aria-label={sidebarDesktopCollapsed ? 'サイドバーを表示' : 'サイドバーを格納'}
+            title={sidebarDesktopCollapsed ? 'サイドバーを表示' : 'サイドバーを格納'}
+            onClick={() => setSidebarDesktopCollapsed((v) => !v)}
+          >
+            <span className="material-icons">{sidebarDesktopCollapsed ? 'chevron_right' : 'chevron_left'}</span>
+          </button>
+
           <div id="web-auth-bar" className="web-auth-bar">
             <div className="web-auth-left">
               <span id="web-auth-status">{userEmail ? userEmail : '未ログイン'}</span>
@@ -4299,25 +4331,26 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                   typeof window.matchMedia === 'function' &&
                                   window.matchMedia('(max-width: 639px)').matches;
                                 if (isMobile) setSidebarOpen(true);
+                                if (!isMobile && sidebarDesktopCollapsed) setSidebarDesktopCollapsed(false);
 
                                 window.setTimeout(() => {
                                   const input = document.getElementById('task-input') as HTMLInputElement | null;
-                                input?.focus();
-                                if (input) {
-                                  try {
-                                    input.scrollIntoView({ block: 'center' });
-                                  } catch {
-                                    // ignore
+                                  input?.focus();
+                                  if (input) {
+                                    try {
+                                      input.scrollIntoView({ block: 'center' });
+                                    } catch {
+                                      // ignore
+                                    }
+                                    const len = input.value.length;
+                                    try {
+                                      input.setSelectionRange(len, len);
+                                    } catch {
+                                      // ignore
+                                    }
                                   }
-                                  const len = input.value.length;
-                                  try {
-                                    input.setSelectionRange(len, len);
-                                  } catch {
-                                    // ignore
-                                  }
-                                }
-                              }, 0);
-                            }}
+                                }, 0);
+                              }}
                             onContextMenu={(e) => {
                               if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
                               e.preventDefault();
