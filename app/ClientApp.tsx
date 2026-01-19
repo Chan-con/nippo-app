@@ -5833,23 +5833,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         <span className="material-icons">add</span>
                       </button>
                     </div>
-
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        title="0/5/10 を追加"
-                        aria-label="0/5/10 を追加"
-                        onClick={() => {
-                          setSettingsReservationNotifyMinutesBefore((p) => normalizeNotifyMinutesBeforeList([...(p || []), 0, 5, 10]));
-                          setSettingsDirty(true);
-                        }}
-                        disabled={!accessToken || busy}
-                      >
-                        <span className="material-icons">playlist_add</span>
-                        0/5/10
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>
