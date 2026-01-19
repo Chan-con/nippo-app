@@ -4391,8 +4391,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <button
                   id="history-btn"
                   className={`mode-btn ${viewMode === 'history' ? 'active' : ''}`}
-                  title="履歴"
-                  aria-label="履歴"
+                  title="カレンダー"
+                  aria-label="カレンダー"
                   type="button"
                   onClick={() => {
                     setViewMode('history');
@@ -4404,7 +4404,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     }
                   }}
                 >
-                  <span className="material-icons">history</span>
+                  <span className="material-icons">event</span>
                 </button>
               </div>
               <div className="date-selector" id="date-selector" style={{ display: viewMode === 'history' ? 'flex' : 'none' }}>
