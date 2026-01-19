@@ -3579,6 +3579,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return date;
   }
 
+  function formatDateISOToJaLong(date: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    const [y, m, d] = date.split('-');
+    return `${y}年${Number(m)}月${Number(d)}日`;
+  }
+
   function formatDateISOToSlash(date: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
     return date.replace(/-/g, '/');
@@ -4444,8 +4450,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         <main className="main-content">
           <div className={`main-header ${viewMode === 'history' ? 'history-mode' : ''}`}>
             <div className="date-display">
-              <h1 id="current-date">{formatDateJa(now)}</h1>
-              <p id="current-time">{formatTimeHHMMSS(now)}</p>
+              <h1 id="current-date">{viewMode === 'history' ? (historyDate ? formatDateISOToJaLong(historyDate) : '日付を選択') : formatDateJa(now)}</h1>
+              <p id="current-time" style={{ visibility: viewMode === 'history' ? 'hidden' : 'visible' }} aria-hidden={viewMode === 'history'}>
+                {formatTimeHHMMSS(now)}
+              </p>
             </div>
             <div className="history-controls">
               <div className="view-mode-toggle">
