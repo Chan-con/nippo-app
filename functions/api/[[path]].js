@@ -303,12 +303,13 @@ export async function onRequest(context) {
       const endTime = String(body?.endTime || '').trim();
       const tag = body?.tag || null;
       const memo = typeof body?.memo === 'string' ? body.memo : undefined;
+      const url = typeof body?.url === 'string' ? body.url : undefined;
 
       if (!taskName || !startTime) {
         return jsonResponse({ success: false, error: 'タスク名と開始時刻は必須です' }, 400);
       }
 
-      const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, memo, userId);
+      const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, memo, url, userId);
       if (!result) return jsonResponse({ success: false, error: 'タスクが見つかりません' }, 404);
       return jsonResponse({ success: true, task: result.task });
     }
@@ -364,6 +365,7 @@ export async function onRequest(context) {
       const endTime = String(body?.endTime || '').trim();
       const tag = body?.tag || null;
       const memo = typeof body?.memo === 'string' ? body.memo : undefined;
+      const url = typeof body?.url === 'string' ? body.url : undefined;
 
       if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         return jsonResponse(
@@ -375,7 +377,7 @@ export async function onRequest(context) {
         return jsonResponse({ success: false, error: 'タスク名と開始時刻は必須です' }, 400);
       }
 
-      const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, userId);
+      const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, url, userId);
       return jsonResponse(result, result.success ? 200 : 400);
     }
 

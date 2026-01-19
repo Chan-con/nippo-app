@@ -301,6 +301,7 @@ class SupabaseTaskManager {
       name: taskName,
       tag: tag || '',
       memo: '',
+      url: '',
       status: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -543,7 +544,7 @@ class SupabaseTaskManager {
     return { success: true, task: newTask };
   }
 
-  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, userId) {
+  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, url, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -566,6 +567,7 @@ class SupabaseTaskManager {
       endTime: endTime || '',
       tag: tag || '',
       memo: typeof memo === 'string' ? memo : (tasks[idx]?.memo || ''),
+      url: typeof url === 'string' ? url : (tasks[idx]?.url || ''),
       updatedAt: nowIso,
     };
 
@@ -580,7 +582,7 @@ class SupabaseTaskManager {
     return { success: true, task: tasks[idx], adjustments: adjusted.adjustments };
   }
 
-  async updateTask(taskId, taskName, startTime, endTime, tag, memo, userId) {
+  async updateTask(taskId, taskName, startTime, endTime, tag, memo, url, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -597,6 +599,7 @@ class SupabaseTaskManager {
       endTime: endTime || '',
       tag: tag || '',
       memo: typeof memo === 'string' ? memo : (tasks[idx]?.memo || ''),
+      url: typeof url === 'string' ? url : (tasks[idx]?.url || ''),
       updatedAt: nowIso,
     };
 

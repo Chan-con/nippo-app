@@ -10,6 +10,7 @@ type Task = {
   endTime?: string;
   tag?: string;
   memo?: string;
+  url?: string;
   status?: string | null;
 };
 
@@ -540,6 +541,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   const [editMemo, setEditMemo] = useState('');
+  const [editUrl, setEditUrl] = useState('');
 
   const editNameTrimmed = String(editName ?? '').trim();
   const editNameInTaskStock = !!editNameTrimmed && taskStock.includes(editNameTrimmed);
@@ -568,6 +570,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportSingleContent, setReportSingleContent] = useState('');
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
+
+  const timelineOpenUrlTimerRef = useRef<number | null>(null);
 
   const mainBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -823,6 +827,47 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const head = display.slice(0, 28);
     const tail = display.slice(-6);
     return `${head}…${tail}`;
+  }
+
+  function normalizeExternalUrl(raw: string) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    // Keep explicit schemes as-is, otherwise assume https.
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s)) return s;
+    return `https://${s.replace(/^\/+/, '')}`;
+  }
+
+  function scheduleOpenExternalUrl(raw: string) {
+    if (typeof window === 'undefined') return;
+    if (timelineOpenUrlTimerRef.current != null) {
+      try {
+        window.clearTimeout(timelineOpenUrlTimerRef.current);
+      } catch {
+        // ignore
+      }
+      timelineOpenUrlTimerRef.current = null;
+    }
+    const href = normalizeExternalUrl(raw);
+    if (!href) return;
+    timelineOpenUrlTimerRef.current = window.setTimeout(() => {
+      timelineOpenUrlTimerRef.current = null;
+      try {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } catch {
+        // ignore
+      }
+    }, 220);
+  }
+
+  function cancelScheduledOpenExternalUrl() {
+    if (typeof window === 'undefined') return;
+    if (timelineOpenUrlTimerRef.current == null) return;
+    try {
+      window.clearTimeout(timelineOpenUrlTimerRef.current);
+    } catch {
+      // ignore
+    }
+    timelineOpenUrlTimerRef.current = null;
   }
 
   function renderTextWithLinks(text: string) {
@@ -3357,6 +3402,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setEditStartTime(formatTimeDisplay(task.startTime) || '');
     setEditEndTime(formatTimeDisplay(task.endTime) || '');
     setEditMemo(String(task.memo || ''));
+    setEditUrl(String((task as any)?.url || ''));
     setEditOpen(true);
   }
 
@@ -3368,6 +3414,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const endTime = editEndTime.trim();
     const tag = editTag.trim();
     const memo = editMemo;
+    const url = editUrl;
 
     if (!name || !startTime) return;
 
@@ -3380,7 +3427,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo }),
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url }),
         });
         const body = await res.json().catch(() => null as any);
         if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
@@ -3389,7 +3436,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const res = await apiFetch(`/api/tasks/${editingTaskId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo }),
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url }),
         });
         const body = await res.json().catch(() => null as any);
         if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
@@ -4419,6 +4466,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             onDoubleClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              cancelScheduledOpenExternalUrl();
                               openEditForTask(t);
                             }}
                           >
@@ -4427,6 +4475,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               title="クリックでタスク名をコピー"
                               onClick={(e) => {
                                 if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                                const urlValue = String((t as any)?.url || '').trim();
+                                if (urlValue) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  scheduleOpenExternalUrl(urlValue);
+                                  return;
+                                }
                                 e.preventDefault();
                                 setNewTaskName(t.name);
                                 const isMobile =
@@ -4474,6 +4529,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 </span>
                               ) : null}
                               <span>{renderTextWithLinks(t.name)}</span>
+                                {String((t as any)?.url || '').trim() ? (
+                                  <span
+                                    className="material-icons"
+                                    title="URLあり（クリックで開く）"
+                                    aria-label="URLあり（クリックで開く）"
+                                    style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                                  >
+                                    link
+                                  </span>
+                                ) : null}
                             </span>
                           </div>
                           {typeof (t as any)?.memo === 'string' && String((t as any).memo).trim() ? (
@@ -4655,6 +4720,22 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 onChange={(e) => setEditMemo(e.target.value)}
                 placeholder="メモ"
                 rows={3}
+                disabled={busy}
+              />
+            </div>
+
+            <div className="edit-field">
+              <label htmlFor="edit-task-url">URL（任意）</label>
+              <input
+                id="edit-task-url"
+                className="edit-input"
+                value={editUrl}
+                onChange={(e) => setEditUrl(e.target.value)}
+                placeholder="https://..."
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 disabled={busy}
               />
             </div>

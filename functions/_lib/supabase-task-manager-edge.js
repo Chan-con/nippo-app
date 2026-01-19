@@ -386,6 +386,7 @@ export class SupabaseTaskManagerEdge {
       name: taskName,
       tag: tag || '',
       memo: '',
+      url: '',
       status: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -412,6 +413,7 @@ export class SupabaseTaskManagerEdge {
       name: taskName,
       tag: tag || '',
       memo: '',
+      url: '',
       status: 'reserved',
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -609,6 +611,7 @@ export class SupabaseTaskManagerEdge {
       name: taskData?.name || taskData?.title || '',
       tag: taskData?.tag || '',
       memo: typeof taskData?.memo === 'string' ? taskData.memo : '',
+      url: typeof taskData?.url === 'string' ? taskData.url : '',
       status: taskData?.status || null,
       createdAt: taskData?.createdAt || nowIso,
       updatedAt: nowIso,
@@ -625,7 +628,7 @@ export class SupabaseTaskManagerEdge {
     return { success: true, task: newTask };
   }
 
-  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, userId) {
+  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, url, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -648,6 +651,7 @@ export class SupabaseTaskManagerEdge {
       endTime: endTime || '',
       tag: tag || '',
       memo: typeof memo === 'string' ? memo : (tasks[idx]?.memo || ''),
+      url: typeof url === 'string' ? url : (tasks[idx]?.url || ''),
       updatedAt: nowIso,
     };
 
@@ -662,7 +666,7 @@ export class SupabaseTaskManagerEdge {
     return { success: true, task: tasks[idx], adjustments: adjusted.adjustments };
   }
 
-  async updateTask(taskId, taskName, startTime, endTime, tag, memo, userId) {
+  async updateTask(taskId, taskName, startTime, endTime, tag, memo, url, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -679,6 +683,7 @@ export class SupabaseTaskManagerEdge {
       endTime: endTime || '',
       tag: tag || '',
       memo: typeof memo === 'string' ? memo : (tasks[idx]?.memo || ''),
+      url: typeof url === 'string' ? url : (tasks[idx]?.url || ''),
       updatedAt: nowIso,
     };
 

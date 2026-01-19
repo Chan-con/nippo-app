@@ -2531,7 +2531,8 @@ function createApp(taskManagerInstance, options = {}) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, req.userId);
+            const url = typeof req.body?.url === 'string' ? req.body.url : undefined;
+            const result = await taskManager.updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, url, req.userId);
             if (result.success) {
                 res.json(result);
             } else {
@@ -2557,7 +2558,8 @@ function createApp(taskManagerInstance, options = {}) {
                 return res.status(400).json({ success: false, error: 'タスク名と開始時刻は必須です' });
             }
             
-            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, memo, req.userId);
+            const url = typeof req.body?.url === 'string' ? req.body.url : undefined;
+            const result = await taskManager.updateTask(taskId, taskName, startTime, endTime, tag, memo, url, req.userId);
             if (result) {
                 const responseData = { success: true, task: result.task };
                 if (result.adjustments) {
