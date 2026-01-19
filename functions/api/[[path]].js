@@ -89,12 +89,17 @@ const TASKLINE_GLOBAL_KEY = 'global';
 function normalizeTaskLineCards(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
+  const isLane = (v) => v === 'mon' || v === 'tue' || v === 'wed' || v === 'thu' || v === 'fri' || v === 'sat' || v === 'sun' || v === 'stock';
   for (const item of list) {
     const id = typeof item?.id === 'string' ? String(item.id) : '';
     const text = typeof item?.text === 'string' ? String(item.text) : '';
     const color = typeof item?.color === 'string' ? String(item.color) : '';
+    const laneRaw = item?.lane;
+    const lane = isLane(laneRaw) ? laneRaw : 'stock';
+    const orderRaw = item?.order;
+    const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? orderRaw : null;
     if (!id) continue;
-    out.push({ id, text, color });
+    out.push({ id, text, color, lane, order });
   }
   return out;
 }
@@ -507,7 +512,7 @@ export async function onRequest(context) {
       return jsonResponse({ success: true });
     }
 
-    // taskline (sticky notes lane)
+    // taskline (KANBAN-style sticky notes)
     if (parts.length === 1 && parts[0] === 'taskline' && request.method === 'GET') {
       const dateString = url.searchParams.get('dateString') || null;
       const dateKey = dateString || getTodayDateStringJST();
@@ -534,6 +539,8 @@ export async function onRequest(context) {
         id: String(c.id).slice(0, 80),
         text: String(c.text || '').slice(0, 200),
         color: String(c.color || '').slice(0, 80),
+        lane: String(c.lane || 'stock').slice(0, 16),
+        order: typeof c.order === 'number' && Number.isFinite(c.order) ? c.order : null,
       }));
 
       await taskManager._setDoc(userId, 'taskline', dateKey, {

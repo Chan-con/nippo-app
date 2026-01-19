@@ -793,13 +793,95 @@ input[type='number']::-webkit-inner-spin-button {
   padding: 12px;
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+}
+
+.taskline-column {
+  flex: 0 0 auto;
+  width: 230px;
+  min-width: 230px;
+  max-width: 230px;
+  background: rgba(69, 71, 90, 0.35);
+  border: 1px solid rgba(108, 112, 134, 0.65);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 140px;
+}
+
+.taskline-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.taskline-column-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.taskline-column-add {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(108, 112, 134, 0.7);
+  background: rgba(30, 30, 46, 0.35);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.taskline-column-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(137, 180, 250, 0.08);
+  transform: translateY(-1px);
+}
+
+.taskline-column-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.taskline-column-add .material-icons {
+  font-size: 18px;
+}
+
+.taskline-column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 90px;
+}
+
+.taskline-column-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px dashed rgba(108, 112, 134, 0.65);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  user-select: none;
 }
 
 .taskline-add-slot {
@@ -876,10 +958,10 @@ input[type='number']::-webkit-inner-spin-button {
 .taskline-card {
   position: relative;
   flex: 0 0 auto;
-  align-self: flex-start;
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: auto;
   border-radius: 10px;
   border: 1px solid var(--border);

@@ -17,7 +17,26 @@ type TaskLineCard = {
   id: string;
   text: string;
   color: string;
+  lane: TaskLineLane;
+  order: number;
 };
+
+type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'stock';
+
+const TASK_LINE_LANES: Array<{ key: TaskLineLane; label: string }> = [
+  { key: 'mon', label: '月' },
+  { key: 'tue', label: '火' },
+  { key: 'wed', label: '水' },
+  { key: 'thu', label: '木' },
+  { key: 'fri', label: '金' },
+  { key: 'sat', label: '土' },
+  { key: 'sun', label: '日' },
+  { key: 'stock', label: 'ストック' },
+];
+
+function isTaskLineLane(v: unknown): v is TaskLineLane {
+  return v === 'mon' || v === 'tue' || v === 'wed' || v === 'thu' || v === 'fri' || v === 'sat' || v === 'sun' || v === 'stock';
+}
 
 type ReportUrl = {
   id: number;
@@ -586,27 +605,103 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function normalizeTaskLineCards(input: unknown): TaskLineCard[] {
     const list = Array.isArray(input) ? input : [];
-    const out: TaskLineCard[] = [];
-    for (const item of list) {
-      const id = typeof (item as any)?.id === 'string' ? String((item as any).id) : '';
-      const text = typeof (item as any)?.text === 'string' ? String((item as any).text) : '';
-      const color = typeof (item as any)?.color === 'string' ? String((item as any).color) : '';
+    const temp: Array<{ id: string; text: string; color: string; lane: TaskLineLane; order: number | null; _idx: number }> = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list[i] as any;
+      const id = typeof item?.id === 'string' ? String(item.id) : '';
+      const text = typeof item?.text === 'string' ? String(item.text) : '';
+      const color = typeof item?.color === 'string' ? String(item.color) : '';
+      const laneRaw = item?.lane;
+      const lane: TaskLineLane = isTaskLineLane(laneRaw) ? laneRaw : 'stock';
+      const orderRaw = item?.order;
+      const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? orderRaw : null;
       if (!id) continue;
       const normalizedColor =
         color && ['var(--warning)', 'var(--pink)', 'var(--purple)', 'var(--success)', 'var(--accent)'].includes(color)
           ? 'var(--bg-tertiary)'
           : color;
-      out.push({ id, text, color: normalizedColor || 'var(--bg-tertiary)' });
+      temp.push({ id, text, color: normalizedColor || 'var(--bg-tertiary)', lane, order, _idx: i });
     }
+
+    // Ensure per-lane stable ordering even for legacy cards missing `lane`/`order`.
+    const byLane = new Map<TaskLineLane, Array<typeof temp[number]>>();
+    for (const lane of TASK_LINE_LANES.map((x) => x.key)) byLane.set(lane, []);
+    for (const c of temp) byLane.get(c.lane)!.push(c);
+
+    const out: TaskLineCard[] = [];
+    for (const lane of TASK_LINE_LANES.map((x) => x.key)) {
+      const laneCards = byLane.get(lane)!;
+      laneCards.sort((a, b) => {
+        const ao = a.order ?? Number.POSITIVE_INFINITY;
+        const bo = b.order ?? Number.POSITIVE_INFINITY;
+        if (ao !== bo) return ao - bo;
+        return a._idx - b._idx;
+      });
+      for (let j = 0; j < laneCards.length; j += 1) {
+        const c = laneCards[j];
+        out.push({ id: c.id, text: c.text, color: c.color, lane, order: j });
+      }
+    }
+
     return out;
   }
 
   function taskLineSnapshot(cards: TaskLineCard[]) {
     try {
-      return JSON.stringify(cards.map((c) => ({ id: c.id, text: c.text, color: c.color })));
+      return JSON.stringify(cards.map((c) => ({ id: c.id, text: c.text, color: c.color, lane: c.lane, order: c.order })));
     } catch {
       return '';
     }
+  }
+
+  function taskLineMoveCard(dragId: string, targetLane: TaskLineLane, beforeId: string | null) {
+    setTaskLineCards((prev) => {
+      const normalized = normalizeTaskLineCards(prev);
+      const laneOrder = TASK_LINE_LANES.map((x) => x.key);
+
+      const laneLists = new Map<TaskLineLane, string[]>();
+      for (const lane of laneOrder) laneLists.set(lane, []);
+      for (const c of normalized) laneLists.get(c.lane)!.push(c.id);
+
+      let fromLane: TaskLineLane | null = null;
+      for (const lane of laneOrder) {
+        if (laneLists.get(lane)!.includes(dragId)) {
+          fromLane = lane;
+          break;
+        }
+      }
+      if (!fromLane) return normalized;
+
+      // Remove from source lane
+      laneLists.set(
+        fromLane,
+        laneLists.get(fromLane)!.filter((id) => id !== dragId)
+      );
+
+      // Insert into target lane
+      const targetList = laneLists.get(targetLane)!;
+      const insertIndex = beforeId ? Math.max(0, targetList.indexOf(beforeId)) : targetList.length;
+      const safeInsertIndex = insertIndex >= 0 ? insertIndex : targetList.length;
+      const nextTarget = targetList.slice();
+      nextTarget.splice(safeInsertIndex, 0, dragId);
+      laneLists.set(targetLane, nextTarget);
+
+      const byId = new Map<string, TaskLineCard>();
+      for (const c of normalized) byId.set(c.id, c);
+
+      const rebuilt: TaskLineCard[] = [];
+      for (const lane of laneOrder) {
+        const ids = laneLists.get(lane)!;
+        for (let idx = 0; idx < ids.length; idx += 1) {
+          const id = ids[idx];
+          const base = byId.get(id);
+          if (!base) continue;
+          rebuilt.push({ ...base, lane, order: idx });
+        }
+      }
+      return rebuilt;
+    });
+    setTaskLineDirty(true);
   }
 
   function autoResizeTextarea(el: HTMLTextAreaElement | null) {
@@ -919,46 +1014,40 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }, 0);
   }
 
-  function addTaskLineCard(text?: string) {
+  function addTaskLineCard(text?: string, lane: TaskLineLane = 'stock') {
     const v = String(text ?? taskLineInput ?? '').trim();
     if (!v) return;
     const id = newId();
     setTaskLineCards((prev) => {
-      const color = taskLineColors[prev.length % taskLineColors.length] || 'var(--bg-tertiary)';
-      return [...prev, { id, text: v, color }];
+      const normalized = normalizeTaskLineCards(prev);
+      const color = taskLineColors[normalized.length % taskLineColors.length] || 'var(--bg-tertiary)';
+      const next = [...normalized, { id, text: v, color, lane, order: 9999 }];
+      return normalizeTaskLineCards(next);
     });
     setTaskLineInput('');
     setTaskLineDirty(true);
   }
 
-  function addTaskLineCardAtStart() {
+  function addTaskLineCardAtStart(lane: TaskLineLane = 'stock') {
     const id = newId();
     setTaskLineCards((prev) => {
-      const color = taskLineColors[prev.length % taskLineColors.length] || 'var(--bg-tertiary)';
-      return [{ id, text: '', color }, ...prev];
+      const normalized = normalizeTaskLineCards(prev);
+      const color = taskLineColors[normalized.length % taskLineColors.length] || 'var(--bg-tertiary)';
+      const next = [{ id, text: '', color, lane, order: -1 }, ...normalized];
+      return normalizeTaskLineCards(next);
     });
     setTaskLineEditingId(id);
     setTaskLineDirty(true);
   }
 
   function updateTaskLineCardText(id: string, text: string) {
-    setTaskLineCards((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
+    setTaskLineCards((prev) => normalizeTaskLineCards(prev.map((c) => (c.id === id ? { ...c, text } : c))));
     setTaskLineDirty(true);
   }
 
   function deleteTaskLineCard(id: string) {
-    setTaskLineCards((prev) => prev.filter((c) => c.id !== id));
+    setTaskLineCards((prev) => normalizeTaskLineCards(prev.filter((c) => c.id !== id)));
     setTaskLineEditingId((cur) => (cur === id ? null : cur));
-    setTaskLineDirty(true);
-  }
-
-  function reorderTaskLineCard(dragId: string, overId: string) {
-    setTaskLineCards((prev) => {
-      const from = prev.findIndex((c) => c.id === dragId);
-      const to = prev.findIndex((c) => c.id === overId);
-      if (from < 0 || to < 0) return prev;
-      return arrayMove(prev, from, to);
-    });
     setTaskLineDirty(true);
   }
 
@@ -3949,7 +4038,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <div
                 className="taskline-scroll"
                 onDragOver={(e) => {
-                  // allow dropping into the lane (e.g., end)
+                  // allow dropping into the board
                   if (taskLineDraggingId) e.preventDefault();
                 }}
                 onDrop={() => {
@@ -3957,109 +4046,138 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   taskLineDragJustEndedAtRef.current = Date.now();
                 }}
               >
-                <button
-                  type="button"
-                  className="taskline-add-slot"
-                  onClick={() => {
-                    if (busy) return;
-                    addTaskLineCardAtStart();
-                  }}
-                  title="先頭に付箋を追加"
-                  aria-label="先頭に付箋を追加"
-                  disabled={busy}
-                >
-                  <span className="material-icons" aria-hidden="true">
-                    add
-                  </span>
-                </button>
+                {TASK_LINE_LANES.map((lane) => {
+                  const laneCards = taskLineCards
+                    .filter((c) => c.lane === lane.key)
+                    .slice()
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-                {taskLineCards.map((card) => {
-                  const isEditing = taskLineEditingId === card.id;
                   return (
                     <div
-                      key={card.id}
-                      className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}`}
-                      style={{ background: card.color || 'var(--bg-tertiary)' }}
-                      draggable={!isEditing && !busy}
-                      onDragStart={(e) => {
-                        setTaskLineDraggingId(card.id);
-                        try {
-                          e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', card.id);
-                        } catch {
-                          // ignore
-                        }
+                      key={lane.key}
+                      className="taskline-column"
+                      onDragOver={(e) => {
+                        if (!taskLineDraggingId) return;
+                        e.preventDefault();
                       }}
-                      onDragEnd={() => {
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (taskLineDraggingId) {
+                          taskLineMoveCard(taskLineDraggingId, lane.key, null);
+                        }
                         setTaskLineDraggingId(null);
                         taskLineDragJustEndedAtRef.current = Date.now();
                       }}
-                      onDragOver={(e) => {
-                        if (!taskLineDraggingId) return;
-                        if (taskLineDraggingId === card.id) return;
-                        e.preventDefault();
-
-                        const nowMs = Date.now();
-                        if (nowMs - taskLineLastDragAtRef.current < 40) return;
-                        taskLineLastDragAtRef.current = nowMs;
-                        reorderTaskLineCard(taskLineDraggingId, card.id);
-                      }}
-                      onClick={() => {
-                        // NOTE: Do not auto-fill the task input from taskline clicks.
-                        // (URLs and memo text should be safely clickable/selectable without side effects.)
-                        if (isEditing) return;
-                        if (Date.now() - taskLineDragJustEndedAtRef.current < 200) return;
-                      }}
-                      onDoubleClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (busy) return;
-                        setTaskLineEditingId(card.id);
-                      }}
-                      title={isEditing ? '' : 'ダブルクリックで編集'}
                     >
-                      {isEditing ? (
-                        <textarea
-                          className="taskline-card-input"
-                          rows={1}
-                          autoFocus
-                          value={card.text}
-                          onChange={(e) => {
-                            updateTaskLineCardText(card.id, e.target.value);
-                            autoResizeTextarea(e.currentTarget);
+                      <div className="taskline-column-header">
+                        <div className="taskline-column-title">{lane.label}</div>
+                        <button
+                          type="button"
+                          className="taskline-column-add"
+                          onClick={() => {
+                            if (busy) return;
+                            addTaskLineCardAtStart(lane.key);
                           }}
-                          onFocus={(e) => autoResizeTextarea(e.currentTarget)}
-                          onBlur={() => {
-                            // If left empty, auto-delete the new card to keep things tidy.
-                            const v = String(card.text ?? '').trim();
-                            if (!v) {
-                              deleteTaskLineCard(card.id);
-                              return;
-                            }
-                            setTaskLineEditingId(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape') {
-                              e.preventDefault();
-                              deleteTaskLineCard(card.id);
-                              return;
-                            }
+                          title={`${lane.label} に付箋を追加`}
+                          aria-label={`${lane.label} に付箋を追加`}
+                          disabled={busy}
+                        >
+                          <span className="material-icons" aria-hidden="true">
+                            add
+                          </span>
+                        </button>
+                      </div>
 
-                            // Finish editing with Ctrl+Enter / Cmd+Enter
-                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                              e.preventDefault();
-                              const v = String(card.text ?? '').trim();
-                              if (!v) {
-                                deleteTaskLineCard(card.id);
-                                return;
-                              }
-                              setTaskLineEditingId(null);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="taskline-card-text">{renderTextWithLinks(card.text)}</div>
-                      )}
+                      <div className="taskline-column-body">
+                        {laneCards.map((card) => {
+                          const isEditing = taskLineEditingId === card.id;
+                          return (
+                            <div
+                              key={card.id}
+                              className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}`}
+                              style={{ background: card.color || 'var(--bg-tertiary)' }}
+                              draggable={!isEditing && !busy}
+                              onDragStart={(e) => {
+                                setTaskLineDraggingId(card.id);
+                                try {
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  e.dataTransfer.setData('text/plain', card.id);
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                              onDragEnd={() => {
+                                setTaskLineDraggingId(null);
+                                taskLineDragJustEndedAtRef.current = Date.now();
+                              }}
+                              onDragOver={(e) => {
+                                if (!taskLineDraggingId) return;
+                                if (taskLineDraggingId === card.id) return;
+                                e.preventDefault();
+
+                                const nowMs = Date.now();
+                                if (nowMs - taskLineLastDragAtRef.current < 40) return;
+                                taskLineLastDragAtRef.current = nowMs;
+                                taskLineMoveCard(taskLineDraggingId, lane.key, card.id);
+                              }}
+                              onClick={() => {
+                                if (isEditing) return;
+                                if (Date.now() - taskLineDragJustEndedAtRef.current < 200) return;
+                              }}
+                              onDoubleClick={(ev) => {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                if (busy) return;
+                                setTaskLineEditingId(card.id);
+                              }}
+                              title={isEditing ? '' : 'ダブルクリックで編集'}
+                            >
+                              {isEditing ? (
+                                <textarea
+                                  className="taskline-card-input"
+                                  rows={1}
+                                  autoFocus
+                                  value={card.text}
+                                  onChange={(ev) => {
+                                    updateTaskLineCardText(card.id, ev.target.value);
+                                    autoResizeTextarea(ev.currentTarget);
+                                  }}
+                                  onFocus={(ev) => autoResizeTextarea(ev.currentTarget)}
+                                  onBlur={() => {
+                                    const v = String(card.text ?? '').trim();
+                                    if (!v) {
+                                      deleteTaskLineCard(card.id);
+                                      return;
+                                    }
+                                    setTaskLineEditingId(null);
+                                  }}
+                                  onKeyDown={(ev) => {
+                                    if (ev.key === 'Escape') {
+                                      ev.preventDefault();
+                                      deleteTaskLineCard(card.id);
+                                      return;
+                                    }
+
+                                    if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                                      ev.preventDefault();
+                                      const v = String(card.text ?? '').trim();
+                                      if (!v) {
+                                        deleteTaskLineCard(card.id);
+                                        return;
+                                      }
+                                      setTaskLineEditingId(null);
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <div className="taskline-card-text">{renderTextWithLinks(card.text)}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {laneCards.length === 0 ? <div className="taskline-column-empty">ここにドロップ</div> : null}
+                      </div>
                     </div>
                   );
                 })}
