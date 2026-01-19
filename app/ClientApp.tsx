@@ -4204,9 +4204,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       }}
                       onDrop={(e) => {
                         e.preventDefault();
-                        if (taskLineDraggingId) {
-                          taskLineMoveCard(taskLineDraggingId, lane.key, laneCards.length);
-                        }
+                        e.stopPropagation();
+                        // Do not override the last previewed order.
+                        // (Reordering happens during dragover; drop only finalizes the drag.)
                         setTaskLineDraggingId(null);
                         taskLineDragJustEndedAtRef.current = Date.now();
                       }}
@@ -4230,7 +4230,30 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         </button>
                       </div>
 
-                      <div className="taskline-column-body">
+                      <div
+                        className="taskline-column-body"
+                        onDragOver={(e) => {
+                          if (!taskLineDraggingId) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          taskLineAutoScrollWhileDragging(e);
+
+                          const nowMs = Date.now();
+                          if (nowMs - taskLineLastDragAtRef.current < 40) return;
+                          taskLineLastDragAtRef.current = nowMs;
+
+                          const bodyRect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                          const nearTop = e.clientY < bodyRect.top + 24;
+                          const insertAt = nearTop ? 0 : laneCards.length;
+                          taskLineMoveCard(taskLineDraggingId, lane.key, insertAt);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setTaskLineDraggingId(null);
+                          taskLineDragJustEndedAtRef.current = Date.now();
+                        }}
+                      >
                         {laneCards.map((card, laneIndex) => {
                           const isEditing = taskLineEditingId === card.id;
                           return (
