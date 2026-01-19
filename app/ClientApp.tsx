@@ -608,6 +608,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskLineDraggingId, setTaskLineDraggingId] = useState<string | null>(null);
   const taskLineLastDragAtRef = useRef(0);
   const taskLineDragJustEndedAtRef = useRef(0);
+  const taskLineLastPreviewRef = useRef<{ dragId: string; lane: TaskLineLane; index: number } | null>(null);
   const taskLineBoardRef = useRef<HTMLDivElement | null>(null);
   const taskLineLastAutoScrollAtRef = useRef(0);
   const taskLineSaveTimerRef = useRef<number | null>(null);
@@ -749,6 +750,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       return rebuilt;
     });
     setTaskLineDirty(true);
+  }
+
+  function taskLinePreviewMove(dragId: string, targetLane: TaskLineLane, targetIndex: number) {
+    const safeIndex = Number.isFinite(targetIndex) ? targetIndex : 0;
+    const last = taskLineLastPreviewRef.current;
+    if (last && last.dragId === dragId && last.lane === targetLane && last.index === safeIndex) return;
+    taskLineLastPreviewRef.current = { dragId, lane: targetLane, index: safeIndex };
+    taskLineMoveCard(dragId, targetLane, safeIndex);
   }
 
   function taskLineAutoScrollWhileDragging(e: React.DragEvent) {
@@ -4242,10 +4251,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           if (nowMs - taskLineLastDragAtRef.current < 40) return;
                           taskLineLastDragAtRef.current = nowMs;
 
-                          const bodyRect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                          const nearTop = e.clientY < bodyRect.top + 24;
-                          const insertAt = nearTop ? 0 : laneCards.length;
-                          taskLineMoveCard(taskLineDraggingId, lane.key, insertAt);
+                          const body = e.currentTarget as HTMLDivElement;
+                          const cardEls = Array.from(body.querySelectorAll<HTMLElement>('.taskline-card'));
+                          let insertAt = laneCards.length;
+                          for (const el of cardEls) {
+                            const id = el.getAttribute('data-taskline-cardid') || '';
+                            if (!id || id === taskLineDraggingId) continue;
+                            const laneIndexAttr = el.getAttribute('data-taskline-laneindex') || '';
+                            const laneIndex = Number.parseInt(laneIndexAttr, 10);
+                            if (!Number.isFinite(laneIndex)) continue;
+                            const rect = el.getBoundingClientRect();
+                            const midY = rect.top + rect.height / 2;
+                            if (e.clientY < midY) {
+                              insertAt = laneIndex;
+                              break;
+                            }
+                          }
+                          taskLinePreviewMove(taskLineDraggingId, lane.key, insertAt);
                         }}
                         onDrop={(e) => {
                           e.preventDefault();
@@ -4261,9 +4283,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               key={card.id}
                               className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}`}
                               style={{ background: card.color || 'var(--bg-tertiary)' }}
+                              data-taskline-cardid={card.id}
+                              data-taskline-laneindex={laneIndex}
                               draggable={!isEditing && !busy}
                               onDragStart={(e) => {
                                 setTaskLineDraggingId(card.id);
+                                taskLineLastPreviewRef.current = null;
                                 try {
                                   e.dataTransfer.effectAllowed = 'move';
                                   e.dataTransfer.setData('text/plain', card.id);
@@ -4272,34 +4297,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 }
                               }}
                               onDragEnd={() => {
-                                setTaskLineDraggingId(null);
-                                taskLineDragJustEndedAtRef.current = Date.now();
-                              }}
-                              onDragOver={(e) => {
-                                if (!taskLineDraggingId) return;
-                                if (taskLineDraggingId === card.id) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-
-                                taskLineAutoScrollWhileDragging(e);
-
-                                const nowMs = Date.now();
-                                if (nowMs - taskLineLastDragAtRef.current < 40) return;
-                                taskLineLastDragAtRef.current = nowMs;
-                                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                                const midY = rect.top + rect.height / 2;
-                                const insertAt = e.clientY > midY ? laneIndex + 1 : laneIndex;
-                                taskLineMoveCard(taskLineDraggingId, lane.key, insertAt);
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (!taskLineDraggingId) return;
-                                if (taskLineDraggingId === card.id) return;
-                                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                                const midY = rect.top + rect.height / 2;
-                                const insertAt = e.clientY > midY ? laneIndex + 1 : laneIndex;
-                                taskLineMoveCard(taskLineDraggingId, lane.key, insertAt);
                                 setTaskLineDraggingId(null);
                                 taskLineDragJustEndedAtRef.current = Date.now();
                               }}
