@@ -688,7 +688,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  function taskLineMoveCard(dragId: string, targetLane: TaskLineLane, beforeId: string | null) {
+  function taskLineMoveCard(dragId: string, targetLane: TaskLineLane, targetIndex: number) {
     setTaskLineCards((prev) => {
       const normalized = normalizeTaskLineCards(prev);
       const laneOrder = TASK_LINE_LANES.map((x) => x.key);
@@ -714,8 +714,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       // Insert into target lane
       const targetList = laneLists.get(targetLane)!;
-      const insertIndex = beforeId ? Math.max(0, targetList.indexOf(beforeId)) : targetList.length;
-      const safeInsertIndex = insertIndex >= 0 ? insertIndex : targetList.length;
+      const safeInsertIndex = Math.max(0, Math.min(targetList.length, Number.isFinite(targetIndex) ? targetIndex : targetList.length));
       const nextTarget = targetList.slice();
       nextTarget.splice(safeInsertIndex, 0, dragId);
       laneLists.set(targetLane, nextTarget);
@@ -4192,7 +4191,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       onDrop={(e) => {
                         e.preventDefault();
                         if (taskLineDraggingId) {
-                          taskLineMoveCard(taskLineDraggingId, lane.key, null);
+                          taskLineMoveCard(taskLineDraggingId, lane.key, laneCards.length);
                         }
                         setTaskLineDraggingId(null);
                         taskLineDragJustEndedAtRef.current = Date.now();
@@ -4218,7 +4217,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       </div>
 
                       <div className="taskline-column-body">
-                        {laneCards.map((card) => {
+                        {laneCards.map((card, laneIndex) => {
                           const isEditing = taskLineEditingId === card.id;
                           return (
                             <div
@@ -4249,7 +4248,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 const nowMs = Date.now();
                                 if (nowMs - taskLineLastDragAtRef.current < 40) return;
                                 taskLineLastDragAtRef.current = nowMs;
-                                taskLineMoveCard(taskLineDraggingId, lane.key, card.id);
+                                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                                const midY = rect.top + rect.height / 2;
+                                const insertAt = e.clientY > midY ? laneIndex + 1 : laneIndex;
+                                taskLineMoveCard(taskLineDraggingId, lane.key, insertAt);
                               }}
                               onClick={() => {
                                 if (isEditing) return;
