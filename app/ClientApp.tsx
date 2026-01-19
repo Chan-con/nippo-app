@@ -23,6 +23,8 @@ type TaskLineCard = {
 
 type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'stock';
 
+type TodayMainTab = 'timeline' | 'taskline';
+
 const TASK_LINE_LANES: Array<{ key: TaskLineLane; label: string }> = [
   { key: 'mon', label: '月' },
   { key: 'tue', label: '火' },
@@ -558,6 +560,26 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportSingleContent, setReportSingleContent] = useState('');
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
+
+  // today main panels tab (timeline / taskline)
+  const [todayMainTab, setTodayMainTab] = useState<TodayMainTab>(() => {
+    if (typeof window === 'undefined') return 'timeline';
+    try {
+      const raw = window.localStorage.getItem('nippoTodayMainTab');
+      return raw === 'taskline' || raw === 'timeline' ? raw : 'timeline';
+    } catch {
+      return 'timeline';
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('nippoTodayMainTab', todayMainTab);
+    } catch {
+      // ignore
+    }
+  }, [todayMainTab]);
 
   // task line (sticky notes) - horizontal, reorderable (synced via Supabase)
   // NOTE: タスクラインは日付ごとの管理ではなく「常に同じ内容」を表示する
@@ -4021,7 +4043,30 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
           <div className="main-body">
             {viewMode === 'today' && accessToken ? (
-              <div className="taskline-section">
+              <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
+                <button
+                  type="button"
+                  className={`tab-button ${todayMainTab === 'timeline' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'timeline'}
+                  onClick={() => setTodayMainTab('timeline')}
+                >
+                  📈 タイムライン
+                </button>
+                <button
+                  type="button"
+                  className={`tab-button ${todayMainTab === 'taskline' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'taskline'}
+                  onClick={() => setTodayMainTab('taskline')}
+                >
+                  🗂️ タスクライン
+                </button>
+              </div>
+            ) : null}
+
+            {viewMode === 'today' && accessToken ? (
+              <div className="taskline-section" style={{ display: todayMainTab === 'taskline' ? undefined : 'none' }}>
               <div className="taskline-header">
                 <h3>🗂️ タスクライン</h3>
                 <div className="taskline-status" aria-live="polite">
@@ -4185,77 +4230,78 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </div>
             ) : null}
 
-            <div className={`timeline-section ${viewMode === 'history' ? 'history-mode' : ''}`}>
-              <h3>📈 タイムライン</h3>
-              <div className="timeline-container" id="timeline-container">
-                {sortedTimelineTasks.length === 0 ? (
-                  <div className="timeline-empty">
-                    <span className="material-icons">schedule</span>
-                    <p>{timelineEmptyText}</p>
-                    <p className="sub-text">新しいタスクを追加してください</p>
-                  </div>
-                ) : (
-                  sortedTimelineTasks.map((t) => {
-                    const isReserved = t.status === 'reserved';
-                    const isRunning = !isReserved && !t.endTime;
-                    const durationMinutes = !isReserved && t.endTime ? calcDurationMinutes(t.startTime, t.endTime) : null;
-                    const duration = durationMinutes != null ? formatDurationJa(durationMinutes) : '';
+            {(viewMode === 'history' || !(viewMode === 'today' && accessToken) || todayMainTab === 'timeline') ? (
+              <div className={`timeline-section ${viewMode === 'history' ? 'history-mode' : ''}`}>
+                <h3>📈 タイムライン</h3>
+                <div className="timeline-container" id="timeline-container">
+                  {sortedTimelineTasks.length === 0 ? (
+                    <div className="timeline-empty">
+                      <span className="material-icons">schedule</span>
+                      <p>{timelineEmptyText}</p>
+                      <p className="sub-text">新しいタスクを追加してください</p>
+                    </div>
+                  ) : (
+                    sortedTimelineTasks.map((t) => {
+                      const isReserved = t.status === 'reserved';
+                      const isRunning = !isReserved && !t.endTime;
+                      const durationMinutes = !isReserved && t.endTime ? calcDurationMinutes(t.startTime, t.endTime) : null;
+                      const duration = durationMinutes != null ? formatDurationJa(durationMinutes) : '';
 
-                    const itemClass = `timeline-item${isRunning ? ' running' : ''}${isReserved ? ' reserved' : ''}`;
+                      const itemClass = `timeline-item${isRunning ? ' running' : ''}${isReserved ? ' reserved' : ''}`;
 
-                    const startTimeDisplay = formatTimeDisplay(t.startTime);
-                    const endTimeDisplay = isReserved
-                      ? formatTimeDisplay(t.endTime)
-                      : isRunning
-                        ? formatNowTimeDisplay(now)
-                        : formatTimeDisplay(t.endTime);
-                    const showRange = !!startTimeDisplay && !!endTimeDisplay && (!isReserved || !!t.endTime);
-                    const timeColumn = showRange ? (
-                      <div className="timeline-time range">
-                        <span className="time-start">{startTimeDisplay}</span>
-                        <span className="time-line" aria-hidden="true" />
-                        <span className="time-end">{endTimeDisplay}</span>
-                      </div>
-                    ) : (
-                      <div className="timeline-time">{startTimeDisplay}</div>
-                    );
+                      const startTimeDisplay = formatTimeDisplay(t.startTime);
+                      const endTimeDisplay = isReserved
+                        ? formatTimeDisplay(t.endTime)
+                        : isRunning
+                          ? formatNowTimeDisplay(now)
+                          : formatTimeDisplay(t.endTime);
+                      const showRange = !!startTimeDisplay && !!endTimeDisplay && (!isReserved || !!t.endTime);
+                      const timeColumn = showRange ? (
+                        <div className="timeline-time range">
+                          <span className="time-start">{startTimeDisplay}</span>
+                          <span className="time-line" aria-hidden="true" />
+                          <span className="time-end">{endTimeDisplay}</span>
+                        </div>
+                      ) : (
+                        <div className="timeline-time">{startTimeDisplay}</div>
+                      );
 
-                    const statusChip = isReserved ? (
-                      <span className="timeline-duration" style={{ background: 'var(--purple)', color: 'var(--bg-primary)' }}>
-                        予約
-                      </span>
-                    ) : isRunning ? (
-                      <span className="timeline-duration" style={{ background: 'var(--accent)', color: 'white' }}>
-                        実行中
-                      </span>
-                    ) : null;
+                      const statusChip = isReserved ? (
+                        <span className="timeline-duration" style={{ background: 'var(--purple)', color: 'var(--bg-primary)' }}>
+                          予約
+                        </span>
+                      ) : isRunning ? (
+                        <span className="timeline-duration" style={{ background: 'var(--accent)', color: 'white' }}>
+                          実行中
+                        </span>
+                      ) : null;
 
-                    return (
-                      <div key={t.id} className={itemClass}>
-                        {timeColumn}
-                        <div
-                          className="timeline-content"
-                          onDoubleClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openEditForTask(t);
-                          }}
-                        >
+                      return (
+                        <div key={t.id} className={itemClass}>
+                          {timeColumn}
                           <div
-                            className="timeline-task"
-                            title="クリックでタスク名をコピー"
-                            onClick={(e) => {
-                              if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                            className="timeline-content"
+                            onDoubleClick={(e) => {
                               e.preventDefault();
-                              setNewTaskName(t.name);
-                              const isMobile =
-                                typeof window !== 'undefined' &&
-                                typeof window.matchMedia === 'function' &&
-                                window.matchMedia('(max-width: 639px)').matches;
-                              if (isMobile) setSidebarOpen(true);
+                              e.stopPropagation();
+                              openEditForTask(t);
+                            }}
+                          >
+                            <div
+                              className="timeline-task"
+                              title="クリックでタスク名をコピー"
+                              onClick={(e) => {
+                                if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
+                                e.preventDefault();
+                                setNewTaskName(t.name);
+                                const isMobile =
+                                  typeof window !== 'undefined' &&
+                                  typeof window.matchMedia === 'function' &&
+                                  window.matchMedia('(max-width: 639px)').matches;
+                                if (isMobile) setSidebarOpen(true);
 
-                              window.setTimeout(() => {
-                                const input = document.getElementById('task-input') as HTMLInputElement | null;
+                                window.setTimeout(() => {
+                                  const input = document.getElementById('task-input') as HTMLInputElement | null;
                                 input?.focus();
                                 if (input) {
                                   try {
@@ -4321,6 +4367,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 )}
               </div>
             </div>
+            ) : null}
 
             <div className="stats-section">
               <div className="stats-grid">

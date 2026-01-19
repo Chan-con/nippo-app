@@ -2322,6 +2322,10 @@ input[type='number']::-webkit-inner-spin-button {
   gap: 4px;
 }
 
+.today-panels-tabs {
+  margin-bottom: 14px;
+}
+
 .tab-button {
   background: transparent;
   border: none;
