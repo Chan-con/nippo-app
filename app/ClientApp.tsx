@@ -685,8 +685,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const notesSaveTimerRef = useRef<number | null>(null);
   const notesLastSavedSnapshotRef = useRef<string>('');
   const notesIsSavingRef = useRef(false);
-  const notesGridRef = useRef<HTMLDivElement | null>(null);
-  const [noteRowSpans, setNoteRowSpans] = useState<Record<string, number>>({});
+
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [notesModalId, setNotesModalId] = useState<string | null>(null);
+  const [notesModalBody, setNotesModalBody] = useState('');
+  const notesModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   function normalizeNotes(input: unknown): NoteItem[] {
     const list = Array.isArray(input) ? input : [];
@@ -1378,18 +1381,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setNotesRemoteUpdatePending(false);
   }
 
-  function updateNoteBodyLocal(id: string, body: string) {
-    setNotes((prev) =>
-      normalizeNotes(
-        prev.map((n) => {
-          if (n.id !== id) return n;
-          return { ...n, body };
-        })
-      )
-    );
-    setNotesDirty(true);
-  }
-
   function autoGrowTextarea(el: HTMLTextAreaElement | null) {
     if (!el) return;
     try {
@@ -1400,72 +1391,64 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  function commitNoteEdit(id: string) {
+  function openNoteModal(noteId: string) {
+    const found = normalizeNotes(notes).find((n) => n.id === noteId);
+    if (!found) return;
+    setNotesModalId(noteId);
+    setNotesModalBody(found.body ?? '');
+    setNotesModalOpen(true);
+    setNotesEditingId(noteId);
+  }
+
+  function closeNoteModal() {
+    setNotesModalOpen(false);
+    setNotesModalId(null);
+    setNotesModalBody('');
+    setNotesEditingId(null);
+  }
+
+  function saveNoteModal() {
+    const id = notesModalId;
+    if (!id) {
+      closeNoteModal();
+      return;
+    }
+
+    const trimmed = String(notesModalBody || '').trim();
     setNotes((prev) => {
       const normalized = normalizeNotes(prev);
       const idx = normalized.findIndex((n) => n.id === id);
       if (idx === -1) return normalized;
-      const cur = normalized[idx];
-      const trimmed = String(cur.body || '').trim();
       if (!trimmed) {
         // delete when body cleared
         return normalized.filter((n) => n.id !== id);
       }
       const nowIso = new Date().toISOString();
-      const updated = { ...cur, body: trimmed, updatedAt: nowIso };
+      const cur = normalized[idx];
+      const updated: NoteItem = { ...cur, body: trimmed, updatedAt: nowIso };
       const next = normalized.slice();
       next[idx] = updated;
-      // "更新したら左上" ＝ 次回表示時は updatedAt ソートで先頭へ
       return next;
     });
     setNotesDirty(true);
-    setNotesEditingId(null);
+    setNotesRemoteUpdatePending(false);
+    closeNoteModal();
   }
 
-  // masonry: grid row spans
   useEffect(() => {
-    const grid = notesGridRef.current;
-    if (!grid) return;
-
-    const rowHeight = 8;
-    const gap = 12;
-
-    const calcSpan = (el: Element) => {
-      const id = (el as HTMLElement).dataset?.noteId;
-      if (!id) return;
-      const rect = (el as HTMLElement).getBoundingClientRect();
-      const span = Math.max(1, Math.ceil((rect.height + gap) / rowHeight));
-      setNoteRowSpans((prev) => {
-        if (prev[id] === span) return prev;
-        return { ...prev, [id]: span };
-      });
-    };
-
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) calcSpan(entry.target);
-    });
-
-    const cards = Array.from(grid.querySelectorAll('[data-note-id]'));
-    for (const el of cards) ro.observe(el);
-    // initial
-    for (const el of cards) calcSpan(el);
-
-    return () => {
+    if (!notesModalOpen) return;
+    window.setTimeout(() => {
+      const el = notesModalTextareaRef.current;
+      if (!el) return;
       try {
-        ro.disconnect();
+        el.focus();
       } catch {
         // ignore
       }
-    };
-  }, [notes, notesQuery, todayMainTab]);
-
-  // Ensure textareas grow to fit content (initial + changes)
-  useEffect(() => {
-    const grid = notesGridRef.current;
-    if (!grid) return;
-    const areas = Array.from(grid.querySelectorAll('textarea.note-textarea')) as HTMLTextAreaElement[];
-    for (const a of areas) autoGrowTextarea(a);
-  }, [notes, notesQuery, todayMainTab]);
+      autoGrowTextarea(el);
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesModalOpen]);
 
   function focusTaskInputWithName(name: string) {
     setNewTaskName(name);
@@ -5036,55 +5019,57 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {viewMode === 'today' && accessToken ? (
               <div className="notes-section" style={{ display: todayMainTab === 'notes' ? undefined : 'none' }}>
-                <div className="notes-toolbar">
-                  <div className="notes-search">
-                    <span className="material-icons" aria-hidden="true">
-                      search
-                    </span>
-                    <input
-                      type="search"
-                      placeholder="本文を検索…"
-                      value={notesQuery}
-                      onChange={(e) => setNotesQuery(e.target.value)}
+                <div className="notes-center">
+                  <div className="notes-toolbar">
+                    <div className="notes-search">
+                      <span className="material-icons" aria-hidden="true">
+                        search
+                      </span>
+                      <input
+                        type="search"
+                        placeholder="本文を検索…"
+                        value={notesQuery}
+                        onChange={(e) => setNotesQuery(e.target.value)}
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="notes-status" aria-live="polite">
+                      {notesLoading ? <span className="notes-status-item">同期中…</span> : null}
+                      {!notesLoading && notesSaving ? <span className="notes-status-item">保存中…</span> : null}
+                      {!notesLoading && !notesSaving && notesDirty ? <span className="notes-status-item">未保存</span> : null}
+                      {notesRemoteUpdatePending ? <span className="notes-status-item">他端末で更新あり（保存後に反映）</span> : null}
+                      {notesError ? <span className="notes-status-item error">{notesError}</span> : null}
+                    </div>
+                  </div>
+
+                  <div className="notes-compose">
+                    <textarea
+                      className="notes-compose-textarea"
+                      placeholder="ここにメモを書いて追加（Ctrl+Enterで確定）"
+                      value={notesNewBody}
+                      onChange={(e) => {
+                        setNotesNewBody(e.target.value);
+                        autoGrowTextarea(e.currentTarget);
+                      }}
+                      onFocus={(e) => autoGrowTextarea(e.currentTarget)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                          ev.preventDefault();
+                          createNoteFromBody(notesNewBody);
+                          setNotesNewBody('');
+                          autoGrowTextarea(ev.currentTarget as HTMLTextAreaElement);
+                        }
+                      }}
+                      onBlur={() => {
+                        createNoteFromBody(notesNewBody);
+                        setNotesNewBody('');
+                      }}
                       disabled={busy}
                     />
                   </div>
-                  <div className="notes-status" aria-live="polite">
-                    {notesLoading ? <span className="notes-status-item">同期中…</span> : null}
-                    {!notesLoading && notesSaving ? <span className="notes-status-item">保存中…</span> : null}
-                    {!notesLoading && !notesSaving && notesDirty ? <span className="notes-status-item">未保存</span> : null}
-                    {notesRemoteUpdatePending ? <span className="notes-status-item">他端末で更新あり（保存後に反映）</span> : null}
-                    {notesError ? <span className="notes-status-item error">{notesError}</span> : null}
-                  </div>
                 </div>
 
-                <div className="notes-compose">
-                  <textarea
-                    className="notes-compose-textarea"
-                    placeholder="ここにメモを書いて追加（Ctrl+Enterで確定）"
-                    value={notesNewBody}
-                    onChange={(e) => {
-                      setNotesNewBody(e.target.value);
-                      autoGrowTextarea(e.currentTarget);
-                    }}
-                    onFocus={(e) => autoGrowTextarea(e.currentTarget)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-                        ev.preventDefault();
-                        createNoteFromBody(notesNewBody);
-                        setNotesNewBody('');
-                        autoGrowTextarea(ev.currentTarget as HTMLTextAreaElement);
-                      }
-                    }}
-                    onBlur={() => {
-                      createNoteFromBody(notesNewBody);
-                      setNotesNewBody('');
-                    }}
-                    disabled={busy}
-                  />
-                </div>
-
-                <div className="notes-grid" ref={notesGridRef}>
+                <div className="notes-grid">
                   {(() => {
                     const q = String(notesQuery || '').trim().toLowerCase();
                     const list = normalizeNotes(notes)
@@ -5109,36 +5094,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     }
 
                     return list.map((note) => {
-                      const span = noteRowSpans[note.id] ?? 1;
                       return (
-                        <div
+                        <button
                           key={note.id}
                           className="note-card"
-                          data-note-id={note.id}
-                          style={{ gridRowEnd: `span ${span}` }}
+                          type="button"
+                          title="クリックして編集"
+                          aria-label="クリックして編集"
+                          onClick={() => openNoteModal(note.id)}
                         >
-                          <textarea
-                            className="note-textarea"
-                            value={note.body}
-                            onFocus={(e) => {
-                              setNotesEditingId(note.id);
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onBlur={() => commitNoteEdit(note.id)}
-                            onChange={(e) => {
-                              updateNoteBodyLocal(note.id, e.target.value);
-                              autoGrowTextarea(e.currentTarget);
-                            }}
-                            onKeyDown={(ev) => {
-                              if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-                                ev.preventDefault();
-                                (ev.currentTarget as HTMLTextAreaElement).blur();
-                              }
-                            }}
-                            disabled={busy}
-                          />
-                          <div className="note-hint">本文を全消しで削除</div>
-                        </div>
+                          <div className="note-preview">{note.body}</div>
+                        </button>
                       );
                     });
                   })()}
@@ -5498,6 +5464,64 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </button>
             <button className="btn-danger" id="edit-delete" title="削除" aria-label="削除" type="button" onClick={deleteEditingTask} disabled={!accessToken || busy}>
               <span className="material-icons">delete</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`edit-dialog ${notesModalOpen ? 'show' : ''}`}
+        id="notes-edit-dialog"
+        aria-hidden={!notesModalOpen}
+        onMouseDown={(e) => {
+          // click outside to close
+          if (e.target === e.currentTarget) closeNoteModal();
+        }}
+      >
+        <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="edit-header">
+            <h3>📝 ノート編集</h3>
+            <button
+              className="edit-close"
+              title="閉じる"
+              aria-label="閉じる"
+              type="button"
+              onClick={() => closeNoteModal()}
+            >
+              <span className="material-icons">close</span>
+            </button>
+          </div>
+          <div className="edit-body">
+            <textarea
+              ref={notesModalTextareaRef}
+              className="notes-modal-textarea"
+              placeholder="本文（タイトル不要）"
+              value={notesModalBody}
+              onChange={(e) => {
+                setNotesModalBody(e.target.value);
+                autoGrowTextarea(e.currentTarget);
+              }}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Escape') {
+                  ev.preventDefault();
+                  closeNoteModal();
+                  return;
+                }
+                if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                  ev.preventDefault();
+                  saveNoteModal();
+                }
+              }}
+              disabled={busy}
+            />
+            <div className="notes-modal-hint">本文を全消しで削除（保存で確定）</div>
+          </div>
+          <div className="edit-footer">
+            <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => closeNoteModal()} disabled={busy}>
+              <span className="material-icons">close</span>
+            </button>
+            <button className="btn-primary" type="button" title="保存" aria-label="保存" onClick={() => saveNoteModal()} disabled={busy}>
+              <span className="material-icons">done</span>
             </button>
           </div>
         </div>
