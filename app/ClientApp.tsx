@@ -4927,7 +4927,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   aria-selected={todayMainTab === 'taskline'}
                   onClick={() => setTodayMainTab('taskline')}
                 >
-                  🗂️ タスクライン
+                  🗃️ カンバン
                 </button>
                 <button
                   type="button"
