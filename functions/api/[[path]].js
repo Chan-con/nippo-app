@@ -86,6 +86,8 @@ function getTodayDateStringJST() {
 
 const TASKLINE_GLOBAL_KEY = 'global';
 
+const NOTES_GLOBAL_KEY = 'global';
+
 function normalizeTaskLineCards(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
@@ -100,6 +102,20 @@ function normalizeTaskLineCards(input) {
     const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? orderRaw : null;
     if (!id) continue;
     out.push({ id, text, color, lane, order });
+  }
+  return out;
+}
+
+function normalizeNotes(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = [];
+  for (const item of list) {
+    const id = typeof item?.id === 'string' ? String(item.id) : '';
+    const body = typeof item?.body === 'string' ? String(item.body) : '';
+    const createdAt = typeof item?.createdAt === 'string' ? String(item.createdAt) : '';
+    const updatedAt = typeof item?.updatedAt === 'string' ? String(item.updatedAt) : '';
+    if (!id) continue;
+    out.push({ id, body, createdAt, updatedAt });
   }
   return out;
 }
@@ -567,6 +583,37 @@ export async function onRequest(context) {
         cards,
         updatedAt: new Date().toISOString(),
       });
+      return jsonResponse({ success: true });
+    }
+
+    // notes (Keep-like sticky notes)
+    if (parts.length === 1 && parts[0] === 'notes' && request.method === 'GET') {
+      const doc = await taskManager._getDoc(userId, 'notes', NOTES_GLOBAL_KEY, {
+        notes: [],
+      });
+
+      const notes = normalizeNotes(doc?.notes);
+      return jsonResponse({ success: true, notes: { key: NOTES_GLOBAL_KEY, notes } });
+    }
+
+    if (parts.length === 1 && parts[0] === 'notes' && request.method === 'POST') {
+      const notes = normalizeNotes(body?.notes)
+        .map((n) => ({
+          id: String(n.id).slice(0, 80),
+          body: String(n.body || '').slice(0, 8000),
+          createdAt: String(n.createdAt || '').slice(0, 64),
+          updatedAt: String(n.updatedAt || '').slice(0, 64),
+        }))
+        // 削除は「本文を全消し」仕様なので、空はサーバー側でも落とす
+        .filter((n) => String(n.body || '').trim() !== '')
+        .slice(0, 600);
+
+      await taskManager._setDoc(userId, 'notes', NOTES_GLOBAL_KEY, {
+        key: NOTES_GLOBAL_KEY,
+        notes,
+        updatedAt: new Date().toISOString(),
+      });
+
       return jsonResponse({ success: true });
     }
 

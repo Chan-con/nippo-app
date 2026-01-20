@@ -24,7 +24,7 @@ type TaskLineCard = {
 
 type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'stock';
 
-type TodayMainTab = 'timeline' | 'taskline';
+type TodayMainTab = 'timeline' | 'taskline' | 'notes';
 
 const TASK_LINE_LANES: Array<{ key: TaskLineLane; label: string }> = [
   { key: 'mon', label: '月' },
@@ -625,7 +625,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (typeof window === 'undefined') return 'timeline';
     try {
       const raw = window.localStorage.getItem('nippoTodayMainTab');
-      return raw === 'taskline' || raw === 'timeline' ? raw : 'timeline';
+      return raw === 'taskline' || raw === 'timeline' || raw === 'notes' ? (raw as TodayMainTab) : 'timeline';
     } catch {
       return 'timeline';
     }
@@ -663,6 +663,54 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const taskLineSaveTimerRef = useRef<number | null>(null);
   const taskLineLastSavedSnapshotRef = useRef<string>('');
   const taskLineIsSavingRef = useRef(false);
+
+  // notes (Keep-like) - masonry grid, search, no title, delete by clearing body
+  type NoteItem = {
+    id: string;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+
+  const NOTES_GLOBAL_KEY = 'global';
+  const [notes, setNotes] = useState<NoteItem[]>([]);
+  const [notesQuery, setNotesQuery] = useState('');
+  const [notesNewBody, setNotesNewBody] = useState('');
+  const [notesEditingId, setNotesEditingId] = useState<string | null>(null);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesDirty, setNotesDirty] = useState(false);
+  const [notesRemoteUpdatePending, setNotesRemoteUpdatePending] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const notesSaveTimerRef = useRef<number | null>(null);
+  const notesLastSavedSnapshotRef = useRef<string>('');
+  const notesIsSavingRef = useRef(false);
+  const notesGridRef = useRef<HTMLDivElement | null>(null);
+  const [noteRowSpans, setNoteRowSpans] = useState<Record<string, number>>({});
+
+  function normalizeNotes(input: unknown): NoteItem[] {
+    const list = Array.isArray(input) ? input : [];
+    const out: NoteItem[] = [];
+    for (const item of list as any[]) {
+      const id = typeof item?.id === 'string' ? String(item.id) : '';
+      const body = typeof item?.body === 'string' ? String(item.body) : '';
+      const createdAt = typeof item?.createdAt === 'string' ? String(item.createdAt) : '';
+      const updatedAt = typeof item?.updatedAt === 'string' ? String(item.updatedAt) : '';
+      if (!id) continue;
+      out.push({ id, body, createdAt, updatedAt });
+    }
+    return out;
+  }
+
+  function notesSnapshot(items: NoteItem[]) {
+    try {
+      return JSON.stringify(
+        (Array.isArray(items) ? items : []).map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt, updatedAt: n.updatedAt }))
+      );
+    } catch {
+      return '';
+    }
+  }
 
   function getJstDateTimeParts(d: Date) {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -1190,6 +1238,234 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskLineCards, taskLineDirty, taskLineDateKey, taskLineLoadedDateKey, taskLineEditingId, taskLineDraggingId, accessToken, viewMode]);
+
+  async function loadNotesFromServer() {
+    if (!accessToken) return;
+    setNotesLoading(true);
+    setNotesError(null);
+    try {
+      const res = await apiFetch('/api/notes', { cache: 'no-store' });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'ノートの取得に失敗しました');
+
+      const remoteNotes = normalizeNotes(body?.notes?.notes);
+      // Keep server representation stable (new/updated first)
+      remoteNotes.sort((a, b) => {
+        const au = Date.parse(a.updatedAt || a.createdAt || '');
+        const bu = Date.parse(b.updatedAt || b.createdAt || '');
+        if (Number.isFinite(au) && Number.isFinite(bu) && au !== bu) return bu - au;
+        const ac = Date.parse(a.createdAt || '');
+        const bc = Date.parse(b.createdAt || '');
+        if (Number.isFinite(ac) && Number.isFinite(bc) && ac !== bc) return bc - ac;
+        return String(b.id).localeCompare(String(a.id));
+      });
+
+      setNotes(remoteNotes);
+      notesLastSavedSnapshotRef.current = notesSnapshot(remoteNotes);
+      setNotesDirty(false);
+      setNotesRemoteUpdatePending(false);
+    } catch (e: any) {
+      setNotesError(e?.message || String(e));
+      setNotes([]);
+      notesLastSavedSnapshotRef.current = '';
+      setNotesDirty(false);
+    } finally {
+      setNotesLoading(false);
+    }
+  }
+
+  async function saveNotesToServer(items: NoteItem[], snapshotOverride?: string) {
+    if (!accessToken) return;
+    if (notesIsSavingRef.current) return;
+    notesIsSavingRef.current = true;
+    setNotesSaving(true);
+    setNotesError(null);
+    try {
+      const cleaned = normalizeNotes(items)
+        .map((n) => ({
+          ...n,
+          body: String(n.body || ''),
+        }))
+        .filter((n) => String(n.body || '').trim() !== '');
+
+      cleaned.sort((a, b) => {
+        const au = Date.parse(a.updatedAt || a.createdAt || '');
+        const bu = Date.parse(b.updatedAt || b.createdAt || '');
+        if (Number.isFinite(au) && Number.isFinite(bu) && au !== bu) return bu - au;
+        const ac = Date.parse(a.createdAt || '');
+        const bc = Date.parse(b.createdAt || '');
+        if (Number.isFinite(ac) && Number.isFinite(bc) && ac !== bc) return bc - ac;
+        return String(b.id).localeCompare(String(a.id));
+      });
+
+      const snapshot = snapshotOverride ?? notesSnapshot(cleaned);
+      const res = await apiFetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: cleaned }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'ノートの保存に失敗しました');
+
+      notesLastSavedSnapshotRef.current = snapshot;
+      setNotesDirty(false);
+      setNotesRemoteUpdatePending(false);
+    } catch (e: any) {
+      setNotesError(e?.message || String(e));
+    } finally {
+      setNotesSaving(false);
+      notesIsSavingRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!accessToken) {
+      setNotes([]);
+      setNotesDirty(false);
+      setNotesRemoteUpdatePending(false);
+      notesLastSavedSnapshotRef.current = '';
+      return;
+    }
+    void loadNotesFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    if (!notesDirty) return;
+    if (notesIsSavingRef.current) return;
+    if (notesEditingId) return;
+
+    // 画面が非表示/オフライン時は保存を抑制
+    try {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) return;
+    } catch {
+      // ignore
+    }
+
+    const snapshot = notesSnapshot(notes);
+    if (snapshot && snapshot === notesLastSavedSnapshotRef.current) {
+      setNotesDirty(false);
+      return;
+    }
+
+    if (notesSaveTimerRef.current) window.clearTimeout(notesSaveTimerRef.current);
+    notesSaveTimerRef.current = window.setTimeout(() => {
+      void saveNotesToServer(notes, snapshot);
+    }, 600);
+
+    return () => {
+      if (notesSaveTimerRef.current) window.clearTimeout(notesSaveTimerRef.current);
+      notesSaveTimerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, notesDirty, notesEditingId, accessToken]);
+
+  function createNoteFromBody(rawBody: string) {
+    const body = String(rawBody || '').trim();
+    if (!body) return;
+    const nowIso = new Date().toISOString();
+    const id = `note-${newId()}`;
+    const note: NoteItem = { id, body, createdAt: nowIso, updatedAt: nowIso };
+    setNotes((prev) => [note, ...normalizeNotes(prev)]);
+    setNotesDirty(true);
+    setNotesRemoteUpdatePending(false);
+  }
+
+  function updateNoteBodyLocal(id: string, body: string) {
+    setNotes((prev) =>
+      normalizeNotes(
+        prev.map((n) => {
+          if (n.id !== id) return n;
+          return { ...n, body };
+        })
+      )
+    );
+    setNotesDirty(true);
+  }
+
+  function autoGrowTextarea(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    try {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    } catch {
+      // ignore
+    }
+  }
+
+  function commitNoteEdit(id: string) {
+    setNotes((prev) => {
+      const normalized = normalizeNotes(prev);
+      const idx = normalized.findIndex((n) => n.id === id);
+      if (idx === -1) return normalized;
+      const cur = normalized[idx];
+      const trimmed = String(cur.body || '').trim();
+      if (!trimmed) {
+        // delete when body cleared
+        return normalized.filter((n) => n.id !== id);
+      }
+      const nowIso = new Date().toISOString();
+      const updated = { ...cur, body: trimmed, updatedAt: nowIso };
+      const next = normalized.slice();
+      next[idx] = updated;
+      // "更新したら左上" ＝ 次回表示時は updatedAt ソートで先頭へ
+      return next;
+    });
+    setNotesDirty(true);
+    setNotesEditingId(null);
+  }
+
+  // masonry: grid row spans
+  useEffect(() => {
+    const grid = notesGridRef.current;
+    if (!grid) return;
+
+    const rowHeight = 8;
+    const gap = 12;
+
+    const calcSpan = (el: Element) => {
+      const id = (el as HTMLElement).dataset?.noteId;
+      if (!id) return;
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      const span = Math.max(1, Math.ceil((rect.height + gap) / rowHeight));
+      setNoteRowSpans((prev) => {
+        if (prev[id] === span) return prev;
+        return { ...prev, [id]: span };
+      });
+    };
+
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) calcSpan(entry.target);
+    });
+
+    const cards = Array.from(grid.querySelectorAll('[data-note-id]'));
+    for (const el of cards) ro.observe(el);
+    // initial
+    for (const el of cards) calcSpan(el);
+
+    return () => {
+      try {
+        ro.disconnect();
+      } catch {
+        // ignore
+      }
+    };
+  }, [notes, notesQuery, todayMainTab]);
+
+  // Ensure textareas grow to fit content (initial + changes)
+  useEffect(() => {
+    const grid = notesGridRef.current;
+    if (!grid) return;
+    const areas = Array.from(grid.querySelectorAll('textarea.note-textarea')) as HTMLTextAreaElement[];
+    for (const a of areas) autoGrowTextarea(a);
+  }, [notes, notesQuery, todayMainTab]);
 
   function focusTaskInputWithName(name: string) {
     setNewTaskName(name);
@@ -2116,6 +2392,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             return;
           }
 
+          if (docType === 'notes' && typeof docKey === 'string' && docKey === NOTES_GLOBAL_KEY) {
+            if (viewMode === 'history') return;
+            if (notesEditingId) return;
+            if (notesDirty) {
+              setNotesRemoteUpdatePending(true);
+              return;
+            }
+            if (notesIsSavingRef.current) return;
+            void loadNotesFromServer();
+            return;
+          }
+
           if (docType === 'tasks' && billingOpen) {
             void fetchBillingSummary();
           }
@@ -2144,6 +2432,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     taskLineEditingId,
     taskLineDraggingId,
     taskLineDirty,
+    notesEditingId,
+    notesDirty,
   ]);
 
   useEffect(() => {
@@ -4534,6 +4824,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 >
                   🗂️ タスクライン
                 </button>
+                <button
+                  type="button"
+                  className={`tab-button ${todayMainTab === 'notes' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'notes'}
+                  onClick={() => setTodayMainTab('notes')}
+                >
+                  📝 ノート
+                </button>
               </div>
             ) : null}
 
@@ -4732,6 +5031,118 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   );
                 })}
               </div>
+              </div>
+            ) : null}
+
+            {viewMode === 'today' && accessToken ? (
+              <div className="notes-section" style={{ display: todayMainTab === 'notes' ? undefined : 'none' }}>
+                <div className="notes-toolbar">
+                  <div className="notes-search">
+                    <span className="material-icons" aria-hidden="true">
+                      search
+                    </span>
+                    <input
+                      type="search"
+                      placeholder="本文を検索…"
+                      value={notesQuery}
+                      onChange={(e) => setNotesQuery(e.target.value)}
+                      disabled={busy}
+                    />
+                  </div>
+                  <div className="notes-status" aria-live="polite">
+                    {notesLoading ? <span className="notes-status-item">同期中…</span> : null}
+                    {!notesLoading && notesSaving ? <span className="notes-status-item">保存中…</span> : null}
+                    {!notesLoading && !notesSaving && notesDirty ? <span className="notes-status-item">未保存</span> : null}
+                    {notesRemoteUpdatePending ? <span className="notes-status-item">他端末で更新あり（保存後に反映）</span> : null}
+                    {notesError ? <span className="notes-status-item error">{notesError}</span> : null}
+                  </div>
+                </div>
+
+                <div className="notes-compose">
+                  <textarea
+                    className="notes-compose-textarea"
+                    placeholder="ここにメモを書いて追加（Ctrl+Enterで確定）"
+                    value={notesNewBody}
+                    onChange={(e) => {
+                      setNotesNewBody(e.target.value);
+                      autoGrowTextarea(e.currentTarget);
+                    }}
+                    onFocus={(e) => autoGrowTextarea(e.currentTarget)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                        ev.preventDefault();
+                        createNoteFromBody(notesNewBody);
+                        setNotesNewBody('');
+                        autoGrowTextarea(ev.currentTarget as HTMLTextAreaElement);
+                      }
+                    }}
+                    onBlur={() => {
+                      createNoteFromBody(notesNewBody);
+                      setNotesNewBody('');
+                    }}
+                    disabled={busy}
+                  />
+                </div>
+
+                <div className="notes-grid" ref={notesGridRef}>
+                  {(() => {
+                    const q = String(notesQuery || '').trim().toLowerCase();
+                    const list = normalizeNotes(notes)
+                      .filter((n) => {
+                        if (!q) return true;
+                        return String(n.body || '').toLowerCase().includes(q);
+                      })
+                      .slice();
+
+                    list.sort((a, b) => {
+                      const au = Date.parse(a.updatedAt || a.createdAt || '');
+                      const bu = Date.parse(b.updatedAt || b.createdAt || '');
+                      if (Number.isFinite(au) && Number.isFinite(bu) && au !== bu) return bu - au;
+                      const ac = Date.parse(a.createdAt || '');
+                      const bc = Date.parse(b.createdAt || '');
+                      if (Number.isFinite(ac) && Number.isFinite(bc) && ac !== bc) return bc - ac;
+                      return String(b.id).localeCompare(String(a.id));
+                    });
+
+                    if (list.length === 0) {
+                      return <div className="notes-empty">ノートがありません</div>;
+                    }
+
+                    return list.map((note) => {
+                      const span = noteRowSpans[note.id] ?? 1;
+                      return (
+                        <div
+                          key={note.id}
+                          className="note-card"
+                          data-note-id={note.id}
+                          style={{ gridRowEnd: `span ${span}` }}
+                        >
+                          <textarea
+                            className="note-textarea"
+                            value={note.body}
+                            onFocus={(e) => {
+                              setNotesEditingId(note.id);
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onBlur={() => commitNoteEdit(note.id)}
+                            onChange={(e) => {
+                              updateNoteBodyLocal(note.id, e.target.value);
+                              autoGrowTextarea(e.currentTarget);
+                            }}
+                            onKeyDown={(ev) => {
+                              if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                                ev.preventDefault();
+                                (ev.currentTarget as HTMLTextAreaElement).blur();
+                              }
+                            }}
+                            disabled={busy}
+                          />
+                          <div className="note-hint">本文を全消しで削除</div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
               </div>
             ) : null}
 
