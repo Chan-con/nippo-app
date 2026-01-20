@@ -1979,7 +1979,9 @@ class NippoApp {
 
             const timeColumnHTML = (!isReserved && task.endTime)
                 ? `<div class="timeline-time range"><span class="time-start">${startTime}</span><span class="time-line" aria-hidden="true"></span><span class="time-end">${this.formatTime(task.endTime)}</span></div>`
-                : `<div class="timeline-time">${startTime}</div>`;
+                : (isRunning
+                    ? `<div class="timeline-time range"><span class="time-start">${startTime}</span><span class="time-line" aria-hidden="true"></span><span class="time-end"></span></div>`
+                    : `<div class="timeline-time">${startTime}</div>`);
             
             // デバッグ情報
             if (task.endTime) {

@@ -4755,12 +4755,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       const itemClass = `timeline-item${isRunning ? ' running' : ''}${isReserved ? ' reserved' : ''}`;
 
                       const startTimeDisplay = formatTimeDisplay(t.startTime);
-                      const endTimeDisplay = isReserved
-                        ? formatTimeDisplay(t.endTime)
-                        : isRunning
-                          ? formatNowTimeDisplay(now)
-                          : formatTimeDisplay(t.endTime);
-                      const showRange = !!startTimeDisplay && !!endTimeDisplay && (!isReserved || !!t.endTime);
+                      // 実行中は終了時刻が確定するまで空欄（秒不要）
+                      // ただし「実行中感」の縦線は表示する
+                      const endTimeDisplay = isReserved ? formatTimeDisplay(t.endTime) : t.endTime ? formatTimeDisplay(t.endTime) : '';
+                      const showRange = !!startTimeDisplay && (isRunning ? true : !!endTimeDisplay) && (!isReserved || !!t.endTime);
                       const timeColumn = showRange ? (
                         <div className="timeline-time range">
                           <span className="time-start">{startTimeDisplay}</span>
