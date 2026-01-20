@@ -4847,8 +4847,40 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         </aside>
 
         <main className="main-content">
+          {viewMode === 'today' && accessToken ? (
+            <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
+              <button
+                type="button"
+                className={`tab-button ${todayMainTab === 'timeline' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={todayMainTab === 'timeline'}
+                onClick={() => setTodayMainTab('timeline')}
+              >
+                📈 タイムライン
+              </button>
+              <button
+                type="button"
+                className={`tab-button ${todayMainTab === 'taskline' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={todayMainTab === 'taskline'}
+                onClick={() => setTodayMainTab('taskline')}
+              >
+                🗃️ カンバン
+              </button>
+              <button
+                type="button"
+                className={`tab-button ${todayMainTab === 'notes' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={todayMainTab === 'notes'}
+                onClick={() => setTodayMainTab('notes')}
+              >
+                📝 ノート
+              </button>
+            </div>
+          ) : null}
+
           {showMainHeader ? (
-            <div className={`main-header ${viewMode === 'history' ? 'history-mode' : ''}`}>
+            <div className={`main-header ${viewMode === 'history' ? 'history-mode' : ''}${viewMode === 'today' && accessToken ? ' with-tabs' : ''}`}>
               <div className="date-display">
                 <h1 id="current-date">{viewMode === 'history' ? (historyDate ? formatDateISOToJaLong(historyDate) : '日付を選択') : formatDateJa(now)}</h1>
                 <p id="current-time" style={{ visibility: viewMode === 'history' ? 'hidden' : 'visible' }} aria-hidden={viewMode === 'history'}>
@@ -4918,38 +4950,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             className={`main-body${showMainHeader ? '' : ' no-header'}`}
             ref={mainBodyRef}
           >
-            {viewMode === 'today' && accessToken ? (
-              <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
-                <button
-                  type="button"
-                  className={`tab-button ${todayMainTab === 'timeline' ? 'active' : ''}`}
-                  role="tab"
-                  aria-selected={todayMainTab === 'timeline'}
-                  onClick={() => setTodayMainTab('timeline')}
-                >
-                  📈 タイムライン
-                </button>
-                <button
-                  type="button"
-                  className={`tab-button ${todayMainTab === 'taskline' ? 'active' : ''}`}
-                  role="tab"
-                  aria-selected={todayMainTab === 'taskline'}
-                  onClick={() => setTodayMainTab('taskline')}
-                >
-                  🗃️ カンバン
-                </button>
-                <button
-                  type="button"
-                  className={`tab-button ${todayMainTab === 'notes' ? 'active' : ''}`}
-                  role="tab"
-                  aria-selected={todayMainTab === 'notes'}
-                  onClick={() => setTodayMainTab('notes')}
-                >
-                  📝 ノート
-                </button>
-              </div>
-            ) : null}
-
             {viewMode === 'today' && accessToken ? (
               <div className="taskline-section" style={{ display: todayMainTab === 'taskline' ? undefined : 'none' }}>
               <div className="taskline-header" style={{ justifyContent: 'flex-end' }}>

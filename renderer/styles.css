@@ -2368,6 +2368,18 @@ input[type='number']::-webkit-inner-spin-button {
 
 .today-panels-tabs {
   margin-bottom: 14px;
+  /* ヘッダー側から移設した上余白（タブが最上段になるため） */
+  padding-top: calc(12px + 24px);
+  /* main-content の左右パディング(24px)分を相殺して、罫線を端まで伸ばす */
+  margin-left: -24px;
+  margin-right: -24px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* タブがある場合はヘッダー上余白を詰める */
+.main-header.with-tabs {
+  padding-top: 12px;
 }
 
 /* Notes (Keep-like) */
