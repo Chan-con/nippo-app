@@ -4758,8 +4758,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       // 実行中は終了時刻が確定するまで空欄（秒不要）
                       // ただし「実行中感」の縦線は表示する
                       const endTimeDisplay = isReserved ? formatTimeDisplay(t.endTime) : t.endTime ? formatTimeDisplay(t.endTime) : '';
-                      const showRange = !!startTimeDisplay && (isRunning ? true : !!endTimeDisplay) && (!isReserved || !!t.endTime);
-                      const timeColumn = showRange ? (
+                      // 予約は「開始時刻のみ」表示（縦線/終了は非表示）
+                      const showRange = !isReserved && !!startTimeDisplay && (isRunning ? true : !!endTimeDisplay);
+                      const timeColumn = isReserved ? (
+                        <div className="timeline-time">{startTimeDisplay}</div>
+                      ) : showRange ? (
                         <div className="timeline-time range">
                           <span className="time-start">{startTimeDisplay}</span>
                           <span className="time-line" aria-hidden="true" />
