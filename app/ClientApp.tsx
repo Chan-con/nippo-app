@@ -5625,7 +5625,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               }}
               disabled={busy}
             />
-            <div className="notes-modal-hint">本文を全消しで削除（保存で確定）</div>
           </div>
           <div className="edit-footer">
             <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => closeNoteModal()} disabled={busy}>
