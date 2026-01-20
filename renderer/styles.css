@@ -2388,6 +2388,19 @@ input[type='number']::-webkit-inner-spin-button {
   flex-wrap: wrap;
 }
 
+.notes-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex: 1;
+  min-width: 260px;
+}
+
+.notes-add-btn {
+  flex: 0 0 auto;
+}
+
 .notes-search {
   display: flex;
   align-items: center;

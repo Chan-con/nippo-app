@@ -675,7 +675,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const NOTES_GLOBAL_KEY = 'global';
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [notesQuery, setNotesQuery] = useState('');
-  const [notesNewBody, setNotesNewBody] = useState('');
   const [notesEditingId, setNotesEditingId] = useState<string | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
   const [notesSaving, setNotesSaving] = useState(false);
@@ -1403,6 +1402,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setNotesEditingId(noteId);
   }
 
+  function openNewNoteModal() {
+    setNotesModalId(null);
+    setNotesModalBody('');
+    setNotesModalOpen(true);
+    setNotesEditingId('new');
+  }
+
   function closeNoteModal() {
     setNotesModalOpen(false);
     setNotesModalId(null);
@@ -1412,12 +1418,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function saveNoteModal() {
     const id = notesModalId;
+    const trimmed = String(notesModalBody || '').trim();
+
+    // create mode
     if (!id) {
+      if (trimmed) createNoteFromBody(trimmed);
       closeNoteModal();
       return;
     }
 
-    const trimmed = String(notesModalBody || '').trim();
     setNotes((prev) => {
       const normalized = normalizeNotes(prev);
       const idx = normalized.findIndex((n) => n.id === id);
@@ -5111,17 +5120,31 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <div className="notes-section" style={{ display: todayMainTab === 'notes' ? undefined : 'none' }}>
                 <div className="notes-center">
                   <div className="notes-toolbar">
-                    <div className="notes-search">
-                      <span className="material-icons" aria-hidden="true">
-                        search
-                      </span>
-                      <input
-                        type="search"
-                        placeholder="本文を検索…"
-                        value={notesQuery}
-                        onChange={(e) => setNotesQuery(e.target.value)}
+                    <div className="notes-search-row">
+                      <button
+                        type="button"
+                        className="icon-btn notes-add-btn"
+                        title="ノートを追加"
+                        aria-label="ノートを追加"
+                        onClick={() => openNewNoteModal()}
                         disabled={busy}
-                      />
+                      >
+                        <span className="material-icons" aria-hidden="true">
+                          add
+                        </span>
+                      </button>
+                      <div className="notes-search">
+                        <span className="material-icons" aria-hidden="true">
+                          search
+                        </span>
+                        <input
+                          type="search"
+                          placeholder="本文を検索…"
+                          value={notesQuery}
+                          onChange={(e) => setNotesQuery(e.target.value)}
+                          disabled={busy}
+                        />
+                      </div>
                     </div>
                     <div className="notes-status" aria-live="polite">
                       {notesLoading ? <span className="notes-status-item">同期中…</span> : null}
@@ -5130,32 +5153,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       {notesRemoteUpdatePending ? <span className="notes-status-item">他端末で更新あり（保存後に反映）</span> : null}
                       {notesError ? <span className="notes-status-item error">{notesError}</span> : null}
                     </div>
-                  </div>
-
-                  <div className="notes-compose">
-                    <textarea
-                      className="notes-compose-textarea"
-                      placeholder="ここにメモを書いて追加（Ctrl+Enterで確定）"
-                      value={notesNewBody}
-                      onChange={(e) => {
-                        setNotesNewBody(e.target.value);
-                        autoGrowTextarea(e.currentTarget);
-                      }}
-                      onFocus={(e) => autoGrowTextarea(e.currentTarget)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-                          ev.preventDefault();
-                          createNoteFromBody(notesNewBody);
-                          setNotesNewBody('');
-                          autoGrowTextarea(ev.currentTarget as HTMLTextAreaElement);
-                        }
-                      }}
-                      onBlur={() => {
-                        createNoteFromBody(notesNewBody);
-                        setNotesNewBody('');
-                      }}
-                      disabled={busy}
-                    />
                   </div>
                 </div>
 
@@ -5571,7 +5568,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       >
         <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
           <div className="edit-header">
-            <h3>📝 ノート編集</h3>
+            <h3>{notesModalId ? 'ノート編集' : 'ノート追加'}</h3>
             <button
               className="edit-close"
               title="閉じる"
