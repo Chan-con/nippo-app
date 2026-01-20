@@ -1,7 +1,7 @@
 'use client';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 type Task = {
   id: string;
@@ -692,7 +692,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const notesModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const notesGridRef = useRef<HTMLDivElement | null>(null);
-  const [noteRowSpans, setNoteRowSpans] = useState<Record<string, number>>({});
+  const notesLayoutRafRef = useRef<number | null>(null);
 
   function normalizeNotes(input: unknown): NoteItem[] {
     const list = Array.isArray(input) ? input : [];
@@ -1453,55 +1453,92 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notesModalOpen]);
 
-  // notes masonry (grid + row-span measurement)
+  function scheduleNotesLayout() {
+    if (typeof window === 'undefined') return;
+    if (notesLayoutRafRef.current != null) window.cancelAnimationFrame(notesLayoutRafRef.current);
+    notesLayoutRafRef.current = window.requestAnimationFrame(() => {
+      notesLayoutRafRef.current = null;
+
+      const grid = notesGridRef.current;
+      if (!grid) return;
+
+      const cards = Array.from(grid.querySelectorAll('[data-note-id]')) as HTMLElement[];
+      if (cards.length === 0) {
+        try {
+          grid.style.height = '';
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      const gap = 12;
+      const minColWidth = 260;
+      const width = grid.clientWidth;
+      const colCount = Math.max(1, Math.floor((width + gap) / (minColWidth + gap)));
+      const colWidth = Math.max(160, Math.floor((width - gap * (colCount - 1)) / colCount));
+      const heights = Array.from({ length: colCount }, () => 0);
+
+      // First pass: apply width so height measurement is correct
+      for (const el of cards) {
+        try {
+          el.style.width = `${colWidth}px`;
+        } catch {
+          // ignore
+        }
+      }
+
+      // Second pass: place into the shortest column
+      for (const el of cards) {
+        const h = el.offsetHeight;
+        let bestCol = 0;
+        for (let i = 1; i < heights.length; i += 1) {
+          if (heights[i] < heights[bestCol]) bestCol = i;
+        }
+        const x = bestCol * (colWidth + gap);
+        const y = heights[bestCol];
+        try {
+          el.style.transform = `translate(${x}px, ${y}px)`;
+        } catch {
+          // ignore
+        }
+        heights[bestCol] = y + h + gap;
+      }
+
+      const maxH = Math.max(...heights);
+      try {
+        grid.style.height = `${Math.max(0, maxH - gap)}px`;
+      } catch {
+        // ignore
+      }
+    });
+  }
+
+  useLayoutEffect(() => {
+    if (todayMainTab !== 'notes') return;
+    scheduleNotesLayout();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, notesQuery, todayMainTab]);
+
   useEffect(() => {
     if (todayMainTab !== 'notes') return;
     const grid = notesGridRef.current;
     if (!grid) return;
 
-    const rowHeight = 8;
-    const gap = 12;
-
-    const calcSpan = (el: Element) => {
-      const id = (el as HTMLElement).dataset?.noteId;
-      if (!id) return;
-      const rect = (el as HTMLElement).getBoundingClientRect();
-      const span = Math.max(1, Math.ceil((rect.height + gap) / rowHeight));
-      setNoteRowSpans((prev) => {
-        if (prev[id] === span) return prev;
-        return { ...prev, [id]: span };
-      });
-    };
-
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) calcSpan(entry.target);
+    const ro = new ResizeObserver(() => {
+      scheduleNotesLayout();
     });
-
-    const cards = Array.from(grid.querySelectorAll('[data-note-id]'));
-    for (const el of cards) ro.observe(el);
-
-    // initial (next frame for stable layout)
-    const raf = window.requestAnimationFrame(() => {
-      const fresh = Array.from(grid.querySelectorAll('[data-note-id]'));
-      for (const el of fresh) calcSpan(el);
-    });
-
-    const onResize = () => {
-      const fresh = Array.from(grid.querySelectorAll('[data-note-id]'));
-      for (const el of fresh) calcSpan(el);
-    };
-    window.addEventListener('resize', onResize);
+    ro.observe(grid);
 
     return () => {
-      window.cancelAnimationFrame(raf);
-      window.removeEventListener('resize', onResize);
       try {
         ro.disconnect();
       } catch {
         // ignore
       }
     };
-  }, [notes, notesQuery, todayMainTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayMainTab]);
 
   function focusTaskInputWithName(name: string) {
     setNewTaskName(name);
@@ -5147,7 +5184,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     }
 
                     return list.map((note) => {
-                      const span = noteRowSpans[note.id] ?? 1;
                       return (
                         <button
                           key={note.id}
@@ -5157,7 +5193,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           aria-label="クリックして編集"
                           onClick={() => openNoteModal(note.id)}
                           data-note-id={note.id}
-                          style={{ gridRowEnd: `span ${span}` }}
                         >
                           <div className="note-preview">{note.body}</div>
                         </button>
