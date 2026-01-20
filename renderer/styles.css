@@ -1139,6 +1139,10 @@ input[type='number']::-webkit-inner-spin-button {
   padding-left: 12px;
 }
 
+.timeline-item.reserved .timeline-time {
+  text-align: center;
+}
+
 .timeline-item:last-child {
   border-bottom: none;
 }
