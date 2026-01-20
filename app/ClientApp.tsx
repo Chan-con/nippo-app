@@ -691,6 +691,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [notesModalBody, setNotesModalBody] = useState('');
   const notesModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const notesGridRef = useRef<HTMLDivElement | null>(null);
+  const [noteRowSpans, setNoteRowSpans] = useState<Record<string, number>>({});
+
   function normalizeNotes(input: unknown): NoteItem[] {
     const list = Array.isArray(input) ? input : [];
     const out: NoteItem[] = [];
@@ -1449,6 +1452,56 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notesModalOpen]);
+
+  // notes masonry (grid + row-span measurement)
+  useEffect(() => {
+    if (todayMainTab !== 'notes') return;
+    const grid = notesGridRef.current;
+    if (!grid) return;
+
+    const rowHeight = 8;
+    const gap = 12;
+
+    const calcSpan = (el: Element) => {
+      const id = (el as HTMLElement).dataset?.noteId;
+      if (!id) return;
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      const span = Math.max(1, Math.ceil((rect.height + gap) / rowHeight));
+      setNoteRowSpans((prev) => {
+        if (prev[id] === span) return prev;
+        return { ...prev, [id]: span };
+      });
+    };
+
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) calcSpan(entry.target);
+    });
+
+    const cards = Array.from(grid.querySelectorAll('[data-note-id]'));
+    for (const el of cards) ro.observe(el);
+
+    // initial (next frame for stable layout)
+    const raf = window.requestAnimationFrame(() => {
+      const fresh = Array.from(grid.querySelectorAll('[data-note-id]'));
+      for (const el of fresh) calcSpan(el);
+    });
+
+    const onResize = () => {
+      const fresh = Array.from(grid.querySelectorAll('[data-note-id]'));
+      for (const el of fresh) calcSpan(el);
+    };
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+      try {
+        ro.disconnect();
+      } catch {
+        // ignore
+      }
+    };
+  }, [notes, notesQuery, todayMainTab]);
 
   function focusTaskInputWithName(name: string) {
     setNewTaskName(name);
@@ -5069,7 +5122,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </div>
                 </div>
 
-                <div className="notes-grid">
+                <div className="notes-grid" ref={notesGridRef}>
                   {(() => {
                     const q = String(notesQuery || '').trim().toLowerCase();
                     const list = normalizeNotes(notes)
@@ -5094,6 +5147,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     }
 
                     return list.map((note) => {
+                      const span = noteRowSpans[note.id] ?? 1;
                       return (
                         <button
                           key={note.id}
@@ -5102,6 +5156,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           title="クリックして編集"
                           aria-label="クリックして編集"
                           onClick={() => openNoteModal(note.id)}
+                          data-note-id={note.id}
+                          style={{ gridRowEnd: `span ${span}` }}
                         >
                           <div className="note-preview">{note.body}</div>
                         </button>
