@@ -690,6 +690,12 @@ input[type='number']::-webkit-inner-spin-button {
   padding-bottom: 24px;
 }
 
+/* タイムライン以外でヘッダーを非表示にする場合の補正 */
+.main-body.no-header {
+  margin-top: 0;
+  padding-top: 24px;
+}
+
 /* 履歴モードでは日付入力をヘッダー中央に配置 */
 .main-header.history-mode {
   position: sticky; /* 明示しておく */

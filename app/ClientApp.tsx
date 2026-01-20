@@ -4430,6 +4430,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  // このヘッダー（日時・今日/履歴切替・カレンダー）はタイムラインで必要な要素なので、
+  // 今日モードのタブ表示時は「タイムライン」タブでのみ表示する。
+  const showMainHeader = viewMode === 'history' || !(viewMode === 'today' && accessToken) || todayMainTab === 'timeline';
+
   return (
     <div style={{ display: 'contents' }}>
       <div className="titlebar">
@@ -4843,72 +4847,77 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         </aside>
 
         <main className="main-content">
-          <div className={`main-header ${viewMode === 'history' ? 'history-mode' : ''}`}>
-            <div className="date-display">
-              <h1 id="current-date">{viewMode === 'history' ? (historyDate ? formatDateISOToJaLong(historyDate) : '日付を選択') : formatDateJa(now)}</h1>
-              <p id="current-time" style={{ visibility: viewMode === 'history' ? 'hidden' : 'visible' }} aria-hidden={viewMode === 'history'}>
-                {formatTimeHHMMSS(now)}
-              </p>
-            </div>
-            <div className="history-controls">
-              <div className="view-mode-toggle">
-                <button
-                  id="today-btn"
-                  className={`mode-btn ${viewMode === 'today' ? 'active' : ''}`}
-                  title="今日"
-                  aria-label="今日"
-                  type="button"
-                  onClick={() => setViewMode('today')}
-                >
-                  <span className="material-icons">today</span>
-                </button>
-                <button
-                  id="history-btn"
-                  className={`mode-btn ${viewMode === 'history' ? 'active' : ''}`}
-                  title="カレンダー"
-                  aria-label="カレンダー"
-                  type="button"
-                  onClick={() => {
-                    setViewMode('history');
-                    if (!historyDate) {
-                      const todayIso = formatDateISO(new Date());
-                      const defaultDate = historyDates.includes(todayIso) ? todayIso : (historyDates[0] ?? todayIso);
-                      setHistoryDate(defaultDate);
-                      if (defaultDate) void loadHistory(defaultDate);
-                    }
-                  }}
-                >
-                  <span className="material-icons">event</span>
-                </button>
+          {showMainHeader ? (
+            <div className={`main-header ${viewMode === 'history' ? 'history-mode' : ''}`}>
+              <div className="date-display">
+                <h1 id="current-date">{viewMode === 'history' ? (historyDate ? formatDateISOToJaLong(historyDate) : '日付を選択') : formatDateJa(now)}</h1>
+                <p id="current-time" style={{ visibility: viewMode === 'history' ? 'hidden' : 'visible' }} aria-hidden={viewMode === 'history'}>
+                  {formatTimeHHMMSS(now)}
+                </p>
               </div>
-              <div className="date-selector" id="date-selector" style={{ display: viewMode === 'history' ? 'flex' : 'none' }}>
-                <div className={`date-input-wrap ${historyDate ? 'has-value' : ''}`} id="date-input-wrap">
-                  <input
-                    type="date"
-                    id="calendar-date-input"
-                    value={historyDate}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setHistoryDate(v);
-                      if (v) void loadHistory(v);
+              <div className="history-controls">
+                <div className="view-mode-toggle">
+                  <button
+                    id="today-btn"
+                    className={`mode-btn ${viewMode === 'today' ? 'active' : ''}`}
+                    title="今日"
+                    aria-label="今日"
+                    type="button"
+                    onClick={() => setViewMode('today')}
+                  >
+                    <span className="material-icons">today</span>
+                  </button>
+                  <button
+                    id="history-btn"
+                    className={`mode-btn ${viewMode === 'history' ? 'active' : ''}`}
+                    title="カレンダー"
+                    aria-label="カレンダー"
+                    type="button"
+                    onClick={() => {
+                      setViewMode('history');
+                      if (!historyDate) {
+                        const todayIso = formatDateISO(new Date());
+                        const defaultDate = historyDates.includes(todayIso) ? todayIso : (historyDates[0] ?? todayIso);
+                        setHistoryDate(defaultDate);
+                        if (defaultDate) void loadHistory(defaultDate);
+                      }
                     }}
-                    disabled={!accessToken || busy}
-                  />
+                  >
+                    <span className="material-icons">event</span>
+                  </button>
+                </div>
+                <div className="date-selector" id="date-selector" style={{ display: viewMode === 'history' ? 'flex' : 'none' }}>
+                  <div className={`date-input-wrap ${historyDate ? 'has-value' : ''}`} id="date-input-wrap">
+                    <input
+                      type="date"
+                      id="calendar-date-input"
+                      value={historyDate}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setHistoryDate(v);
+                        if (v) void loadHistory(v);
+                      }}
+                      disabled={!accessToken || busy}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="status-indicators">
+                <div className="status-card">
+                  <span className="material-icons">access_time</span>
+                  <div>
+                    <p className="status-label">実行中</p>
+                    <p id="current-task">{runningTask?.name || 'タスクなし'}</p>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="status-indicators">
-              <div className="status-card">
-                <span className="material-icons">access_time</span>
-                <div>
-                  <p className="status-label">実行中</p>
-                  <p id="current-task">{runningTask?.name || 'タスクなし'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          ) : null}
 
-          <div className="main-body" ref={mainBodyRef}>
+          <div
+            className={`main-body${showMainHeader ? '' : ' no-header'}`}
+            ref={mainBodyRef}
+          >
             {viewMode === 'today' && accessToken ? (
               <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
                 <button
