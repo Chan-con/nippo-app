@@ -1549,6 +1549,29 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayMainTab]);
 
+  useEffect(() => {
+    if (todayMainTab !== 'notes') return;
+    if (typeof window === 'undefined') return;
+
+    const onResize = () => {
+      scheduleNotesLayout();
+    };
+
+    window.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('orientationchange', onResize, { passive: true });
+
+    // Mobile address-bar / zoom changes
+    const vv = window.visualViewport;
+    if (vv) vv.addEventListener('resize', onResize, { passive: true });
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      if (vv) vv.removeEventListener('resize', onResize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayMainTab]);
+
   function focusTaskInputWithName(name: string) {
     setNewTaskName(name);
     const isMobile =
