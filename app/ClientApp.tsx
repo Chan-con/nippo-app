@@ -640,6 +640,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }, [todayMainTab]);
 
+  // 履歴（カレンダー）モードはタイムライン内の機能として扱う
+  // → 履歴中はタイムラインタブに固定する
+  useEffect(() => {
+    if (viewMode !== 'history') return;
+    if (todayMainTab === 'timeline') return;
+    setTodayMainTab('timeline');
+  }, [viewMode, todayMainTab]);
+
   // task line (sticky notes) - horizontal, reorderable (synced via Supabase)
   // NOTE: タスクラインは日付ごとの管理ではなく「常に同じ内容」を表示する
   const TASK_LINE_GLOBAL_KEY = 'global';
@@ -4847,7 +4855,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         </aside>
 
         <main className="main-content">
-          {viewMode === 'today' && accessToken ? (
+          {accessToken ? (
             <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
               <button
                 type="button"
@@ -4864,6 +4872,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 role="tab"
                 aria-selected={todayMainTab === 'taskline'}
                 onClick={() => setTodayMainTab('taskline')}
+                disabled={viewMode === 'history'}
               >
                 🗃️ カンバン
               </button>
@@ -4873,6 +4882,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 role="tab"
                 aria-selected={todayMainTab === 'notes'}
                 onClick={() => setTodayMainTab('notes')}
+                disabled={viewMode === 'history'}
               >
                 📝 ノート
               </button>
@@ -4906,6 +4916,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     aria-label="カレンダー"
                     type="button"
                     onClick={() => {
+                      setTodayMainTab('timeline');
                       setViewMode('history');
                       if (!historyDate) {
                         const todayIso = formatDateISO(new Date());
