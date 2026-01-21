@@ -168,6 +168,17 @@ const NOTES_GLOBAL_KEY = 'global';
 
 const SHORTCUTS_GLOBAL_KEY = 'global';
 
+const NOTICE_GLOBAL_KEY = 'global';
+
+function normalizeNotice(input) {
+  const obj = input && typeof input === 'object' ? input : {};
+  const text = typeof obj?.text === 'string' ? String(obj.text) : '';
+  const toneRaw = obj?.tone;
+  const tone = toneRaw === 'info' || toneRaw === 'danger' || toneRaw === 'success' || toneRaw === 'warning' || toneRaw === 'default' ? toneRaw : 'default';
+  const updatedAt = typeof obj?.updatedAt === 'string' ? String(obj.updatedAt) : '';
+  return { text, tone, updatedAt };
+}
+
 function normalizeTaskLineCards(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
@@ -840,6 +851,55 @@ export async function onRequest(context) {
       await taskManager._setDoc(userId, 'shortcuts', SHORTCUTS_GLOBAL_KEY, {
         key: SHORTCUTS_GLOBAL_KEY,
         items,
+        updatedAt,
+      });
+
+      return jsonResponse({ success: true, updatedAt });
+    }
+
+    // notice (announcement)
+    if (parts.length === 1 && parts[0] === 'notice' && request.method === 'GET') {
+      const doc = await taskManager._getDoc(userId, 'notice', NOTICE_GLOBAL_KEY, {
+        text: '',
+        tone: 'default',
+      });
+
+      const n = normalizeNotice(doc);
+      const updatedAt = typeof doc?.updatedAt === 'string' ? String(doc.updatedAt) : '';
+      return jsonResponse({ success: true, notice: { key: NOTICE_GLOBAL_KEY, text: n.text, tone: n.tone, updatedAt } });
+    }
+
+    if (parts.length === 1 && parts[0] === 'notice' && request.method === 'POST') {
+      const baseUpdatedAt = typeof body?.baseUpdatedAt === 'string' ? String(body.baseUpdatedAt) : '';
+
+      const currentDoc = await taskManager._getDoc(userId, 'notice', NOTICE_GLOBAL_KEY, {
+        text: '',
+        tone: 'default',
+      });
+      const currentUpdatedAt = typeof currentDoc?.updatedAt === 'string' ? String(currentDoc.updatedAt) : '';
+
+      if (baseUpdatedAt && currentUpdatedAt && baseUpdatedAt !== currentUpdatedAt) {
+        const server = normalizeNotice(currentDoc);
+        return jsonResponse(
+          {
+            success: false,
+            error: 'Conflict',
+            conflict: true,
+            notice: { key: NOTICE_GLOBAL_KEY, text: server.text, tone: server.tone, updatedAt: currentUpdatedAt },
+          },
+          409
+        );
+      }
+
+      const incoming = normalizeNotice(body?.notice);
+      const text = String(incoming.text || '').slice(0, 8000);
+      const tone = incoming.tone;
+
+      const updatedAt = new Date().toISOString();
+      await taskManager._setDoc(userId, 'notice', NOTICE_GLOBAL_KEY, {
+        key: NOTICE_GLOBAL_KEY,
+        text,
+        tone,
         updatedAt,
       });
 

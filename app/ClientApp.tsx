@@ -34,6 +34,13 @@ type ShortcutItem = {
   createdAt: string;
 };
 
+type NoticeTone = 'info' | 'danger' | 'success' | 'warning' | 'default';
+
+type NoticeData = {
+  text: string;
+  tone: NoticeTone;
+};
+
 const TASK_LINE_LANES: Array<{ key: TaskLineLane; label: string }> = [
   { key: 'mon', label: '月' },
   { key: 'tue', label: '火' },
@@ -667,6 +674,196 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       // ignore
     }
   }, [todayMainTab]);
+
+  // notice (above shortcut launcher)
+  const NOTICE_KEY = 'nippoNotice';
+  const [notice, setNotice] = useState<NoticeData>({ text: '', tone: 'default' });
+  const [noticeModalOpen, setNoticeModalOpen] = useState(false);
+  const [noticeModalText, setNoticeModalText] = useState('');
+  const [noticeModalTone, setNoticeModalTone] = useState<NoticeTone>('default');
+  const noticeLoadedFromServerRef = useRef(false);
+  const noticeSaveTimerRef = useRef<number | null>(null);
+  const noticeLastSavedSnapshotRef = useRef<string>('');
+  const noticeIsSavingRef = useRef(false);
+  const noticeServerUpdatedAtRef = useRef<string>('');
+  const noticePollTimerRef = useRef<number | null>(null);
+
+  function isNoticeTone(v: unknown): v is NoticeTone {
+    return v === 'info' || v === 'danger' || v === 'success' || v === 'warning' || v === 'default';
+  }
+
+  function normalizeNotice(input: unknown): NoticeData {
+    const obj = (input && typeof input === 'object' ? (input as any) : null) as any;
+    const text = typeof obj?.text === 'string' ? String(obj.text) : '';
+    const toneRaw = obj?.tone;
+    const tone: NoticeTone = isNoticeTone(toneRaw) ? toneRaw : 'default';
+    return { text, tone };
+  }
+
+  function noticeSnapshot(n: NoticeData) {
+    try {
+      return JSON.stringify({ text: String(n?.text || ''), tone: String(n?.tone || 'default') });
+    } catch {
+      return '';
+    }
+  }
+
+  async function loadNoticeFromServer() {
+    if (!accessToken) return;
+    try {
+      const res = await apiFetch('/api/notice', { cache: 'no-store' });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'お知らせの取得に失敗しました');
+      const serverNotice = normalizeNotice(body?.notice);
+      const serverUpdatedAt = typeof body?.notice?.updatedAt === 'string' ? String(body.notice.updatedAt) : '';
+      noticeServerUpdatedAtRef.current = serverUpdatedAt;
+
+      // Migration: if server is empty but local has content, upload local once.
+      if (String(serverNotice.text || '').trim() === '' && String(notice.text || '').trim() !== '') {
+        try {
+          await apiFetch('/api/notice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notice, baseUpdatedAt: serverUpdatedAt || '' }),
+          });
+          noticeLoadedFromServerRef.current = true;
+          noticeLastSavedSnapshotRef.current = noticeSnapshot(notice);
+          return;
+        } catch {
+          // if upload fails, keep local
+          noticeLoadedFromServerRef.current = true;
+          noticeLastSavedSnapshotRef.current = noticeSnapshot(notice);
+          return;
+        }
+      }
+
+      noticeLoadedFromServerRef.current = true;
+      noticeLastSavedSnapshotRef.current = noticeSnapshot(serverNotice);
+      setNotice(serverNotice);
+    } catch {
+      // If server fails, fall back to local
+      noticeLoadedFromServerRef.current = true;
+      noticeLastSavedSnapshotRef.current = noticeSnapshot(notice);
+    }
+  }
+
+  async function saveNoticeToServerNow(next: NoticeData) {
+    if (!accessToken) return;
+    if (noticeIsSavingRef.current) return;
+    noticeIsSavingRef.current = true;
+    try {
+      const res = await apiFetch('/api/notice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notice: next, baseUpdatedAt: noticeServerUpdatedAtRef.current || '' }),
+      });
+      const body = await res.json().catch(() => null);
+
+      if (res.status === 409 && body?.conflict) {
+        const serverNotice = normalizeNotice(body?.notice);
+        const serverUpdatedAt = typeof body?.notice?.updatedAt === 'string' ? String(body.notice.updatedAt) : '';
+        noticeServerUpdatedAtRef.current = serverUpdatedAt;
+        noticeLastSavedSnapshotRef.current = noticeSnapshot(serverNotice);
+        // Prefer local; let debounced effect retry with new baseUpdatedAt
+        return;
+      }
+
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'お知らせの保存に失敗しました');
+      const updatedAt = typeof body?.updatedAt === 'string' ? String(body.updatedAt) : '';
+      if (updatedAt) noticeServerUpdatedAtRef.current = updatedAt;
+      noticeLastSavedSnapshotRef.current = noticeSnapshot(next);
+    } catch {
+      // ignore (keep local)
+    } finally {
+      noticeIsSavingRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(NOTICE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setNotice(normalizeNotice(parsed));
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(NOTICE_KEY, JSON.stringify(notice));
+    } catch {
+      // ignore
+    }
+
+    if (!accessToken) return;
+    if (!noticeLoadedFromServerRef.current) return;
+
+    // Debounced server sync
+    if (noticeSaveTimerRef.current != null) {
+      window.clearTimeout(noticeSaveTimerRef.current);
+      noticeSaveTimerRef.current = null;
+    }
+    const snap = noticeSnapshot(notice);
+    if (snap && snap === noticeLastSavedSnapshotRef.current) return;
+    noticeSaveTimerRef.current = window.setTimeout(() => {
+      noticeSaveTimerRef.current = null;
+      void saveNoticeToServerNow(notice);
+    }, 800);
+  }, [notice, accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    void loadNoticeFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      if (noticePollTimerRef.current != null) {
+        window.clearInterval(noticePollTimerRef.current);
+        noticePollTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (noticePollTimerRef.current != null) {
+      window.clearInterval(noticePollTimerRef.current);
+      noticePollTimerRef.current = null;
+    }
+
+    noticePollTimerRef.current = window.setInterval(async () => {
+      if (!accessToken) return;
+      if (noticeModalOpen) return;
+      try {
+        const res = await apiFetch('/api/notice', { cache: 'no-store' });
+        const body = await res.json().catch(() => null);
+        if (!res.ok || !body?.success) return;
+        const serverUpdatedAt = typeof body?.notice?.updatedAt === 'string' ? String(body.notice.updatedAt) : '';
+        if (!serverUpdatedAt || serverUpdatedAt === noticeServerUpdatedAtRef.current) return;
+        const serverNotice = normalizeNotice(body?.notice);
+        const serverSnap = noticeSnapshot(serverNotice);
+        const currentSnap = noticeSnapshot(notice);
+        noticeServerUpdatedAtRef.current = serverUpdatedAt;
+        noticeLastSavedSnapshotRef.current = serverSnap;
+        if (serverSnap !== currentSnap) setNotice(serverNotice);
+      } catch {
+        // ignore
+      }
+    }, 15000);
+
+    return () => {
+      if (noticePollTimerRef.current != null) {
+        window.clearInterval(noticePollTimerRef.current);
+        noticePollTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, notice, noticeModalOpen]);
 
   // shortcut launcher (above timeline / kanban / notes tabs)
   const SHORTCUTS_KEY = 'nippoShortcutLauncher';
@@ -5395,6 +5592,61 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         <main className="main-content">
           {accessToken ? (
             <div className="today-panels-header">
+              <div className="w-full" aria-label="お知らせ">
+                {(() => {
+                  const trimmed = String(notice.text || '').trim();
+                  const tone = notice.tone || 'default';
+                  const isEmpty = trimmed === '';
+
+                  const toneStyles: Record<NoticeTone, { icon: string; border: string; bg: string; title: string }> = {
+                    info: { icon: 'info', title: 'Info', bg: 'bg-blue-950/40', border: 'border-blue-700/40' },
+                    danger: { icon: 'error', title: 'Danger', bg: 'bg-rose-950/45', border: 'border-rose-700/40' },
+                    success: { icon: 'check_circle', title: 'Success', bg: 'bg-emerald-950/40', border: 'border-emerald-700/40' },
+                    warning: { icon: 'warning', title: 'Warning', bg: 'bg-amber-950/45', border: 'border-amber-700/40' },
+                    default: { icon: 'campaign', title: 'Notice', bg: 'bg-slate-900/55', border: 'border-slate-700/50' },
+                  };
+
+                  const s = isEmpty
+                    ? { icon: 'campaign', title: 'Notice', bg: 'bg-white/5', border: 'border-white/10' }
+                    : toneStyles[(tone as NoticeTone) || 'default'] || toneStyles.default;
+                  return (
+                    <div className={`w-full rounded-xl border ${s.border} ${s.bg} px-4 py-3 mb-3`}>
+                      <div className="flex items-start gap-3">
+                        <span className="material-icons" style={{ fontSize: 18, marginTop: 2, color: 'var(--text-secondary)' }} aria-hidden="true">
+                          {s.icon}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-[color:var(--text-primary)]">{s.title}</div>
+                          <div
+                            className={`mt-1 text-sm whitespace-pre-wrap break-words ${
+                              isEmpty ? 'text-[color:var(--text-muted)]' : 'text-[color:var(--text-secondary)]'
+                            }`}
+                          >
+                            {trimmed ? notice.text : 'None'}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-md border border-transparent hover:border-white/10 hover:bg-white/5 p-1"
+                          title="お知らせを編集"
+                          aria-label="お知らせを編集"
+                          onClick={() => {
+                            setNoticeModalText(notice.text || '');
+                            setNoticeModalTone((notice.tone as NoticeTone) || 'default');
+                            setNoticeModalOpen(true);
+                          }}
+                          disabled={busy}
+                        >
+                          <span className="material-icons" style={{ fontSize: 18, color: 'var(--text-muted)' }}>
+                            edit
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="shortcut-launcher-frame" aria-label="ショートカットランチャー">
                 <div className="shortcut-launcher-label" aria-hidden="true">Shortcut</div>
                 <div
@@ -6333,6 +6585,96 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               disabled={busy}
             >
               <span className="material-icons">{notesModalWillDelete ? 'close' : 'done'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`edit-dialog ${noticeModalOpen ? 'show' : ''}`}
+        id="notice-edit-dialog"
+        aria-hidden={!noticeModalOpen}
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) setNoticeModalOpen(false);
+        }}
+      >
+        <div className="edit-content" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="edit-body">
+            <div className="edit-field">
+              <label htmlFor="notice-text">お知らせ</label>
+              <textarea
+                id="notice-text"
+                className="edit-input"
+                value={noticeModalText}
+                onChange={(e) => setNoticeModalText(e.target.value)}
+                rows={5}
+                placeholder="お知らせ内容（改行OK）"
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    setNoticeModalOpen(false);
+                    return;
+                  }
+                  if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                    ev.preventDefault();
+                    setNotice({ text: noticeModalText, tone: noticeModalTone });
+                    setNoticeModalOpen(false);
+                  }
+                }}
+                disabled={busy}
+                style={{ resize: 'vertical', minHeight: 120, lineHeight: 1.5 }}
+              />
+              <div className="mt-2 text-xs text-[color:var(--text-muted)]">Ctrl+Enterで保存、Escで閉じる</div>
+            </div>
+
+            <div className="edit-field">
+              <label>カラー</label>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { tone: 'info', label: 'Info', cls: 'bg-blue-950/50 border-blue-700/40' },
+                    { tone: 'danger', label: 'Danger', cls: 'bg-rose-950/55 border-rose-700/40' },
+                    { tone: 'success', label: 'Success', cls: 'bg-emerald-950/50 border-emerald-700/40' },
+                    { tone: 'warning', label: 'Warning', cls: 'bg-amber-950/55 border-amber-700/40' },
+                    { tone: 'default', label: 'Default', cls: 'bg-slate-900/60 border-slate-700/50' },
+                  ] as Array<{ tone: NoticeTone; label: string; cls: string }>
+                ).map((opt) => {
+                  const active = noticeModalTone === opt.tone;
+                  return (
+                    <button
+                      key={opt.tone}
+                      type="button"
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${opt.cls} ${
+                        active ? 'ring-2 ring-[rgba(137,180,250,0.25)]' : 'hover:bg-white/5'
+                      }`}
+                      aria-pressed={active}
+                      onClick={() => setNoticeModalTone(opt.tone)}
+                      disabled={busy}
+                    >
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-white/70" aria-hidden="true" />
+                      <span className="text-[color:var(--text-primary)]">{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="edit-footer">
+            <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => setNoticeModalOpen(false)} disabled={busy}>
+              <span className="material-icons">close</span>
+            </button>
+            <button
+              className="btn-primary"
+              type="button"
+              title="保存"
+              aria-label="保存"
+              onClick={() => {
+                setNotice({ text: noticeModalText, tone: noticeModalTone });
+                setNoticeModalOpen(false);
+              }}
+              disabled={busy}
+            >
+              <span className="material-icons">done</span>
             </button>
           </div>
         </div>
