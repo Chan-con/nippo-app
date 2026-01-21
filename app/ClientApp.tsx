@@ -6746,12 +6746,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       <div className={`report-dialog ${reportOpen ? 'show' : ''}`} id="report-dialog" aria-hidden={!reportOpen}>
         <div className="report-content">
-          <div className="report-header">
-            <h3>📋 報告書作成</h3>
-            <button className="report-close" id="report-close" title="閉じる" aria-label="閉じる" type="button" onClick={() => setReportOpen(false)}>
-              <span className="material-icons">close</span>
-            </button>
-          </div>
           <div className="report-body">
             <div className="report-section">
               <h4>🎯 目標</h4>
@@ -6988,20 +6982,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       <div className={`report-dialog ${tagWorkReportOpen ? 'show' : ''}`} id="tag-work-report-dialog" aria-hidden={!tagWorkReportOpen}>
         <div className="report-content">
-          <div className="report-header">
-            <h3>🏷️ タグ別作業報告</h3>
-            <button
-              className="report-close"
-              id="tag-work-report-close"
-              title="閉じる"
-              aria-label="閉じる"
-              type="button"
-              onClick={() => setTagWorkReportOpen(false)}
-            >
-              <span className="material-icons">close</span>
-            </button>
-          </div>
-
           <div className="report-body">
             <div className="report-section">
               <h4>🗓️ 対象期間</h4>
@@ -7251,12 +7231,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       <div className={`settings-dialog ${settingsOpen ? 'show' : ''}`} id="settings-dialog" aria-hidden={!settingsOpen}>
         <div className="settings-content">
-          <div className="settings-header">
-            <h3>⚙️ 設定</h3>
-            <button className="settings-close" id="settings-close" title="閉じる" aria-label="閉じる" type="button" onClick={() => setSettingsOpen(false)}>
-              <span className="material-icons">close</span>
-            </button>
-          </div>
           <div className="settings-body">
             {error ? (
               <div className="settings-section">
@@ -7617,12 +7591,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       <div className={`task-stock-dialog ${goalStockOpen ? 'show' : ''}`} id="goal-stock-dialog" aria-hidden={!goalStockOpen}>
         <div className="task-stock-content">
-          <div className="task-stock-header">
-            <h3>🎯 目標管理</h3>
-            <button className="task-stock-close" id="goal-stock-close" title="閉じる" aria-label="閉じる" type="button" onClick={() => setGoalStockOpen(false)}>
-              <span className="material-icons">close</span>
-            </button>
-          </div>
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>🎯 保存済み目標</h4>
@@ -7752,12 +7720,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       <div className={`task-stock-dialog ${taskStockOpen ? 'show' : ''}`} id="task-stock-dialog" aria-hidden={!taskStockOpen}>
         <div className="task-stock-content">
-          <div className="task-stock-header">
-            <h3>📚 タスクストック</h3>
-            <button className="task-stock-close" id="task-stock-close" title="閉じる" aria-label="閉じる" type="button" onClick={() => setTaskStockOpen(false)}>
-              <span className="material-icons">close</span>
-            </button>
-          </div>
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>💾 保存済みタスク</h4>
@@ -7900,12 +7862,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       <div className={`task-stock-dialog ${tagStockOpen ? 'show' : ''}`} id="tag-stock-dialog" aria-hidden={!tagStockOpen}>
         <div className="task-stock-content">
-          <div className="task-stock-header">
-            <h3>🏷️ タグ管理</h3>
-            <button className="task-stock-close" id="tag-stock-close" title="閉じる" aria-label="閉じる" type="button" onClick={() => setTagStockOpen(false)}>
-              <span className="material-icons">close</span>
-            </button>
-          </div>
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>🏷️ 保存済みタグ</h4>
@@ -8046,20 +8002,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         aria-hidden={!holidayCalendarOpen}
       >
         <div className="task-stock-content holiday-cal-content">
-          <div className="task-stock-header">
-            <h3>📅 お休みカレンダー</h3>
-            <button
-              className="task-stock-close"
-              id="holiday-calendar-close"
-              title="閉じる"
-              aria-label="閉じる"
-              type="button"
-              onClick={() => void requestCloseHolidayCalendar()}
-            >
-              <span className="material-icons">close</span>
-            </button>
-          </div>
-
           <div className="task-stock-body">
             <div className="holiday-cal-header">
               <button
@@ -8224,20 +8166,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       <div className={`task-stock-dialog ${billingOpen ? 'show' : ''}`} id="billing-dialog" aria-hidden={!billingOpen}>
         <div className="task-stock-content billing-content">
-          <div className="task-stock-header">
-            <h3>🧾 請求</h3>
-            <button
-              className="task-stock-close"
-              id="billing-close"
-              title="閉じる"
-              aria-label="閉じる"
-              type="button"
-              onClick={() => setBillingOpen(false)}
-            >
-              <span className="material-icons">close</span>
-            </button>
-          </div>
-
           <div className="task-stock-body">
             {billingRemoteUpdatePending ? (
               <div className="task-stock-section">

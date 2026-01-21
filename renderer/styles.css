@@ -2046,6 +2046,13 @@ input[type='number']::-webkit-inner-spin-button {
   flex-shrink: 0;
 }
 
+/* サイドメニュー系モーダル: フッターに戻るがあるためヘッダーを省略 */
+.report-dialog .report-header,
+.settings-dialog .settings-header,
+.task-stock-dialog .task-stock-header {
+  display: none;
+}
+
 .report-header h3 {
   color: var(--text-primary);
   font-size: 20px;
