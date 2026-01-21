@@ -2688,7 +2688,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* ショートカットランチャー（タブの上） */
 .shortcut-launcher-frame {
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-small);
