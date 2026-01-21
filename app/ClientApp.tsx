@@ -5591,7 +5591,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
         <main className="main-content">
           {accessToken ? (
-            <div className="today-panels-header">
+            <div className={`today-panels-header${showMainHeader ? '' : ' no-main-header'}`}>
               <div className="w-full" aria-label="お知らせ">
                 {(() => {
                   const trimmed = String(notice.text || '').trim();

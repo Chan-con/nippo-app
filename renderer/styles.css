@@ -693,7 +693,7 @@ input[type='number']::-webkit-inner-spin-button {
 /* タイムライン以外でヘッダーを非表示にする場合の補正 */
 .main-body.no-header {
   margin-top: 0;
-  padding-top: 24px;
+  padding-top: 12px;
 }
 
 /* 履歴モードでは日付入力をヘッダー中央に配置 */
@@ -2393,6 +2393,11 @@ input[type='number']::-webkit-inner-spin-button {
   padding-left: 24px;
   padding-right: 24px;
   margin-bottom: 14px;
+}
+
+/* カンバン/ノート（メインヘッダー非表示）ではタブ下の余白を詰める */
+.today-panels-header.no-main-header {
+  margin-bottom: 6px;
 }
 
 .today-panels-tabs {
