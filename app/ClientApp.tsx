@@ -5598,16 +5598,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   const tone = notice.tone || 'default';
                   const isEmpty = trimmed === '';
 
-                  const toneStyles: Record<NoticeTone, { icon: string; border: string; bg: string; title: string }> = {
-                    info: { icon: 'info', title: 'Info', bg: 'bg-blue-950/40', border: 'border-blue-700/40' },
-                    danger: { icon: 'error', title: 'Danger', bg: 'bg-rose-950/45', border: 'border-rose-700/40' },
-                    success: { icon: 'check_circle', title: 'Success', bg: 'bg-emerald-950/40', border: 'border-emerald-700/40' },
-                    warning: { icon: 'warning', title: 'Warning', bg: 'bg-amber-950/45', border: 'border-amber-700/40' },
-                    default: { icon: 'campaign', title: 'Notice', bg: 'bg-slate-900/55', border: 'border-slate-700/50' },
+                  const toneStyles: Record<NoticeTone, { icon: string; border: string; bg: string }> = {
+                    info: { icon: 'info', bg: 'bg-blue-950/40', border: 'border-blue-700/40' },
+                    danger: { icon: 'error', bg: 'bg-rose-950/45', border: 'border-rose-700/40' },
+                    success: { icon: 'check_circle', bg: 'bg-emerald-950/40', border: 'border-emerald-700/40' },
+                    warning: { icon: 'warning', bg: 'bg-amber-950/45', border: 'border-amber-700/40' },
+                    default: { icon: 'campaign', bg: 'bg-slate-900/55', border: 'border-slate-700/50' },
                   };
 
                   const s = isEmpty
-                    ? { icon: 'campaign', title: 'Notice', bg: 'bg-white/5', border: 'border-white/10' }
+                    ? { icon: 'campaign', bg: 'bg-white/5', border: 'border-white/10' }
                     : toneStyles[(tone as NoticeTone) || 'default'] || toneStyles.default;
                   return (
                     <div className={`w-full rounded-xl border ${s.border} ${s.bg} px-4 py-3 mb-3`}>
@@ -5616,9 +5616,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           {s.icon}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold text-[color:var(--text-primary)]">{s.title}</div>
                           <div
-                            className={`mt-1 text-sm whitespace-pre-wrap break-words ${
+                            className={`text-sm whitespace-pre-wrap break-words ${
                               isEmpty ? 'text-[color:var(--text-muted)]' : 'text-[color:var(--text-secondary)]'
                             }`}
                           >
