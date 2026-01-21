@@ -2387,7 +2387,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 .today-panels-header {
   /* タブの上にショートカット枠も含めたヘッダー領域 */
-  padding-top: calc(12px + 24px);
+  padding-top: 12px;
   margin-left: -24px;
   margin-right: -24px;
   padding-left: 24px;
