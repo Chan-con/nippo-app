@@ -2586,8 +2586,8 @@ input[type='number']::-webkit-inner-spin-button {
   flex: 1;
 }
 
-/* 画面が十分広い場合は、報告書モーダル並みに縦へ広げる */
-@media (min-width: 640px) and (min-height: 720px) {
+/* 画面が十分広い場合は、縦方向の余白を最大限使う */
+@media (min-width: 640px) {
   .notes-edit-content {
     height: calc(var(--app-height) - var(--app-offset-top) - 48px);
   }
