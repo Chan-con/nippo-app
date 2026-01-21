@@ -2695,10 +2695,14 @@ input[type='number']::-webkit-inner-spin-button {
   scrollbar-color: var(--accent) var(--bg-tertiary);
 }
 
-.shortcut-launcher-spacer {
-  flex: 1 0 auto;
-  min-width: 12px;
-  height: 1px;
+/* ショートカット追加モーダルは最小限のサイズに */
+.shortcut-edit-content {
+  width: min(520px, calc(100vw - 24px));
+  max-width: 520px;
+}
+
+.shortcut-edit-content .edit-body {
+  padding: 18px;
 }
 
 .shortcut-launcher::-webkit-scrollbar {

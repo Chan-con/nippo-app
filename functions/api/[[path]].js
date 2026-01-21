@@ -84,6 +84,57 @@ function getTodayDateStringJST() {
   return `${parts[0]}-${parts[1]}-${parts[2]}`;
 }
 
+function isPrivateIpV4(hostname) {
+  const m = String(hostname || '').match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  const parts = m.slice(1).map((v) => Number(v));
+  if (parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
+  const a = parts[0];
+  const b = parts[1];
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+}
+
+function isPrivateHostname(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  if (!h) return true;
+  if (h === 'localhost') return true;
+  if (h.endsWith('.local')) return true;
+  if (h === '::1') return true;
+  if (h.startsWith('127.')) return true;
+  if (isPrivateIpV4(h)) return true;
+  // Rough IPv6 private checks
+  if (h.startsWith('fc') || h.startsWith('fd')) return true; // fc00::/7
+  if (h.startsWith('fe80:')) return true; // link-local
+  return false;
+}
+
+function extractTitle(html) {
+  const m = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!m) return '';
+  return String(m[1] || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractIconHref(html) {
+  const patterns = [
+    /<link[^>]*rel=["'][^"']*icon[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+    /<link[^>]*href=["']([^"']+)["'][^>]*rel=["'][^"']*icon[^"']*["'][^>]*>/i,
+    /<link[^>]*rel=["'][^"']*apple-touch-icon[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+    /<link[^>]*href=["']([^"']+)["'][^>]*rel=["'][^"']*apple-touch-icon[^"']*["'][^>]*>/i,
+  ];
+  for (const re of patterns) {
+    const m = String(html || '').match(re);
+    if (m?.[1]) return String(m[1]).trim();
+  }
+  return '';
+}
+
 const TASKLINE_GLOBAL_KEY = 'global';
 
 const NOTES_GLOBAL_KEY = 'global';
@@ -162,6 +213,61 @@ export async function onRequest(context) {
   const body = await readJsonBody(request);
 
   try {
+    // URL metadata (title + favicon) for shortcut launcher
+    if (parts.length === 1 && parts[0] === 'url-metadata' && request.method === 'GET') {
+      const rawUrl = String(url.searchParams.get('url') || '').trim();
+      if (!rawUrl) return jsonResponse({ success: false, error: 'url is required' }, 400);
+
+      let target;
+      try {
+        target = new URL(rawUrl);
+      } catch {
+        return jsonResponse({ success: false, error: 'invalid url' }, 400);
+      }
+
+      if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+        return jsonResponse({ success: false, error: 'only http/https are allowed' }, 400);
+      }
+      if (isPrivateHostname(target.hostname)) {
+        return jsonResponse({ success: false, error: 'blocked hostname' }, 400);
+      }
+
+      const res = await fetch(target.toString(), {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          'user-agent': 'nippo-app/1.0 (+metadata-fetch)',
+          accept: 'text/html,application/xhtml+xml',
+        },
+      });
+
+      const finalUrl = res.url || target.toString();
+      const MAX_BYTES = 200 * 1024;
+      const buf = await res.arrayBuffer();
+      const slice = buf.byteLength > MAX_BYTES ? buf.slice(0, MAX_BYTES) : buf;
+      const html = new TextDecoder('utf-8').decode(slice);
+
+      const title = extractTitle(html) || new URL(finalUrl).hostname;
+      const iconHref = extractIconHref(html);
+      let iconUrl = '';
+      if (iconHref) {
+        try {
+          iconUrl = new URL(iconHref, finalUrl).toString();
+        } catch {
+          iconUrl = '';
+        }
+      }
+      if (!iconUrl) {
+        try {
+          iconUrl = new URL('/favicon.ico', finalUrl).toString();
+        } catch {
+          iconUrl = '';
+        }
+      }
+
+      return jsonResponse({ success: true, title, iconUrl, finalUrl });
+    }
+
     // GPT API key (encrypted)
     if (parts.length === 1 && parts[0] === 'gpt-api-key' && request.method === 'GET') {
       const doc = await taskManager._getDoc(userId, 'gpt_api_key', 'default', null);

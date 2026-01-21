@@ -743,7 +743,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setShortcutModalSaving(true);
     setShortcutModalError(null);
     try {
-      const res = await fetch(`/api/url-metadata?url=${encodeURIComponent(normalized)}`);
+      const res = await apiFetch(`/api/url-metadata?url=${encodeURIComponent(normalized)}`);
       const body = await res.json().catch(() => null);
       if (!res.ok || !body?.success) throw new Error(body?.error || 'メタ情報の取得に失敗しました');
 
@@ -5185,24 +5185,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         <main className="main-content">
           {accessToken ? (
             <>
-              <div className="shortcut-launcher" aria-label="ショートカットランチャー">
-                <div
-                  className="shortcut-launcher-spacer"
-                  onDragOver={(ev) => {
-                    if (!shortcutDraggingId) return;
-                    ev.preventDefault();
-                    ev.dataTransfer.dropEffect = 'move';
-                    setShortcutDragOverId(null);
-                  }}
-                  onDrop={(ev) => {
-                    if (!shortcutDraggingId) return;
-                    ev.preventDefault();
-                    const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
-                    if (!id) return;
-                    moveShortcutByDrop(id, null);
-                    setShortcutDragOverId(null);
-                  }}
-                />
+              <div
+                className="shortcut-launcher"
+                aria-label="ショートカットランチャー"
+                onDragOver={(ev) => {
+                  if (!shortcutDraggingId) return;
+                  ev.preventDefault();
+                  ev.dataTransfer.dropEffect = 'move';
+                  setShortcutDragOverId(null);
+                }}
+                onDrop={(ev) => {
+                  if (!shortcutDraggingId) return;
+                  ev.preventDefault();
+                  const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
+                  if (!id) return;
+                  moveShortcutByDrop(id, null);
+                  setShortcutDragOverId(null);
+                }}
+              >
                 {(Array.isArray(shortcuts) ? shortcuts : []).map((sc) => {
                   const label = String(sc.title || sc.url || 'ショートカット');
                   return (
@@ -5268,8 +5268,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           alt=""
                           loading="lazy"
                           onError={(e) => {
-                            const img = e.currentTarget;
-                            img.style.display = 'none';
+                            // clear iconUrl to show fallback icon
+                            setShortcuts((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === sc.id ? { ...x, iconUrl: '' } : x)) : prev));
                           }}
                         />
                       ) : null}
@@ -6133,7 +6133,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           if (e.target === e.currentTarget) closeShortcutModal();
         }}
       >
-        <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="edit-content shortcut-edit-content" onMouseDown={(e) => e.stopPropagation()}>
           <div className="edit-body">
             <div className="edit-field">
               <label htmlFor="shortcut-add-url">URL</label>
