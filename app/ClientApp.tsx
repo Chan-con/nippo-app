@@ -634,6 +634,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   });
 
+  // `viewMode`（今日/履歴=カレンダー）はタイムライン内の表示モード。
+  // タイムライン以外（カンバン/ノート）では独立して動けるように、
+  // それらのUI/副作用では常に「今日」として扱う。
+  const effectiveViewMode: 'today' | 'history' = todayMainTab === 'timeline' ? viewMode : 'today';
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -643,13 +648,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }, [todayMainTab]);
 
-  // 履歴（カレンダー）モードはタイムライン内の機能として扱う
-  // → 履歴中はタイムラインタブに固定する
-  useEffect(() => {
-    if (viewMode !== 'history') return;
-    if (todayMainTab === 'timeline') return;
-    setTodayMainTab('timeline');
-  }, [viewMode, todayMainTab]);
+  // NOTE: 以前は履歴（カレンダー）中にタイムラインタブへ固定していたが、
+  // タブは独立した機能なので固定しない（必要ならユーザーが戻る）。
 
   // task line (sticky notes) - horizontal, reorderable (synced via Supabase)
   // NOTE: タスクラインは日付ごとの管理ではなく「常に同じ内容」を表示する
@@ -1191,7 +1191,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   useEffect(() => {
-    if (viewMode === 'history') return;
+    if (effectiveViewMode === 'history') return;
     if (!taskLineDateKey) return;
 
     if (accessToken) {
@@ -1209,10 +1209,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setTaskLineRemoteUpdatePending(false);
     taskLineLastSavedSnapshotRef.current = '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, taskLineDateKey, viewMode]);
+  }, [accessToken, taskLineDateKey, effectiveViewMode]);
 
   useEffect(() => {
-    if (viewMode === 'history') return;
+    if (effectiveViewMode === 'history') return;
     if (!taskLineDateKey) return;
     if (taskLineLoadedDateKey !== taskLineDateKey) return;
     if (taskLineEditingId) return;
@@ -1253,7 +1253,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       taskLineSaveTimerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskLineCards, taskLineDirty, taskLineDateKey, taskLineLoadedDateKey, taskLineEditingId, taskLineDraggingId, accessToken, viewMode]);
+  }, [taskLineCards, taskLineDirty, taskLineDateKey, taskLineLoadedDateKey, taskLineEditingId, taskLineDraggingId, accessToken, effectiveViewMode]);
 
   async function loadNotesFromServer() {
     if (!accessToken) return;
@@ -2378,7 +2378,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const payloadTasks: Array<{ dateString: string; name: string; memo: string }> = [];
       for (const dateString of dateList) {
         let dayTasks: any[] = [];
-        if (dateString === todayYmd && viewMode === 'today') {
+        if (dateString === todayYmd && effectiveViewMode === 'today') {
           dayTasks = Array.isArray(tasks) ? tasks : [];
         } else {
           const resTasks = await apiFetch(`/api/tasks?dateString=${encodeURIComponent(dateString)}`);
@@ -2521,7 +2521,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           }
 
           if (docType === 'taskline' && typeof docKey === 'string' && docKey === taskLineDateKey) {
-            if (viewMode === 'history') return;
+            if (effectiveViewMode === 'history') return;
             if (taskLineEditingId || taskLineDraggingId) return;
             if (taskLineDirty) {
               setTaskLineRemoteUpdatePending(true);
@@ -2533,7 +2533,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           }
 
           if (docType === 'notes' && typeof docKey === 'string' && docKey === NOTES_GLOBAL_KEY) {
-            if (viewMode === 'history') return;
+            if (effectiveViewMode === 'history') return;
             if (notesEditingId) return;
             if (notesDirty) {
               setNotesRemoteUpdatePending(true);
@@ -2574,6 +2574,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     taskLineDirty,
     notesEditingId,
     notesDirty,
+    effectiveViewMode,
   ]);
 
   useEffect(() => {
@@ -2750,7 +2751,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function fireDueReservationNotifications() {
     if (!settingsReservationNotifyEnabled) return;
-    if (viewMode === 'history') return;
+    if (effectiveViewMode === 'history') return;
 
     const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBefore);
     if (minutesBeforeList.length === 0) return;
@@ -2789,7 +2790,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function syncReservationNotificationSchedule() {
     clearReservationNotificationSchedule();
     if (!settingsReservationNotifyEnabled) return;
-    if (viewMode === 'history') return;
+    if (effectiveViewMode === 'history') return;
 
     const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBefore);
     if (minutesBeforeList.length === 0) return;
@@ -2827,14 +2828,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   useEffect(() => {
     // settings/tasks の変化に追従してスケジュールを組み直す
     if (!accessToken) return;
-    if (viewMode === 'history') return;
+    if (effectiveViewMode === 'history') return;
     syncReservationNotificationSchedule();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, viewMode, tasks, settingsReservationNotifyEnabled, settingsReservationNotifyMinutesBefore]);
+  }, [accessToken, effectiveViewMode, tasks, settingsReservationNotifyEnabled, settingsReservationNotifyMinutesBefore]);
 
   useEffect(() => {
     if (!accessToken) return;
-    if (viewMode === 'history') return;
+    if (effectiveViewMode === 'history') return;
 
     const tick = () => {
       if (document.visibilityState !== 'visible') return;
@@ -2864,13 +2865,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       clearReservationNotificationSchedule();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, viewMode]);
+  }, [accessToken, effectiveViewMode]);
 
   useEffect(() => {
     // 予約の期限到来処理は /api/tasks(GET) のタイミングで走るため、
     // 画面を開いている間は定期的に取得してステータスを自動反映させる。
     if (!accessToken) return;
-    if (viewMode === 'history') return;
+    if (effectiveViewMode === 'history') return;
 
     let disposed = false;
 
@@ -2907,7 +2908,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, viewMode]);
+  }, [accessToken, effectiveViewMode]);
 
   async function loadHistoryDates() {
     if (!accessToken) return;
@@ -3185,7 +3186,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-[var(--text-secondary)]">日報管理アプリ</div>
               <div className="text-xs text-[var(--text-muted)]">
-                {viewMode === 'today' ? '今日' : '履歴'}
+                {effectiveViewMode === 'today' ? '今日' : '履歴'}
               </div>
             </div>
           </div>
@@ -3227,7 +3228,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const onNavigate = props.onNavigate;
 
     const navButton = (id: 'today' | 'history' | 'report' | 'tag-report', label: string) => {
-      const isActive = id === 'today' ? viewMode === 'today' : id === 'history' ? viewMode === 'history' : false;
+      const isActive = id === 'today' ? effectiveViewMode === 'today' : id === 'history' ? effectiveViewMode === 'history' : false;
       return (
         <button
           key={id}
@@ -3242,6 +3243,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             } else if (id === 'tag-report') {
               setTagWorkReportOpen(true);
             } else {
+              if (id === 'history') setTodayMainTab('timeline');
               setViewMode(id);
             }
             onNavigate?.();
@@ -3808,7 +3810,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const carryUrl = String(newTaskCarryUrl || '').trim();
 
     const todayIso = formatDateISO(new Date());
-    const isHistoryTarget = viewMode === 'history' && !!historyDate;
+    const isHistoryTarget = effectiveViewMode === 'history' && !!historyDate;
     const isReserve = addMode === 'reserve';
     const isPastReservationInCalendar = isHistoryTarget && isReserve && historyDate < todayIso;
     const reserveDateString = isHistoryTarget ? (historyDate === todayIso ? null : historyDate) : null;
@@ -3968,7 +3970,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return formatTimeHHMMSS(d);
   }
 
-  const effectiveTasks = viewMode === 'today' ? tasks : historyTasks;
+  const effectiveTasks = effectiveViewMode === 'today' ? tasks : historyTasks;
   const runningTask = tasks
     .slice()
     .reverse()
@@ -4000,7 +4002,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return list;
   }, [effectiveTasks]);
 
-  const timelineEmptyText = viewMode === 'today' ? 'まだタスクがありません' : 'この日はタスクがありません';
+  const timelineEmptyText = effectiveViewMode === 'today' ? 'まだタスクがありません' : 'この日はタスクがありません';
 
   const reportCompletedTasks = useMemo(() => {
     const list = tasks
@@ -4017,7 +4019,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return list;
   }, [tasks]);
 
-  const reportTimelineCopyBlocked = (viewMode === 'today' ? tasks : historyTasks).some(
+  const reportTimelineCopyBlocked = (effectiveViewMode === 'today' ? tasks : historyTasks).some(
     (t) => t.status === 'reserved' || (!t.endTime && t.status !== 'reserved')
   );
 
@@ -4156,10 +4158,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function openEditForTask(task: Task) {
     if (!accessToken || busy) return;
     if (!task?.id) return;
-    if (viewMode === 'history' && !historyDate) return;
+    if (effectiveViewMode === 'history' && !historyDate) return;
 
     setEditingTaskId(String(task.id));
-    setEditingTaskDateKey(viewMode === 'history' ? historyDate : null);
+    setEditingTaskDateKey(effectiveViewMode === 'history' ? historyDate : null);
     setEditName(String(task.name || ''));
     setEditTag(String(task.tag || '').trim());
     setEditStartTime(formatTimeDisplay(task.startTime) || '');
@@ -4184,7 +4186,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setBusy(true);
     setError(null);
     try {
-      if (viewMode === 'history') {
+      if (effectiveViewMode === 'history') {
         const dateKey = editingTaskDateKey || historyDate;
         if (!dateKey) throw new Error('日付が未選択です');
         const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, {
@@ -4221,7 +4223,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setBusy(true);
     setError(null);
     try {
-      if (viewMode === 'history') {
+      if (effectiveViewMode === 'history') {
         const dateKey = editingTaskDateKey || historyDate;
         if (!dateKey) throw new Error('日付が未選択です');
         const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, { method: 'DELETE' });
@@ -4486,7 +4488,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   // このヘッダー（日時・今日/履歴切替・カレンダー）はタイムラインで必要な要素なので、
   // 今日モードのタブ表示時は「タイムライン」タブでのみ表示する。
-  const showMainHeader = viewMode === 'history' || !(viewMode === 'today' && accessToken) || todayMainTab === 'timeline';
+  const showMainHeader = effectiveViewMode === 'history' || !(effectiveViewMode === 'today' && accessToken) || todayMainTab === 'timeline';
 
   return (
     <div style={{ display: 'contents' }}>
@@ -4589,7 +4591,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   title="予約"
                   aria-label="予約"
                   onClick={() => setAddMode('reserve')}
-                  disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
+                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
                 >
                   <span className="material-icons">schedule</span>
                 </button>
@@ -4621,7 +4623,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   aria-label="開始時刻"
                   value={reserveStartTime}
                   onChange={(e) => setReserveStartTime(e.target.value)}
-                  disabled={!accessToken || busy || (viewMode === 'history' && (!historyDate || historyDate < formatDateISO(new Date())))}
+                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < formatDateISO(new Date())))}
                 />
               </div>
 
@@ -4705,7 +4707,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                     if (e.key === 'Enter' && String(newTaskName || '').trim()) void addTask();
                   }}
-                  disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
+                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
                 />
 
                 {newTaskCarryMemoUrlEnabled ? (
@@ -4722,7 +4724,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         // ignore
                       }
                     }}
-                    disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
+                    disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
                   >
                     <span className="material-icons" aria-hidden="true">
                       sticky_note_2
@@ -4779,25 +4781,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <div className="task-add-actions">
                 <button
                   id="add-task-btn"
-                  className={`btn-primary btn-add-task ${viewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
+                  className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
                   type="button"
-                  title={viewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
-                  aria-label={viewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
+                  title={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
+                  aria-label={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
                   onClick={addTask}
                   disabled={
                     !accessToken ||
                     busy ||
                     !String(newTaskName || '').trim() ||
-                    (viewMode === 'history' && !historyDate) ||
-                    (viewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < formatDateISO(new Date()))
+                    (effectiveViewMode === 'history' && !historyDate) ||
+                    (effectiveViewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < formatDateISO(new Date()))
                   }
                 >
                   <span className="material-icons">
-                    {viewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? 'remove' : 'add'}
+                    {effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? 'remove' : 'add'}
                   </span>
                 </button>
 
-                {viewMode === 'today' && addMode !== 'reserve' && runningTask ? (
+                {effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? (
                   <button
                     id="end-task-btn"
                     className="btn-primary btn-end-task btn-end-task-small"
@@ -4940,7 +4942,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 role="tab"
                 aria-selected={todayMainTab === 'taskline'}
                 onClick={() => setTodayMainTab('taskline')}
-                disabled={viewMode === 'history'}
               >
                 🗃️ カンバン
               </button>
@@ -4950,7 +4951,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 role="tab"
                 aria-selected={todayMainTab === 'notes'}
                 onClick={() => setTodayMainTab('notes')}
-                disabled={viewMode === 'history'}
               >
                 📝 ノート
               </button>
@@ -4958,10 +4958,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           ) : null}
 
           {showMainHeader ? (
-            <div className={`main-header ${viewMode === 'history' ? 'history-mode' : ''}${viewMode === 'today' && accessToken ? ' with-tabs' : ''}`}>
+            <div
+              className={`main-header ${effectiveViewMode === 'history' ? 'history-mode' : ''}${effectiveViewMode === 'today' && accessToken ? ' with-tabs' : ''}`}
+            >
               <div className="date-display">
-                <h1 id="current-date">{viewMode === 'history' ? (historyDate ? formatDateISOToJaLong(historyDate) : '日付を選択') : formatDateJa(now)}</h1>
-                <p id="current-time" style={{ visibility: viewMode === 'history' ? 'hidden' : 'visible' }} aria-hidden={viewMode === 'history'}>
+                <h1 id="current-date">
+                  {effectiveViewMode === 'history' ? (historyDate ? formatDateISOToJaLong(historyDate) : '日付を選択') : formatDateJa(now)}
+                </h1>
+                <p
+                  id="current-time"
+                  style={{ visibility: effectiveViewMode === 'history' ? 'hidden' : 'visible' }}
+                  aria-hidden={effectiveViewMode === 'history'}
+                >
                   {formatTimeHHMMSS(now)}
                 </p>
               </div>
@@ -4969,7 +4977,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <div className="view-mode-toggle">
                   <button
                     id="today-btn"
-                    className={`mode-btn ${viewMode === 'today' ? 'active' : ''}`}
+                    className={`mode-btn ${effectiveViewMode === 'today' ? 'active' : ''}`}
                     title="今日"
                     aria-label="今日"
                     type="button"
@@ -4979,7 +4987,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </button>
                   <button
                     id="history-btn"
-                    className={`mode-btn ${viewMode === 'history' ? 'active' : ''}`}
+                    className={`mode-btn ${effectiveViewMode === 'history' ? 'active' : ''}`}
                     title="カレンダー"
                     aria-label="カレンダー"
                     type="button"
@@ -4997,7 +5005,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     <span className="material-icons">event</span>
                   </button>
                 </div>
-                <div className="date-selector" id="date-selector" style={{ display: viewMode === 'history' ? 'flex' : 'none' }}>
+                <div className="date-selector" id="date-selector" style={{ display: effectiveViewMode === 'history' ? 'flex' : 'none' }}>
                   <div className={`date-input-wrap ${historyDate ? 'has-value' : ''}`} id="date-input-wrap">
                     <input
                       type="date"
@@ -5029,7 +5037,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             className={`main-body${showMainHeader ? '' : ' no-header'}`}
             ref={mainBodyRef}
           >
-            {viewMode === 'today' && accessToken ? (
+            {effectiveViewMode === 'today' && accessToken ? (
               <div className="taskline-section" style={{ display: todayMainTab === 'taskline' ? undefined : 'none' }}>
               <div className="taskline-header" style={{ justifyContent: 'flex-end' }}>
                 <div className="taskline-status" aria-live="polite">
@@ -5227,7 +5235,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </div>
             ) : null}
 
-            {viewMode === 'today' && accessToken ? (
+            {effectiveViewMode === 'today' && accessToken ? (
               <div className="notes-section" style={{ display: todayMainTab === 'notes' ? undefined : 'none' }}>
                 <div className="notes-center">
                   <div className="notes-toolbar">
@@ -5311,9 +5319,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </div>
             ) : null}
 
-            {(viewMode === 'history' || !(viewMode === 'today' && accessToken) || todayMainTab === 'timeline') ? (
-              <div className={`timeline-section ${viewMode === 'history' ? 'history-mode' : ''}`}>
-                {viewMode === 'today' && accessToken ? null : <h3>📈 タイムライン</h3>}
+            {(effectiveViewMode === 'history' || !(effectiveViewMode === 'today' && accessToken) || todayMainTab === 'timeline') ? (
+              <div className={`timeline-section ${effectiveViewMode === 'history' ? 'history-mode' : ''}`}>
+                {effectiveViewMode === 'today' && accessToken ? null : <h3>📈 タイムライン</h3>}
                 <div className="timeline-container" id="timeline-container">
                   {sortedTimelineTasks.length === 0 ? (
                     <div className="timeline-empty">
@@ -5892,7 +5900,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               disabled={reportTimelineCopyBlocked}
               onClick={async () => {
                 try {
-                  const base = viewMode === 'today' ? tasks : historyTasks;
+                  const base = effectiveViewMode === 'today' ? tasks : historyTasks;
                   const sorted = [...base].sort((a, b) => {
                     const ma = parseTimeToMinutesFlexible(a.startTime);
                     const mb = parseTimeToMinutesFlexible(b.startTime);
