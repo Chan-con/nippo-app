@@ -135,6 +135,33 @@ function extractIconHref(html) {
   return '';
 }
 
+async function fetchWithRedirectLimit(startUrl, { maxRedirects = 6, headers = {} } = {}) {
+  const visited = new Set();
+  let current = String(startUrl);
+  for (let i = 0; i <= maxRedirects; i++) {
+    if (visited.has(current)) throw new Error('Too many redirects');
+    visited.add(current);
+
+    const res = await fetch(current, {
+      method: 'GET',
+      redirect: 'manual',
+      headers,
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('location') || '';
+      if (!loc) throw new Error('Redirect with no location');
+      const next = new URL(loc, current);
+      if (isPrivateHostname(next.hostname)) throw new Error('blocked hostname');
+      current = next.toString();
+      continue;
+    }
+
+    return { res, finalUrl: current };
+  }
+  throw new Error('Too many redirects');
+}
+
 const TASKLINE_GLOBAL_KEY = 'global';
 
 const NOTES_GLOBAL_KEY = 'global';
@@ -232,40 +259,58 @@ export async function onRequest(context) {
         return jsonResponse({ success: false, error: 'blocked hostname' }, 400);
       }
 
-      const res = await fetch(target.toString(), {
-        method: 'GET',
-        redirect: 'follow',
-        headers: {
-          'user-agent': 'nippo-app/1.0 (+metadata-fetch)',
-          accept: 'text/html,application/xhtml+xml',
-        },
-      });
+      const fallback = {
+        title: target.hostname,
+        iconUrl: `${target.protocol}//${target.host}/favicon.ico`,
+        finalUrl: target.toString(),
+      };
 
-      const finalUrl = res.url || target.toString();
-      const MAX_BYTES = 200 * 1024;
-      const buf = await res.arrayBuffer();
-      const slice = buf.byteLength > MAX_BYTES ? buf.slice(0, MAX_BYTES) : buf;
-      const html = new TextDecoder('utf-8').decode(slice);
+      try {
+        const { res, finalUrl } = await fetchWithRedirectLimit(target.toString(), {
+          maxRedirects: 6,
+          headers: {
+            'user-agent': 'nippo-app/1.0 (+metadata-fetch)',
+            accept: 'text/html,application/xhtml+xml',
+          },
+        });
 
-      const title = extractTitle(html) || new URL(finalUrl).hostname;
-      const iconHref = extractIconHref(html);
-      let iconUrl = '';
-      if (iconHref) {
-        try {
-          iconUrl = new URL(iconHref, finalUrl).toString();
-        } catch {
-          iconUrl = '';
+        if (!res.ok) {
+          return jsonResponse({ success: true, ...fallback, finalUrl, fetched: false });
         }
-      }
-      if (!iconUrl) {
-        try {
-          iconUrl = new URL('/favicon.ico', finalUrl).toString();
-        } catch {
-          iconUrl = '';
-        }
-      }
 
-      return jsonResponse({ success: true, title, iconUrl, finalUrl });
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (!ct.includes('text/html') && !ct.includes('application/xhtml+xml')) {
+          return jsonResponse({ success: true, ...fallback, finalUrl, fetched: false });
+        }
+
+        const MAX_BYTES = 200 * 1024;
+        const buf = await res.arrayBuffer();
+        const slice = buf.byteLength > MAX_BYTES ? buf.slice(0, MAX_BYTES) : buf;
+        const html = new TextDecoder('utf-8').decode(slice);
+
+        const title = extractTitle(html) || new URL(finalUrl).hostname;
+        const iconHref = extractIconHref(html);
+        let iconUrl = '';
+        if (iconHref) {
+          try {
+            iconUrl = new URL(iconHref, finalUrl).toString();
+          } catch {
+            iconUrl = '';
+          }
+        }
+        if (!iconUrl) {
+          try {
+            iconUrl = new URL('/favicon.ico', finalUrl).toString();
+          } catch {
+            iconUrl = fallback.iconUrl;
+          }
+        }
+
+        return jsonResponse({ success: true, title, iconUrl, finalUrl, fetched: true });
+      } catch (e) {
+        // On redirect loops / auth redirects, return fallback without failing the UX.
+        return jsonResponse({ success: true, ...fallback, fetched: false });
+      }
     }
 
     // GPT API key (encrypted)

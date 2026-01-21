@@ -52,6 +52,35 @@ function extractIconHref(html: string) {
   return '';
 }
 
+async function fetchWithRedirectLimit(startUrl: string, maxRedirects: number) {
+  const visited = new Set<string>();
+  let current = startUrl;
+  for (let i = 0; i <= maxRedirects; i++) {
+    if (visited.has(current)) throw new Error('Too many redirects');
+    visited.add(current);
+
+    const res = await fetch(current, {
+      redirect: 'manual',
+      headers: {
+        'user-agent': 'nippo-app/1.0 (+metadata-fetch)',
+        accept: 'text/html,application/xhtml+xml',
+      },
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('location') || '';
+      if (!loc) throw new Error('Redirect with no location');
+      const next = new URL(loc, current);
+      if (isPrivateHostname(next.hostname)) throw new Error('blocked hostname');
+      current = next.toString();
+      continue;
+    }
+
+    return { res, finalUrl: current };
+  }
+  throw new Error('Too many redirects');
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const rawUrl = String(searchParams.get('url') || '').trim();
@@ -74,20 +103,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: 'blocked hostname' }, { status: 400 });
   }
 
-  const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), 8000);
+  const fallback = {
+    title: target.hostname,
+    iconUrl: `${target.protocol}//${target.host}/favicon.ico`,
+    finalUrl: target.toString(),
+  };
 
   try {
-    const res = await fetch(target.toString(), {
-      redirect: 'follow',
-      signal: ac.signal,
-      headers: {
-        'user-agent': 'nippo-app/1.0 (+metadata-fetch)',
-        accept: 'text/html,application/xhtml+xml',
-      },
-    });
+    const { res, finalUrl } = await fetchWithRedirectLimit(target.toString(), 6);
+    if (!res.ok) {
+      return NextResponse.json({ success: true, ...fallback, finalUrl, fetched: false });
+    }
 
-    const finalUrl = res.url || target.toString();
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (!ct.includes('text/html') && !ct.includes('application/xhtml+xml')) {
+      return NextResponse.json({ success: true, ...fallback, finalUrl, fetched: false });
+    }
 
     const MAX_BYTES = 200 * 1024;
     const buf = await res.arrayBuffer();
@@ -106,14 +137,15 @@ export async function GET(req: Request) {
       }
     }
     if (!iconUrl) {
-      iconUrl = new URL('/favicon.ico', finalUrl).toString();
+      try {
+        iconUrl = new URL('/favicon.ico', finalUrl).toString();
+      } catch {
+        iconUrl = fallback.iconUrl;
+      }
     }
 
-    return NextResponse.json({ success: true, title, iconUrl, finalUrl });
-  } catch (e: any) {
-    const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || String(e);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
-  } finally {
-    clearTimeout(timeout);
+    return NextResponse.json({ success: true, title, iconUrl, finalUrl, fetched: true });
+  } catch {
+    return NextResponse.json({ success: true, ...fallback, fetched: false });
   }
 }

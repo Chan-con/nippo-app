@@ -743,25 +743,43 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setShortcutModalSaving(true);
     setShortcutModalError(null);
     try {
-      const res = await apiFetch(`/api/url-metadata?url=${encodeURIComponent(normalized)}`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok || !body?.success) throw new Error(body?.error || 'メタ情報の取得に失敗しました');
+      // Hash is not sent to servers; remove for metadata fetch to reduce redirect noise.
+      const metaTarget = new URL(normalized);
+      metaTarget.hash = '';
 
-      const title = typeof body?.title === 'string' ? String(body.title) : '';
-      const iconUrl = typeof body?.iconUrl === 'string' ? String(body.iconUrl) : '';
-      const finalUrl = typeof body?.finalUrl === 'string' ? String(body.finalUrl) : normalized;
+      let title = '';
+      let iconUrl = '';
+      let finalUrl = normalized;
+
+      try {
+        const res = await apiFetch(`/api/url-metadata?url=${encodeURIComponent(metaTarget.toString())}`);
+        const body = await res.json().catch(() => null);
+        if (res.ok && body?.success) {
+          title = typeof body?.title === 'string' ? String(body.title) : '';
+          iconUrl = typeof body?.iconUrl === 'string' ? String(body.iconUrl) : '';
+          finalUrl = typeof body?.finalUrl === 'string' ? String(body.finalUrl) : normalized;
+        }
+      } catch {
+        // ignore metadata fetch errors; fallback below
+      }
+
+      // Fallback: always allow registration even if metadata fetch failed.
+      const u = new URL(normalized);
+      const fallbackTitle = u.hostname;
+      const fallbackIcon = `${u.protocol}//${u.host}/favicon.ico`;
 
       const item: ShortcutItem = {
         id: shortcutId(),
-        url: finalUrl,
-        title: title || finalUrl,
-        iconUrl,
+        url: finalUrl || normalized,
+        title: (title || fallbackTitle || normalized).slice(0, 200),
+        iconUrl: iconUrl || fallbackIcon,
         createdAt: new Date().toISOString(),
       };
+
       setShortcuts((prev) => [...(Array.isArray(prev) ? prev : []), item]);
       closeShortcutModal();
     } catch (e: any) {
-      setShortcutModalError(e?.message || String(e));
+      setShortcutModalError('登録に失敗しました');
       setShortcutModalSaving(false);
     }
   }
