@@ -2575,6 +2575,7 @@ input[type='number']::-webkit-inner-spin-button {
   padding-right: 16px;
   gap: 12px;
   overflow: hidden;
+  flex: 1;
 }
 
 /* 画面が十分広い場合は、報告書モーダル並みに縦へ広げる */
@@ -2583,13 +2584,7 @@ input[type='number']::-webkit-inner-spin-button {
     height: calc(var(--app-height) - var(--app-offset-top) - 48px);
   }
 
-  .notes-edit-content .edit-body {
-    flex: 1;
-  }
-
   .notes-modal-textarea {
-    flex: 1;
-    min-height: 0;
     max-height: none;
   }
 }
@@ -2597,7 +2592,7 @@ input[type='number']::-webkit-inner-spin-button {
 .notes-modal-textarea {
   width: 100%;
   min-height: 240px;
-  max-height: 52vh;
+  max-height: none;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-medium);
@@ -2605,10 +2600,13 @@ input[type='number']::-webkit-inner-spin-button {
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.55;
-  resize: vertical;
+  resize: none;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   outline: none;
+  box-sizing: border-box;
 }
 
 /* カスタムスクロールバー（他要素: tag-tasks と同系） */
