@@ -5871,17 +5871,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           >
             {effectiveViewMode === 'today' && accessToken ? (
               <div className="taskline-section" style={{ display: todayMainTab === 'taskline' ? undefined : 'none' }}>
-              <div className="taskline-header" style={{ justifyContent: 'flex-end' }}>
-                <div className="taskline-status" aria-live="polite">
-                  {taskLineLoading ? <span className="taskline-status-item">同期中…</span> : null}
-                  {!taskLineLoading && taskLineSaving ? <span className="taskline-status-item">保存中…</span> : null}
-                  {!taskLineLoading && !taskLineSaving && taskLineDirty ? <span className="taskline-status-item">未保存</span> : null}
-                  {taskLineRemoteUpdatePending ? (
-                    <span className="taskline-status-item">他端末で更新あり（保存後に反映）</span>
-                  ) : null}
-                  {taskLineError ? <span className="taskline-status-item error">{taskLineError}</span> : null}
+              {taskLineLoading || taskLineSaving || taskLineDirty || taskLineRemoteUpdatePending || !!taskLineError ? (
+                <div className="taskline-header" style={{ justifyContent: 'flex-end' }}>
+                  <div className="taskline-status" aria-live="polite">
+                    {taskLineLoading ? <span className="taskline-status-item">同期中…</span> : null}
+                    {!taskLineLoading && taskLineSaving ? <span className="taskline-status-item">保存中…</span> : null}
+                    {!taskLineLoading && !taskLineSaving && taskLineDirty ? <span className="taskline-status-item">未保存</span> : null}
+                    {taskLineRemoteUpdatePending ? <span className="taskline-status-item">他端末で更新あり（保存後に反映）</span> : null}
+                    {taskLineError ? <span className="taskline-status-item error">{taskLineError}</span> : null}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               <div
                 className="taskline-scroll"
