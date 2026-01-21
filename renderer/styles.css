@@ -2573,6 +2573,25 @@ input[type='number']::-webkit-inner-spin-button {
 .notes-edit-content .edit-body {
   padding-left: 16px;
   padding-right: 16px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+/* 画面が十分広い場合は、報告書モーダル並みに縦へ広げる */
+@media (min-width: 640px) and (min-height: 720px) {
+  .notes-edit-content {
+    height: calc(var(--app-height) - var(--app-offset-top) - 48px);
+  }
+
+  .notes-edit-content .edit-body {
+    flex: 1;
+  }
+
+  .notes-modal-textarea {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
 }
 
 .notes-modal-textarea {
