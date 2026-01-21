@@ -712,6 +712,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [notesModalId, setNotesModalId] = useState<string | null>(null);
   const [notesModalBody, setNotesModalBody] = useState('');
   const notesModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [notesModalLinkCopied, setNotesModalLinkCopied] = useState(false);
+  const notesModalLinkCopiedTimerRef = useRef<number | null>(null);
 
   const notesOpenFromUrlIdRef = useRef<string | null>(null);
 
@@ -1426,6 +1428,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!found) return;
     setNotesModalId(noteId);
     setNotesModalBody(found.body ?? '');
+    setNotesModalLinkCopied(false);
     setNotesModalOpen(true);
     setNotesEditingId(noteId);
   }
@@ -1433,30 +1436,56 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function openNewNoteModal() {
     setNotesModalId(null);
     setNotesModalBody('');
+    setNotesModalLinkCopied(false);
     setNotesModalOpen(true);
     setNotesEditingId('new');
   }
 
-  function openNotePermalinkInNewTab(noteId: string) {
-    if (typeof window === 'undefined') return;
+  async function copyNotePermalinkToClipboard(noteId: string): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
     const id = String(noteId || '').trim();
-    if (!id) return;
+    if (!id) return false;
     try {
       const url = new URL(window.location.href);
       url.search = '';
       url.searchParams.set('tab', 'notes');
       url.searchParams.set('note', id);
-      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+      const text = url.toString();
+
+      // Prefer async Clipboard API
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
     } catch {
-      // ignore
+      return false;
     }
   }
 
   function closeNoteModal() {
+    if (notesModalLinkCopiedTimerRef.current != null) {
+      window.clearTimeout(notesModalLinkCopiedTimerRef.current);
+      notesModalLinkCopiedTimerRef.current = null;
+    }
     setNotesModalOpen(false);
     setNotesModalId(null);
     setNotesModalBody('');
     setNotesEditingId(null);
+    setNotesModalLinkCopied(false);
   }
 
   function saveNoteModal() {
@@ -5795,15 +5824,30 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             <button
               className="btn-cancel"
               type="button"
-              title="リンクを開く"
-              aria-label="リンクを開く"
-              onClick={() => {
+              title={notesModalLinkCopied ? 'コピー完了' : 'リンクをコピー'}
+              aria-label={notesModalLinkCopied ? 'コピー完了' : 'リンクをコピー'}
+              onClick={async () => {
                 if (!notesModalId) return;
-                openNotePermalinkInNewTab(notesModalId);
+                setNotesError(null);
+                const ok = await copyNotePermalinkToClipboard(notesModalId);
+                if (!ok) {
+                  setNotesError('リンクのコピーに失敗しました');
+                  return;
+                }
+
+                setNotesModalLinkCopied(true);
+                if (notesModalLinkCopiedTimerRef.current != null) {
+                  window.clearTimeout(notesModalLinkCopiedTimerRef.current);
+                  notesModalLinkCopiedTimerRef.current = null;
+                }
+                notesModalLinkCopiedTimerRef.current = window.setTimeout(() => {
+                  setNotesModalLinkCopied(false);
+                  notesModalLinkCopiedTimerRef.current = null;
+                }, 1200);
               }}
               disabled={!notesModalId || busy}
             >
-              <span className="material-icons">link</span>
+              <span className="material-icons">{notesModalLinkCopied ? 'done' : 'content_copy'}</span>
             </button>
             <button
               className={notesModalWillDelete ? 'btn-danger' : 'btn-primary'}
