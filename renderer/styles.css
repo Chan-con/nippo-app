@@ -860,6 +860,12 @@ input[type='number']::-webkit-inner-spin-button {
   min-height: 140px;
 }
 
+/* 今日の曜日がひと目で分かるように、ノート(付箋)と同系色の薄いオレンジでアウトラインを付ける */
+.taskline-column.is-today {
+  outline: 2px solid rgba(249, 226, 175, 0.22);
+  outline-offset: 2px;
+}
+
 .taskline-column-header {
   display: flex;
   align-items: center;

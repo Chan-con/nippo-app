@@ -619,6 +619,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => new Date());
 
+  const todayTaskLineLane = useMemo<TaskLineLane | null>(() => {
+    const dow = now.getDay(); // 0=Sun
+    if (dow === 1) return 'mon';
+    if (dow === 2) return 'tue';
+    if (dow === 3) return 'wed';
+    if (dow === 4) return 'thu';
+    if (dow === 5) return 'fri';
+    if (dow === 6) return 'sat';
+    if (dow === 0) return 'sun';
+    return null;
+  }, [now]);
+
   const timelineOpenUrlTimerRef = useRef<number | null>(null);
 
   const mainBodyRef = useRef<HTMLDivElement | null>(null);
@@ -5073,10 +5085,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     .slice()
                     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+                  const isTodayLane = lane.key !== 'stock' && todayTaskLineLane === lane.key;
+
                   return (
                     <div
                       key={lane.key}
-                      className="taskline-column"
+                      className={`taskline-column${isTodayLane ? ' is-today' : ''}`}
                       onDragOver={(e) => {
                         if (!taskLineDraggingId) return;
                         e.preventDefault();
