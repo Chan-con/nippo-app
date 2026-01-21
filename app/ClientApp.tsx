@@ -5324,7 +5324,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           onClick={() => openNoteModal(note.id)}
                           data-note-id={note.id}
                         >
-                          <div className="note-preview">{note.body}</div>
+                          <div className="note-preview">{renderTextWithLinks(note.body)}</div>
                         </button>
                       );
                     });
