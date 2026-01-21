@@ -2577,8 +2577,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* ノート編集はフッターボタンと左右を揃えて広く使う */
 .notes-edit-content .edit-body {
-  padding-left: 16px;
-  padding-right: 16px;
+  padding: 16px;
   gap: 12px;
   overflow: hidden;
   flex: 1;

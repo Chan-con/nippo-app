@@ -5762,18 +5762,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         }}
       >
         <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
-          <div className="edit-header">
-            <h3>{notesModalId ? 'ノート編集' : 'ノート追加'}</h3>
-            <button
-              className="edit-close"
-              title="閉じる"
-              aria-label="閉じる"
-              type="button"
-              onClick={() => closeNoteModal()}
-            >
-              <span className="material-icons">close</span>
-            </button>
-          </div>
           <div className="edit-body">
             <textarea
               ref={notesModalTextareaRef}
