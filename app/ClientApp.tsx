@@ -713,6 +713,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [notesModalBody, setNotesModalBody] = useState('');
   const notesModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const notesOpenFromUrlIdRef = useRef<string | null>(null);
+
   const notesGridRef = useRef<HTMLDivElement | null>(null);
   const notesLayoutRafRef = useRef<number | null>(null);
 
@@ -1432,6 +1434,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setNotesEditingId('new');
   }
 
+  function openNotePermalinkInNewTab(noteId: string) {
+    if (typeof window === 'undefined') return;
+    const id = String(noteId || '').trim();
+    if (!id) return;
+    try {
+      const url = new URL(window.location.href);
+      url.search = '';
+      url.searchParams.set('tab', 'notes');
+      url.searchParams.set('note', id);
+      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    } catch {
+      // ignore
+    }
+  }
+
   function closeNoteModal() {
     setNotesModalOpen(false);
     setNotesModalId(null);
@@ -1483,6 +1500,51 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notesModalOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const applyFromUrl = () => {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        const tab = String(sp.get('tab') || '');
+        const note = String(sp.get('note') || '').trim();
+
+        if (tab === 'notes' || note) {
+          setViewMode('today');
+          setTodayMainTab('notes');
+        }
+        if (note) notesOpenFromUrlIdRef.current = note;
+      } catch {
+        // ignore
+      }
+    };
+
+    applyFromUrl();
+    window.addEventListener('popstate', applyFromUrl);
+    return () => {
+      window.removeEventListener('popstate', applyFromUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const pending = notesOpenFromUrlIdRef.current;
+    if (!pending) return;
+    if (!accessToken) return;
+    if (todayMainTab !== 'notes') return;
+
+    const normalized = normalizeNotes(notes);
+    const found = normalized.find((n) => n.id === pending);
+    if (!found) {
+      if (!notesLoading) notesOpenFromUrlIdRef.current = null;
+      return;
+    }
+
+    notesOpenFromUrlIdRef.current = null;
+    openNoteModal(found.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, todayMainTab, notes, notesLoading]);
 
   function scheduleNotesLayout() {
     if (typeof window === 'undefined') return;
@@ -5738,6 +5800,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           <div className="edit-footer">
             <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => closeNoteModal()} disabled={busy}>
               <span className="material-icons">close</span>
+            </button>
+            <button
+              className="btn-cancel"
+              type="button"
+              title="リンクを開く"
+              aria-label="リンクを開く"
+              onClick={() => {
+                if (!notesModalId) return;
+                openNotePermalinkInNewTab(notesModalId);
+              }}
+              disabled={!notesModalId || busy}
+            >
+              <span className="material-icons">link</span>
             </button>
             <button className="btn-primary" type="button" title="保存" aria-label="保存" onClick={() => saveNoteModal()} disabled={busy}>
               <span className="material-icons">done</span>
