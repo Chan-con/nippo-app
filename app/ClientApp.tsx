@@ -6623,7 +6623,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 disabled={busy}
                 style={{ resize: 'vertical', minHeight: 120, lineHeight: 1.5 }}
               />
-              <div className="mt-2 text-xs text-[color:var(--text-muted)]">Ctrl+Enterで保存、Escで閉じる</div>
             </div>
 
             <div className="edit-field">
