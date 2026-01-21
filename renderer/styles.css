@@ -2683,6 +2683,91 @@ input[type='number']::-webkit-inner-spin-button {
   background: var(--accent);
 }
 
+/* ショートカットランチャー（タブの上） */
+.shortcut-launcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 8px 6px;
+  margin: 0 0 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg-tertiary);
+}
+
+.shortcut-launcher-spacer {
+  flex: 1 0 auto;
+  min-width: 12px;
+  height: 1px;
+}
+
+.shortcut-launcher::-webkit-scrollbar {
+  height: 6px;
+}
+
+.shortcut-launcher::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.shortcut-launcher::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.shortcut-launcher::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hover);
+}
+
+.shortcut-icon-button {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  text-decoration: none;
+  cursor: pointer;
+  position: relative;
+}
+
+.shortcut-icon-button:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.shortcut-icon-button.drag-over {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shortcut-icon-button.dragging {
+  opacity: 0.6;
+}
+
+.shortcut-icon-img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.shortcut-fallback-icon {
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+.shortcut-icon-button .shortcut-icon-img + .shortcut-fallback-icon {
+  display: none;
+}
+
+.shortcut-add-button {
+  border-style: dashed;
+}
+
 .tab-panel {
   display: none;
 }

@@ -26,6 +26,14 @@ type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'sto
 
 type TodayMainTab = 'timeline' | 'taskline' | 'notes';
 
+type ShortcutItem = {
+  id: string;
+  url: string;
+  title: string;
+  iconUrl: string;
+  createdAt: string;
+};
+
 const TASK_LINE_LANES: Array<{ key: TaskLineLane; label: string }> = [
   { key: 'mon', label: '月' },
   { key: 'tue', label: '火' },
@@ -659,6 +667,150 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       // ignore
     }
   }, [todayMainTab]);
+
+  // shortcut launcher (above timeline / kanban / notes tabs)
+  const SHORTCUTS_KEY = 'nippoShortcutLauncher';
+  const [shortcuts, setShortcuts] = useState<ShortcutItem[]>([]);
+  const [shortcutModalOpen, setShortcutModalOpen] = useState(false);
+  const [shortcutModalUrl, setShortcutModalUrl] = useState('');
+  const [shortcutModalError, setShortcutModalError] = useState<string | null>(null);
+  const [shortcutModalSaving, setShortcutModalSaving] = useState(false);
+  const shortcutModalInputRef = useRef<HTMLInputElement | null>(null);
+  const [shortcutDraggingId, setShortcutDraggingId] = useState<string | null>(null);
+  const [shortcutDragOverId, setShortcutDragOverId] = useState<string | null>(null);
+
+  function normalizeShortcutUrl(input: string) {
+    const raw = String(input || '').trim();
+    if (!raw) return '';
+    const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) ? raw : `https://${raw}`;
+    try {
+      const u = new URL(withScheme);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+      return u.toString();
+    } catch {
+      return '';
+    }
+  }
+
+  function shortcutId() {
+    return `sc_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  }
+
+  function moveShortcutByDrop(sourceId: string, targetId: string | null) {
+    setShortcuts((prev) => {
+      const list = Array.isArray(prev) ? [...prev] : [];
+      const from = list.findIndex((s) => s.id === sourceId);
+      if (from < 0) return prev;
+      const [item] = list.splice(from, 1);
+
+      if (!targetId) {
+        list.push(item);
+        return list;
+      }
+
+      const to = list.findIndex((s) => s.id === targetId);
+      if (to < 0) {
+        list.push(item);
+        return list;
+      }
+      list.splice(to, 0, item);
+      return list;
+    });
+  }
+
+  function closeShortcutModal() {
+    setShortcutModalOpen(false);
+    setShortcutModalError(null);
+    setShortcutModalUrl('');
+    setShortcutModalSaving(false);
+  }
+
+  async function saveShortcutFromModal() {
+    if (shortcutModalSaving) return;
+    const normalized = normalizeShortcutUrl(shortcutModalUrl);
+    if (!normalized) {
+      setShortcutModalError('URLが不正です（http/httpsのみ）');
+      return;
+    }
+
+    const normalizedKey = normalized.replace(/\/$/, '');
+    const dup = shortcuts.some((s) => String(s.url || '').replace(/\/$/, '') === normalizedKey);
+    if (dup) {
+      setShortcutModalError('このURLは既に登録されています');
+      return;
+    }
+
+    setShortcutModalSaving(true);
+    setShortcutModalError(null);
+    try {
+      const res = await fetch(`/api/url-metadata?url=${encodeURIComponent(normalized)}`);
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'メタ情報の取得に失敗しました');
+
+      const title = typeof body?.title === 'string' ? String(body.title) : '';
+      const iconUrl = typeof body?.iconUrl === 'string' ? String(body.iconUrl) : '';
+      const finalUrl = typeof body?.finalUrl === 'string' ? String(body.finalUrl) : normalized;
+
+      const item: ShortcutItem = {
+        id: shortcutId(),
+        url: finalUrl,
+        title: title || finalUrl,
+        iconUrl,
+        createdAt: new Date().toISOString(),
+      };
+      setShortcuts((prev) => [...(Array.isArray(prev) ? prev : []), item]);
+      closeShortcutModal();
+    } catch (e: any) {
+      setShortcutModalError(e?.message || String(e));
+      setShortcutModalSaving(false);
+    }
+  }
+
+  function normalizeShortcuts(input: unknown): ShortcutItem[] {
+    const list = Array.isArray(input) ? input : [];
+    const out: ShortcutItem[] = [];
+    for (const item of list as any[]) {
+      const id = typeof item?.id === 'string' ? String(item.id) : '';
+      const url = typeof item?.url === 'string' ? String(item.url) : '';
+      const title = typeof item?.title === 'string' ? String(item.title) : '';
+      const iconUrl = typeof item?.iconUrl === 'string' ? String(item.iconUrl) : '';
+      const createdAt = typeof item?.createdAt === 'string' ? String(item.createdAt) : '';
+      if (!id || !url) continue;
+      out.push({ id, url, title, iconUrl, createdAt });
+    }
+    return out;
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(SHORTCUTS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setShortcuts(normalizeShortcuts(parsed));
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(Array.isArray(shortcuts) ? shortcuts : []));
+    } catch {
+      // ignore
+    }
+  }, [shortcuts]);
+
+  useEffect(() => {
+    if (!shortcutModalOpen) return;
+    const t = window.setTimeout(() => {
+      shortcutModalInputRef.current?.focus();
+      shortcutModalInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [shortcutModalOpen]);
 
   // NOTE: 以前は履歴（カレンダー）中にタイムラインタブへ固定していたが、
   // タブは独立した機能なので固定しない（必要ならユーザーが戻る）。
@@ -5032,35 +5184,145 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
         <main className="main-content">
           {accessToken ? (
-            <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
-              <button
-                type="button"
-                className={`tab-button ${todayMainTab === 'timeline' ? 'active' : ''}`}
-                role="tab"
-                aria-selected={todayMainTab === 'timeline'}
-                onClick={() => setTodayMainTab('timeline')}
-              >
-                📈 タイムライン
-              </button>
-              <button
-                type="button"
-                className={`tab-button ${todayMainTab === 'taskline' ? 'active' : ''}`}
-                role="tab"
-                aria-selected={todayMainTab === 'taskline'}
-                onClick={() => setTodayMainTab('taskline')}
-              >
-                🗃️ カンバン
-              </button>
-              <button
-                type="button"
-                className={`tab-button ${todayMainTab === 'notes' ? 'active' : ''}`}
-                role="tab"
-                aria-selected={todayMainTab === 'notes'}
-                onClick={() => setTodayMainTab('notes')}
-              >
-                📝 ノート
-              </button>
-            </div>
+            <>
+              <div className="shortcut-launcher" aria-label="ショートカットランチャー">
+                <div
+                  className="shortcut-launcher-spacer"
+                  onDragOver={(ev) => {
+                    if (!shortcutDraggingId) return;
+                    ev.preventDefault();
+                    ev.dataTransfer.dropEffect = 'move';
+                    setShortcutDragOverId(null);
+                  }}
+                  onDrop={(ev) => {
+                    if (!shortcutDraggingId) return;
+                    ev.preventDefault();
+                    const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
+                    if (!id) return;
+                    moveShortcutByDrop(id, null);
+                    setShortcutDragOverId(null);
+                  }}
+                />
+                {(Array.isArray(shortcuts) ? shortcuts : []).map((sc) => {
+                  const label = String(sc.title || sc.url || 'ショートカット');
+                  return (
+                    <a
+                      key={sc.id}
+                      href={sc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`shortcut-icon-button${shortcutDragOverId === sc.id ? ' drag-over' : ''}${shortcutDraggingId === sc.id ? ' dragging' : ''}`}
+                      title={label}
+                      aria-label={label}
+                      draggable
+                      onClick={(ev) => {
+                        if (shortcutDraggingId) {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                        }
+                      }}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        const ok = window.confirm('このショートカットを削除しますか？');
+                        if (!ok) return;
+                        setShortcuts((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== sc.id) : prev));
+                      }}
+                      onDragStart={(ev) => {
+                        setShortcutDraggingId(sc.id);
+                        setShortcutDragOverId(null);
+                        try {
+                          ev.dataTransfer.effectAllowed = 'move';
+                          ev.dataTransfer.setData('text/plain', sc.id);
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      onDragEnd={() => {
+                        setShortcutDraggingId(null);
+                        setShortcutDragOverId(null);
+                      }}
+                      onDragOver={(ev) => {
+                        if (!shortcutDraggingId || shortcutDraggingId === sc.id) return;
+                        ev.preventDefault();
+                        ev.dataTransfer.dropEffect = 'move';
+                        setShortcutDragOverId(sc.id);
+                      }}
+                      onDragLeave={() => {
+                        if (shortcutDragOverId === sc.id) setShortcutDragOverId(null);
+                      }}
+                      onDrop={(ev) => {
+                        if (!shortcutDraggingId) return;
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
+                        if (!id || id === sc.id) return;
+                        moveShortcutByDrop(id, sc.id);
+                        setShortcutDragOverId(null);
+                      }}
+                    >
+                      {sc.iconUrl ? (
+                        <img
+                          className="shortcut-icon-img"
+                          src={sc.iconUrl}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            const img = e.currentTarget;
+                            img.style.display = 'none';
+                          }}
+                        />
+                      ) : null}
+                      <span className="material-icons shortcut-fallback-icon">link</span>
+                    </a>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="shortcut-icon-button shortcut-add-button"
+                  title="ショートカットを追加"
+                  aria-label="ショートカットを追加"
+                  onClick={() => {
+                    setShortcutModalError(null);
+                    setShortcutModalUrl('');
+                    setShortcutModalOpen(true);
+                  }}
+                  disabled={busy}
+                >
+                  <span className="material-icons">add</span>
+                </button>
+              </div>
+
+              <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
+                <button
+                  type="button"
+                  className={`tab-button ${todayMainTab === 'timeline' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'timeline'}
+                  onClick={() => setTodayMainTab('timeline')}
+                >
+                  📈 タイムライン
+                </button>
+                <button
+                  type="button"
+                  className={`tab-button ${todayMainTab === 'taskline' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'taskline'}
+                  onClick={() => setTodayMainTab('taskline')}
+                >
+                  🗃️ カンバン
+                </button>
+                <button
+                  type="button"
+                  className={`tab-button ${todayMainTab === 'notes' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'notes'}
+                  onClick={() => setTodayMainTab('notes')}
+                >
+                  📝 ノート
+                </button>
+              </div>
+            </>
           ) : null}
 
           {showMainHeader ? (
@@ -5858,6 +6120,72 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               disabled={busy}
             >
               <span className="material-icons">{notesModalWillDelete ? 'close' : 'done'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`edit-dialog ${shortcutModalOpen ? 'show' : ''}`}
+        id="shortcut-add-dialog"
+        aria-hidden={!shortcutModalOpen}
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) closeShortcutModal();
+        }}
+      >
+        <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="edit-body">
+            <div className="edit-field">
+              <label htmlFor="shortcut-add-url">URL</label>
+              <input
+                ref={shortcutModalInputRef}
+                id="shortcut-add-url"
+                className="edit-input"
+                value={shortcutModalUrl}
+                onChange={(e) => setShortcutModalUrl(e.target.value)}
+                placeholder="https://..."
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    closeShortcutModal();
+                    return;
+                  }
+                  if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    void saveShortcutFromModal();
+                  }
+                }}
+                disabled={busy || shortcutModalSaving}
+              />
+              {shortcutModalError ? (
+                <div style={{ marginTop: 8, color: 'var(--error)', fontSize: 12 }}>{shortcutModalError}</div>
+              ) : null}
+            </div>
+          </div>
+          <div className="edit-footer">
+            <button
+              className="btn-cancel"
+              type="button"
+              title="キャンセル"
+              aria-label="キャンセル"
+              onClick={() => closeShortcutModal()}
+              disabled={busy || shortcutModalSaving}
+            >
+              <span className="material-icons">close</span>
+            </button>
+            <button
+              className="btn-primary"
+              type="button"
+              title="保存"
+              aria-label="保存"
+              onClick={() => void saveShortcutFromModal()}
+              disabled={busy || shortcutModalSaving}
+            >
+              <span className="material-icons">done</span>
             </button>
           </div>
         </div>
