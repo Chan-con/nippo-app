@@ -197,19 +197,23 @@ export async function onRequest(context) {
       if (!apiKey) return jsonResponse({ success: false, error: 'GPT APIキーの復号に失敗しました' }, 500);
 
       const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
-      const limited = tasks.slice(0, 80).map((t) => ({
-        name: String(t?.name || '').slice(0, 200),
-        memo: String(t?.memo || '').slice(0, 1400),
-      }));
+      const normalized = tasks
+        .map((t) => ({
+          name: String(t?.name || '').slice(0, 200),
+          memo: String(t?.memo || '').slice(0, 1400),
+        }))
+        .filter((t) => String(t.memo || '').trim() !== '');
 
-      if (limited.length === 0) return jsonResponse({ success: false, error: 'タイムラインが空です' }, 400);
+      const limited = normalized.slice(0, 80);
+      if (limited.length === 0) {
+        return jsonResponse({ success: false, error: 'メモがあるタスクがありません' }, 400);
+      }
 
       const timeline = limited
         .map((t) => {
           const title = String(t.name || '').trim();
           const memo = String(t.memo || '').trim();
-          if (!title && !memo) return '';
-          if (!memo) return `【${title}】`;
+          if (!memo) return '';
           if (!title) return `【メモ】\n${memo}`;
           return `【${title}】\n${memo}`;
         })

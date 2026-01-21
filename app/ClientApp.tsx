@@ -2391,11 +2391,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
         for (const t of dayTasks) {
           if (!t || t.status === 'reserved') continue;
-          if (isWorkTimeExcludedTaskName(t?.name)) continue;
+          const memo = typeof t?.memo === 'string' ? t.memo : '';
+          if (!String(memo).trim()) continue;
           payloadTasks.push({
             dateString,
             name: String(t?.name || ''),
-            memo: typeof t?.memo === 'string' ? t.memo : '',
+            memo,
           });
         }
       }

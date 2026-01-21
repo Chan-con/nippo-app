@@ -3050,19 +3050,21 @@ function createApp(taskManagerInstance, options = {}) {
             if (!apiKey) return res.status(500).json({ success: false, error: 'GPT APIキーの復号に失敗しました' });
 
             const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
-            const limited = tasks.slice(0, 80).map((t) => ({
-                name: String(t?.name || '').slice(0, 200),
-                memo: String(t?.memo || '').slice(0, 1400),
-            }));
+            const normalized = tasks
+                .map((t) => ({
+                    name: String(t?.name || '').slice(0, 200),
+                    memo: String(t?.memo || '').slice(0, 1400),
+                }))
+                .filter((t) => String(t.memo || '').trim() !== '');
 
-            if (limited.length === 0) return res.status(400).json({ success: false, error: 'タイムラインが空です' });
+            const limited = normalized.slice(0, 80);
+            if (limited.length === 0) return res.status(400).json({ success: false, error: 'メモがあるタスクがありません' });
 
             const timeline = limited
                 .map((t) => {
                     const title = String(t.name || '').trim();
                     const memo = String(t.memo || '').trim();
-                    if (!title && !memo) return '';
-                    if (!memo) return `【${title}】`;
+                    if (!memo) return '';
                     if (!title) return `【メモ】\n${memo}`;
                     return `【${title}】\n${memo}`;
                 })
