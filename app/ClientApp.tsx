@@ -17,7 +17,6 @@ type Task = {
 type TaskLineCard = {
   id: string;
   text: string;
-  color: string;
   lane: TaskLineLane;
   order: number;
 };
@@ -1225,8 +1224,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   // task line (sticky notes) - horizontal, reorderable (synced via Supabase)
   // NOTE: タスクラインは日付ごとの管理ではなく「常に同じ内容」を表示する
   const TASK_LINE_GLOBAL_KEY = 'global';
-  // Keep colors aligned with the app theme (subtle dark tones)
-  const taskLineColors = ['var(--bg-tertiary)', 'var(--surface)', 'var(--bg-secondary)'];
   const [taskLineCards, setTaskLineCards] = useState<TaskLineCard[]>([]);
   const [taskLineInput, setTaskLineInput] = useState('');
   const [taskLineEditingId, setTaskLineEditingId] = useState<string | null>(null);
@@ -1346,22 +1343,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function normalizeTaskLineCards(input: unknown): TaskLineCard[] {
     const list = Array.isArray(input) ? input : [];
-    const temp: Array<{ id: string; text: string; color: string; lane: TaskLineLane; order: number | null; _idx: number }> = [];
+    const temp: Array<{ id: string; text: string; lane: TaskLineLane; order: number | null; _idx: number }> = [];
     for (let i = 0; i < list.length; i += 1) {
       const item = list[i] as any;
       const id = typeof item?.id === 'string' ? String(item.id) : '';
       const text = typeof item?.text === 'string' ? String(item.text) : '';
-      const color = typeof item?.color === 'string' ? String(item.color) : '';
       const laneRaw = item?.lane;
       const lane: TaskLineLane = isTaskLineLane(laneRaw) ? laneRaw : 'stock';
       const orderRaw = item?.order;
       const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? orderRaw : null;
       if (!id) continue;
-      const normalizedColor =
-        color && ['var(--warning)', 'var(--pink)', 'var(--purple)', 'var(--success)', 'var(--accent)'].includes(color)
-          ? 'var(--bg-tertiary)'
-          : color;
-      temp.push({ id, text, color: normalizedColor || 'var(--bg-tertiary)', lane, order, _idx: i });
+      temp.push({ id, text, lane, order, _idx: i });
     }
 
     // Ensure per-lane stable ordering even for legacy cards missing `lane`/`order`.
@@ -1380,7 +1372,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       });
       for (let j = 0; j < laneCards.length; j += 1) {
         const c = laneCards[j];
-        out.push({ id: c.id, text: c.text, color: c.color, lane, order: j });
+        out.push({ id: c.id, text: c.text, lane, order: j });
       }
     }
 
@@ -1389,7 +1381,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function taskLineSnapshot(cards: TaskLineCard[]) {
     try {
-      return JSON.stringify(cards.map((c) => ({ id: c.id, text: c.text, color: c.color, lane: c.lane, order: c.order })));
+      return JSON.stringify(cards.map((c) => ({ id: c.id, text: c.text, lane: c.lane, order: c.order })));
     } catch {
       return '';
     }
@@ -2305,8 +2297,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const id = newId();
     setTaskLineCards((prev) => {
       const normalized = normalizeTaskLineCards(prev);
-      const color = taskLineColors[normalized.length % taskLineColors.length] || 'var(--bg-tertiary)';
-      const next = [...normalized, { id, text: v, color, lane, order: 9999 }];
+      const next = [...normalized, { id, text: v, lane, order: 9999 }];
       return normalizeTaskLineCards(next);
     });
     setTaskLineInput('');
@@ -2317,8 +2308,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const id = newId();
     setTaskLineCards((prev) => {
       const normalized = normalizeTaskLineCards(prev);
-      const color = taskLineColors[normalized.length % taskLineColors.length] || 'var(--bg-tertiary)';
-      const next = [{ id, text: '', color, lane, order: -1 }, ...normalized];
+      const next = [{ id, text: '', lane, order: -1 }, ...normalized];
       return normalizeTaskLineCards(next);
     });
     setTaskLineEditingId(id);
@@ -5986,7 +5976,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             <div
                               key={card.id}
                               className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}`}
-                              style={{ background: card.color || 'var(--bg-tertiary)' }}
                               data-taskline-cardid={card.id}
                               data-taskline-laneindex={laneIndex}
                               draggable={!isEditing && !busy}

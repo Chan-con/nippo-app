@@ -186,13 +186,13 @@ function normalizeTaskLineCards(input) {
   for (const item of list) {
     const id = typeof item?.id === 'string' ? String(item.id) : '';
     const text = typeof item?.text === 'string' ? String(item.text) : '';
-    const color = typeof item?.color === 'string' ? String(item.color) : '';
     const laneRaw = item?.lane;
     const lane = isLane(laneRaw) ? laneRaw : 'stock';
     const orderRaw = item?.order;
     const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? orderRaw : null;
     if (!id) continue;
-    out.push({ id, text, color, lane, order });
+    // 背景色をカードごとに変える機能は廃止（常にクライアント側の固定配色を使う）
+    out.push({ id, text, color: '', lane, order });
   }
   return out;
 }
@@ -760,7 +760,8 @@ export async function onRequest(context) {
       const cards = normalizeTaskLineCards(body?.cards).slice(0, 200).map((c) => ({
         id: String(c.id).slice(0, 80),
         text: String(c.text || '').slice(0, 200),
-        color: String(c.color || '').slice(0, 80),
+        // 色指定は受け付けない
+        color: '',
         lane: String(c.lane || 'stock').slice(0, 16),
         order: typeof c.order === 'number' && Number.isFinite(c.order) ? c.order : null,
       }));
