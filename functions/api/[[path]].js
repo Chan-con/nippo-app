@@ -166,6 +166,8 @@ const TASKLINE_GLOBAL_KEY = 'global';
 
 const NOTES_GLOBAL_KEY = 'global';
 
+const SHORTCUTS_GLOBAL_KEY = 'global';
+
 function normalizeTaskLineCards(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
@@ -194,6 +196,21 @@ function normalizeNotes(input) {
     const updatedAt = typeof item?.updatedAt === 'string' ? String(item.updatedAt) : '';
     if (!id) continue;
     out.push({ id, body, createdAt, updatedAt });
+  }
+  return out;
+}
+
+function normalizeShortcuts(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = [];
+  for (const item of list) {
+    const id = typeof item?.id === 'string' ? String(item.id) : '';
+    const url = typeof item?.url === 'string' ? String(item.url) : '';
+    const title = typeof item?.title === 'string' ? String(item.title) : '';
+    const iconUrl = typeof item?.iconUrl === 'string' ? String(item.iconUrl) : '';
+    const createdAt = typeof item?.createdAt === 'string' ? String(item.createdAt) : '';
+    if (!id || !url) continue;
+    out.push({ id, url, title, iconUrl, createdAt });
   }
   return out;
 }
@@ -774,6 +791,59 @@ export async function onRequest(context) {
       });
 
       return jsonResponse({ success: true });
+    }
+
+    // shortcuts (shortcut launcher)
+    if (parts.length === 1 && parts[0] === 'shortcuts' && request.method === 'GET') {
+      const doc = await taskManager._getDoc(userId, 'shortcuts', SHORTCUTS_GLOBAL_KEY, {
+        items: [],
+      });
+
+      const items = normalizeShortcuts(doc?.items);
+      const updatedAt = typeof doc?.updatedAt === 'string' ? String(doc.updatedAt) : '';
+      return jsonResponse({ success: true, shortcuts: { key: SHORTCUTS_GLOBAL_KEY, items, updatedAt } });
+    }
+
+    if (parts.length === 1 && parts[0] === 'shortcuts' && request.method === 'POST') {
+      const baseUpdatedAt = typeof body?.baseUpdatedAt === 'string' ? String(body.baseUpdatedAt) : '';
+
+      const currentDoc = await taskManager._getDoc(userId, 'shortcuts', SHORTCUTS_GLOBAL_KEY, {
+        items: [],
+      });
+      const currentUpdatedAt = typeof currentDoc?.updatedAt === 'string' ? String(currentDoc.updatedAt) : '';
+
+      // Optimistic concurrency: if client thinks baseUpdatedAt but server differs, return conflict
+      if (baseUpdatedAt && currentUpdatedAt && baseUpdatedAt !== currentUpdatedAt) {
+        const serverItems = normalizeShortcuts(currentDoc?.items);
+        return jsonResponse(
+          {
+            success: false,
+            error: 'Conflict',
+            conflict: true,
+            shortcuts: { key: SHORTCUTS_GLOBAL_KEY, items: serverItems, updatedAt: currentUpdatedAt },
+          },
+          409
+        );
+      }
+
+      const items = normalizeShortcuts(body?.items)
+        .map((s) => ({
+          id: String(s.id).slice(0, 80),
+          url: String(s.url || '').slice(0, 2000),
+          title: String(s.title || '').slice(0, 200),
+          iconUrl: String(s.iconUrl || '').slice(0, 2000),
+          createdAt: String(s.createdAt || '').slice(0, 64),
+        }))
+        .slice(0, 80);
+
+      const updatedAt = new Date().toISOString();
+      await taskManager._setDoc(userId, 'shortcuts', SHORTCUTS_GLOBAL_KEY, {
+        key: SHORTCUTS_GLOBAL_KEY,
+        items,
+        updatedAt,
+      });
+
+      return jsonResponse({ success: true, updatedAt });
     }
 
     // billing-summary

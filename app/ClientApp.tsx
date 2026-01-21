@@ -678,6 +678,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const shortcutModalInputRef = useRef<HTMLInputElement | null>(null);
   const [shortcutDraggingId, setShortcutDraggingId] = useState<string | null>(null);
   const [shortcutDragOverId, setShortcutDragOverId] = useState<string | null>(null);
+  const shortcutsLoadedFromServerRef = useRef(false);
+  const shortcutsSaveTimerRef = useRef<number | null>(null);
+  const shortcutsLastSavedSnapshotRef = useRef<string>('');
+  const shortcutsIsSavingRef = useRef(false);
+  const shortcutsServerUpdatedAtRef = useRef<string>('');
+  const shortcutsPollTimerRef = useRef<number | null>(null);
 
   function normalizeShortcutUrl(input: string) {
     const raw = String(input || '').trim();
@@ -799,6 +805,125 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return out;
   }
 
+  function shortcutsSnapshot(items: ShortcutItem[]) {
+    try {
+      return JSON.stringify(
+        (Array.isArray(items) ? items : []).map((s) => ({
+          id: s.id,
+          url: s.url,
+          title: s.title,
+          iconUrl: s.iconUrl,
+          createdAt: s.createdAt,
+        }))
+      );
+    } catch {
+      return '';
+    }
+  }
+
+  function mergeShortcutsPreferLocal(localItems: ShortcutItem[], serverItems: ShortcutItem[]) {
+    const localMap = new Map<string, ShortcutItem>();
+    for (const s of Array.isArray(localItems) ? localItems : []) {
+      if (s?.id) localMap.set(s.id, s);
+    }
+
+    const seen = new Set<string>();
+    const out: ShortcutItem[] = [];
+
+    // Keep server order, but prefer local content if same id exists.
+    for (const s of Array.isArray(serverItems) ? serverItems : []) {
+      const id = s?.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(localMap.get(id) ?? s);
+    }
+
+    // Append local-only items (prevents accidental loss on conflict).
+    for (const s of Array.isArray(localItems) ? localItems : []) {
+      const id = s?.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(s);
+    }
+
+    return out;
+  }
+
+  async function loadShortcutsFromServer() {
+    if (!accessToken) return;
+    try {
+      const res = await apiFetch('/api/shortcuts', { cache: 'no-store' });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'ショートカットの取得に失敗しました');
+
+      const serverItems = normalizeShortcuts(body?.shortcuts?.items);
+      const serverUpdatedAt = typeof body?.shortcuts?.updatedAt === 'string' ? String(body.shortcuts.updatedAt) : '';
+      shortcutsServerUpdatedAtRef.current = serverUpdatedAt;
+
+      // Migration: if server is empty but local has items, upload local once.
+      if (serverItems.length === 0 && (Array.isArray(shortcuts) ? shortcuts.length : 0) > 0) {
+        try {
+          await apiFetch('/api/shortcuts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: Array.isArray(shortcuts) ? shortcuts : [] }),
+          });
+          shortcutsLoadedFromServerRef.current = true;
+          shortcutsLastSavedSnapshotRef.current = shortcutsSnapshot(Array.isArray(shortcuts) ? shortcuts : []);
+          return;
+        } catch {
+          // if upload fails, keep local
+          shortcutsLoadedFromServerRef.current = true;
+          shortcutsLastSavedSnapshotRef.current = shortcutsSnapshot(Array.isArray(shortcuts) ? shortcuts : []);
+          return;
+        }
+      }
+
+      shortcutsLoadedFromServerRef.current = true;
+      shortcutsLastSavedSnapshotRef.current = shortcutsSnapshot(serverItems);
+      setShortcuts(serverItems);
+    } catch {
+      // If server fails, fall back to local
+      shortcutsLoadedFromServerRef.current = true;
+      shortcutsLastSavedSnapshotRef.current = shortcutsSnapshot(Array.isArray(shortcuts) ? shortcuts : []);
+    }
+  }
+
+  async function saveShortcutsToServerNow(items: ShortcutItem[]) {
+    if (!accessToken) return;
+    if (shortcutsIsSavingRef.current) return;
+    shortcutsIsSavingRef.current = true;
+    try {
+      const res = await apiFetch('/api/shortcuts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: Array.isArray(items) ? items : [], baseUpdatedAt: shortcutsServerUpdatedAtRef.current || '' }),
+      });
+      const body = await res.json().catch(() => null);
+
+      if (res.status === 409 && body?.conflict) {
+        const serverItems = normalizeShortcuts(body?.shortcuts?.items);
+        const serverUpdatedAt = typeof body?.shortcuts?.updatedAt === 'string' ? String(body.shortcuts.updatedAt) : '';
+        const merged = mergeShortcutsPreferLocal(Array.isArray(items) ? items : [], serverItems);
+
+        shortcutsServerUpdatedAtRef.current = serverUpdatedAt;
+        shortcutsLastSavedSnapshotRef.current = shortcutsSnapshot(serverItems);
+        setShortcuts(merged);
+        // Let debounced effect save merged state with new baseUpdatedAt
+        return;
+      }
+
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'ショートカットの保存に失敗しました');
+      const updatedAt = typeof body?.updatedAt === 'string' ? String(body.updatedAt) : '';
+      if (updatedAt) shortcutsServerUpdatedAtRef.current = updatedAt;
+      shortcutsLastSavedSnapshotRef.current = shortcutsSnapshot(items);
+    } catch {
+      // ignore (keep local)
+    } finally {
+      shortcutsIsSavingRef.current = false;
+    }
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -819,7 +944,74 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     } catch {
       // ignore
     }
+
+    if (!accessToken) return;
+    if (!shortcutsLoadedFromServerRef.current) return;
+
+    // Debounced server sync
+    if (shortcutsSaveTimerRef.current != null) {
+      window.clearTimeout(shortcutsSaveTimerRef.current);
+      shortcutsSaveTimerRef.current = null;
+    }
+    const next = Array.isArray(shortcuts) ? shortcuts : [];
+    const snap = shortcutsSnapshot(next);
+    if (snap && snap === shortcutsLastSavedSnapshotRef.current) return;
+    shortcutsSaveTimerRef.current = window.setTimeout(() => {
+      shortcutsSaveTimerRef.current = null;
+      void saveShortcutsToServerNow(next);
+    }, 800);
   }, [shortcuts]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    void loadShortcutsFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      if (shortcutsPollTimerRef.current != null) {
+        window.clearInterval(shortcutsPollTimerRef.current);
+        shortcutsPollTimerRef.current = null;
+      }
+      return;
+    }
+
+    // Poll to pick up updates from other devices.
+    if (shortcutsPollTimerRef.current != null) {
+      window.clearInterval(shortcutsPollTimerRef.current);
+      shortcutsPollTimerRef.current = null;
+    }
+
+    shortcutsPollTimerRef.current = window.setInterval(async () => {
+      if (!accessToken) return;
+      if (shortcutDraggingId) return;
+      try {
+        const res = await apiFetch('/api/shortcuts', { cache: 'no-store' });
+        const body = await res.json().catch(() => null);
+        if (!res.ok || !body?.success) return;
+        const serverUpdatedAt = typeof body?.shortcuts?.updatedAt === 'string' ? String(body.shortcuts.updatedAt) : '';
+        if (!serverUpdatedAt || serverUpdatedAt === shortcutsServerUpdatedAtRef.current) return;
+        const serverItems = normalizeShortcuts(body?.shortcuts?.items);
+        const merged = mergeShortcutsPreferLocal(Array.isArray(shortcuts) ? shortcuts : [], serverItems);
+        const mergedSnap = shortcutsSnapshot(merged);
+        const currentSnap = shortcutsSnapshot(Array.isArray(shortcuts) ? shortcuts : []);
+        shortcutsServerUpdatedAtRef.current = serverUpdatedAt;
+        shortcutsLastSavedSnapshotRef.current = shortcutsSnapshot(serverItems);
+        if (mergedSnap !== currentSnap) setShortcuts(merged);
+      } catch {
+        // ignore
+      }
+    }, 15000);
+
+    return () => {
+      if (shortcutsPollTimerRef.current != null) {
+        window.clearInterval(shortcutsPollTimerRef.current);
+        shortcutsPollTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, shortcutDraggingId, shortcuts]);
 
   useEffect(() => {
     if (!shortcutModalOpen) return;
@@ -5298,16 +5490,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   <button
                     type="button"
                     className="shortcut-icon-button shortcut-add-button"
-                    title="ショートカットを追加"
-                    aria-label="ショートカットを追加"
+                    title={accessToken ? 'ショートカットを追加' : 'ログインすると追加できます'}
+                    aria-label={accessToken ? 'ショートカットを追加' : 'ログインすると追加できます'}
                     onClick={() => {
+                      if (!accessToken) return;
                       setShortcutModalError(null);
                       setShortcutModalUrl('');
                       setShortcutModalOpen(true);
                     }}
-                    disabled={busy}
+                    disabled={!accessToken || busy}
                   >
-                    <span className="material-icons">add</span>
+                    <span className="material-icons">{accessToken ? 'add' : 'lock'}</span>
                   </button>
                 </div>
               </div>

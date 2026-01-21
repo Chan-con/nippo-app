@@ -2751,6 +2751,12 @@ input[type='number']::-webkit-inner-spin-button {
   position: relative;
 }
 
+.shortcut-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
 .shortcut-icon-button:hover {
   background: var(--surface);
   border-color: var(--accent);
