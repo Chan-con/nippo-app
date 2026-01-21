@@ -715,6 +715,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const notesOpenFromUrlIdRef = useRef<string | null>(null);
 
+  const notesModalTrimmed = String(notesModalBody || '').trim();
+  const notesModalWillDelete = !!notesModalId && !notesModalTrimmed;
+
   const notesGridRef = useRef<HTMLDivElement | null>(null);
   const notesLayoutRafRef = useRef<number | null>(null);
 
@@ -5802,8 +5805,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             >
               <span className="material-icons">link</span>
             </button>
-            <button className="btn-primary" type="button" title="保存" aria-label="保存" onClick={() => saveNoteModal()} disabled={busy}>
-              <span className="material-icons">done</span>
+            <button
+              className={notesModalWillDelete ? 'btn-danger' : 'btn-primary'}
+              type="button"
+              title={notesModalWillDelete ? '削除' : '保存'}
+              aria-label={notesModalWillDelete ? '削除' : '保存'}
+              onClick={() => saveNoteModal()}
+              disabled={busy}
+            >
+              <span className="material-icons">{notesModalWillDelete ? 'close' : 'done'}</span>
             </button>
           </div>
         </div>
