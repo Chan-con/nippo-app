@@ -1480,7 +1480,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       } catch {
         // ignore
       }
-      autoGrowTextarea(el);
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notesModalOpen]);
@@ -5721,7 +5720,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               value={notesModalBody}
               onChange={(e) => {
                 setNotesModalBody(e.target.value);
-                autoGrowTextarea(e.currentTarget);
               }}
               onKeyDown={(ev) => {
                 if (ev.key === 'Escape') {

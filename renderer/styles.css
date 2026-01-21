@@ -2578,6 +2578,7 @@ input[type='number']::-webkit-inner-spin-button {
 .notes-modal-textarea {
   width: 100%;
   min-height: 240px;
+  max-height: 52vh;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-medium);
@@ -2586,8 +2587,33 @@ input[type='number']::-webkit-inner-spin-button {
   font-size: 14px;
   line-height: 1.55;
   resize: vertical;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   outline: none;
+}
+
+/* カスタムスクロールバー（他要素: tag-tasks と同系） */
+.notes-modal-textarea {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg-tertiary);
+}
+
+.notes-modal-textarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notes-modal-textarea::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.notes-modal-textarea::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.notes-modal-textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hover);
 }
 
 .notes-modal-textarea:focus {
