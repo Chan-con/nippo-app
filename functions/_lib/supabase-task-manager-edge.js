@@ -362,7 +362,7 @@ export class SupabaseTaskManagerEdge {
     await this._setDoc(userId, 'tasks', dateKey, content);
   }
 
-  async addTask(taskName, _isBreak = false, dateString = null, tag = null, startTime = null, userId) {
+  async addTask(taskName, _isBreak = false, dateString = null, tag = null, startTime = null, userId, memo = '', url = '') {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -385,8 +385,8 @@ export class SupabaseTaskManagerEdge {
       endTime: '',
       name: taskName,
       tag: tag || '',
-      memo: '',
-      url: '',
+      memo: typeof memo === 'string' ? memo : '',
+      url: typeof url === 'string' ? url : '',
       status: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -398,7 +398,7 @@ export class SupabaseTaskManagerEdge {
     return newTask;
   }
 
-  async addReservation(taskName, startTime, tag = null, dateString = null, userId) {
+  async addReservation(taskName, startTime, tag = null, dateString = null, userId, memo = '', url = '') {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -412,8 +412,8 @@ export class SupabaseTaskManagerEdge {
       endTime: null,
       name: taskName,
       tag: tag || '',
-      memo: '',
-      url: '',
+      memo: typeof memo === 'string' ? memo : '',
+      url: typeof url === 'string' ? url : '',
       status: 'reserved',
       createdAt: nowIso,
       updatedAt: nowIso,

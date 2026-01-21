@@ -398,6 +398,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tasks, setTasks] = useState<Task[]>([]);
   const tasksReloadInFlightRef = useRef(false);
   const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskCarryMemoUrlEnabled, setNewTaskCarryMemoUrlEnabled] = useState(false);
+  const [newTaskCarryMemo, setNewTaskCarryMemo] = useState('');
+  const [newTaskCarryUrl, setNewTaskCarryUrl] = useState('');
   const taskInputRef = useRef<HTMLInputElement | null>(null);
   const [taskInputFocused, setTaskInputFocused] = useState(false);
   const [taskSuggestOpen, setTaskSuggestOpen] = useState(false);
@@ -1580,8 +1583,32 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayMainTab]);
 
-  function focusTaskInputWithName(name: string) {
+  function clearNewTaskCarryMemoUrl() {
+    setNewTaskCarryMemoUrlEnabled(false);
+    setNewTaskCarryMemo('');
+    setNewTaskCarryUrl('');
+  }
+
+  function setNewTaskNamePlain(name: string) {
+    clearNewTaskCarryMemoUrl();
     setNewTaskName(name);
+  }
+
+  function copyTimelineTaskToNewTask(task: Task) {
+    const memo = typeof (task as any)?.memo === 'string' ? String((task as any).memo).trim() : '';
+    const url = typeof (task as any)?.url === 'string' ? String((task as any).url).trim() : '';
+    setNewTaskName(task.name);
+    if (memo || url) {
+      setNewTaskCarryMemoUrlEnabled(true);
+      setNewTaskCarryMemo(memo);
+      setNewTaskCarryUrl(url);
+    } else {
+      clearNewTaskCarryMemoUrl();
+    }
+  }
+
+  function focusTaskInputWithName(name: string) {
+    setNewTaskNamePlain(name);
     const isMobile =
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
@@ -3776,6 +3803,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const name = newTaskName.trim();
     if (!name) return;
 
+    const carryMemoUrl = newTaskCarryMemoUrlEnabled;
+    const carryMemo = String(newTaskCarryMemo || '').trim();
+    const carryUrl = String(newTaskCarryUrl || '').trim();
+
     const todayIso = formatDateISO(new Date());
     const isHistoryTarget = viewMode === 'history' && !!historyDate;
     const isReserve = addMode === 'reserve';
@@ -3800,6 +3831,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         if (selectedTag) payload.tag = selectedTag;
         if (reserveStartTime) payload.startTime = reserveStartTime;
         if (reserveDateString) payload.dateString = reserveDateString;
+        if (carryMemoUrl) {
+          if (carryMemo) payload.memo = carryMemo;
+          if (carryUrl) payload.url = carryUrl;
+        }
 
         const res = await apiFetch('/api/tasks/reserve', {
           method: 'POST',
@@ -3810,12 +3845,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         if (!res.ok || !body?.success) throw new Error(body?.error || '追加に失敗しました');
 
         setNewTaskName('');
+        clearNewTaskCarryMemoUrl();
         setReserveStartTime('');
         await loadHistory(historyDate);
         await loadHistoryDates();
       } else if (isHistoryTarget) {
         const payload: any = { name };
         if (selectedTag) payload.tag = selectedTag;
+        if (carryMemoUrl) {
+          if (carryMemo) payload.memo = carryMemo;
+          if (carryUrl) payload.url = carryUrl;
+        }
 
         const res = await apiFetch(`/api/history/${historyDate}/tasks`, {
           method: 'POST',
@@ -3826,6 +3866,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '追加に失敗しました');
 
         setNewTaskName('');
+        clearNewTaskCarryMemoUrl();
         setReserveStartTime('');
         await loadHistory(historyDate);
         await loadHistoryDates();
@@ -3834,6 +3875,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const payload: any = { name };
         if (selectedTag) payload.tag = selectedTag;
         if (isReserve && reserveStartTime) payload.startTime = reserveStartTime;
+        if (carryMemoUrl) {
+          if (carryMemo) payload.memo = carryMemo;
+          if (carryUrl) payload.url = carryUrl;
+        }
 
         const res = await apiFetch(url, {
           method: 'POST',
@@ -3843,6 +3888,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const body = await res.json();
         if (!res.ok || !body?.success) throw new Error(body?.error || '追加に失敗しました');
         setNewTaskName('');
+        clearNewTaskCarryMemoUrl();
         setReserveStartTime('');
         await reloadTasks();
       }
@@ -4642,7 +4688,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       const picked = taskNameSuggestions[taskSuggestActiveIndex];
                       if (picked) {
                         e.preventDefault();
-                        setNewTaskName(picked);
+                        setNewTaskNamePlain(picked);
                         setTaskSuggestOpen(false);
                         setTaskSuggestActiveIndex(-1);
                         window.requestAnimationFrame(() => {
@@ -4661,6 +4707,28 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   }}
                   disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
                 />
+
+                {newTaskCarryMemoUrlEnabled ? (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="メモ/URLを引き継ぎ中（クリックで解除）"
+                    aria-label="メモ/URLを引き継ぎ中（クリックで解除）"
+                    onClick={() => {
+                      clearNewTaskCarryMemoUrl();
+                      try {
+                        taskInputRef.current?.focus();
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    disabled={!accessToken || busy || (viewMode === 'history' && !historyDate)}
+                  >
+                    <span className="material-icons" aria-hidden="true">
+                      sticky_note_2
+                    </span>
+                  </button>
+                ) : null}
 
                 {taskInputFocused && taskSuggestOpen && accessToken && !busy ? (
                   <div
@@ -4685,7 +4753,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               window.clearTimeout(taskSuggestCloseTimerRef.current);
                               taskSuggestCloseTimerRef.current = null;
                             }
-                            setNewTaskName(name);
+                            setNewTaskNamePlain(name);
                             setTaskSuggestOpen(false);
                             setTaskSuggestActiveIndex(-1);
                             window.requestAnimationFrame(() => {
@@ -5321,7 +5389,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 e.preventDefault();
                                 e.stopPropagation();
                                 e.preventDefault();
-                                setNewTaskName(t.name);
+                                copyTimelineTaskToNewTask(t);
                                 const isMobile =
                                   typeof window !== 'undefined' &&
                                   typeof window.matchMedia === 'function' &&
@@ -5350,7 +5418,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             onContextMenu={(e) => {
                               if (e.target instanceof HTMLElement && e.target.closest('a.inline-url')) return;
                               e.preventDefault();
-                              setNewTaskName(t.name);
+                              copyTimelineTaskToNewTask(t);
                               const input = document.getElementById('task-input') as HTMLInputElement | null;
                               input?.focus();
                             }}
@@ -6734,7 +6802,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           }}
                           onClick={() => {
                             if (Date.now() - taskStockLastDragAtRef.current < 250) return;
-                            setNewTaskName(t);
+                            setNewTaskNamePlain(t);
                             setTaskStockOpen(false);
                           }}
                           style={{ cursor: 'grab' }}

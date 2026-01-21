@@ -256,12 +256,14 @@ export async function onRequest(context) {
       const dateString = body?.dateString || null;
       const tag = body?.tag || null;
       const startTime = body?.startTime || null;
+      const memo = typeof body?.memo === 'string' ? body.memo : '';
+      const taskUrl = typeof body?.url === 'string' ? body.url : '';
 
       if (!taskName) {
         return jsonResponse({ success: false, error: 'タスク名が必要です' }, 400);
       }
 
-      const newTask = await taskManager.addTask(taskName, false, dateString, tag, startTime, userId);
+      const newTask = await taskManager.addTask(taskName, false, dateString, tag, startTime, userId, memo, taskUrl);
       return jsonResponse({ success: true, task: newTask, taskId: newTask.id });
     }
 
@@ -270,6 +272,8 @@ export async function onRequest(context) {
       const tag = body?.tag || null;
       const startTime = body?.startTime || null;
       const dateString = body?.dateString || null;
+      const memo = typeof body?.memo === 'string' ? body.memo : '';
+      const taskUrl = typeof body?.url === 'string' ? body.url : '';
 
       if (!taskName) {
         return jsonResponse({ success: false, error: 'タスク名が必要です' }, 400);
@@ -298,7 +302,7 @@ export async function onRequest(context) {
         }
       }
 
-      const newReservation = await taskManager.addReservation(taskName, startTime, tag, dateString, userId);
+      const newReservation = await taskManager.addReservation(taskName, startTime, tag, dateString, userId, memo, taskUrl);
       return jsonResponse({ success: true, task: newReservation, taskId: newReservation.id });
     }
 

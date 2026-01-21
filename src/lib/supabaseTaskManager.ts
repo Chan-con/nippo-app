@@ -226,7 +226,16 @@ export class SupabaseTaskManager {
     await this._setDoc(userId, 'tasks', dateKey, content);
   }
 
-  async addTask(taskName: string, _isBreak = false, dateString: string | null = null, tag: string | null = null, startTime: string | null = null, userId: string) {
+  async addTask(
+    taskName: string,
+    _isBreak = false,
+    dateString: string | null = null,
+    tag: string | null = null,
+    startTime: string | null = null,
+    userId: string,
+    memo: string = '',
+    url: string = ''
+  ) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -249,7 +258,8 @@ export class SupabaseTaskManager {
       endTime: '',
       name: taskName,
       tag: tag || '',
-      memo: '',
+      memo: typeof memo === 'string' ? memo : '',
+      url: typeof url === 'string' ? url : '',
       status: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -261,7 +271,7 @@ export class SupabaseTaskManager {
     return newTask;
   }
 
-  async addReservation(taskName: string, startTime: string, tag: string | null = null, userId: string) {
+  async addReservation(taskName: string, startTime: string, tag: string | null = null, userId: string, memo: string = '', url: string = '') {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -275,7 +285,8 @@ export class SupabaseTaskManager {
       endTime: null,
       name: taskName,
       tag: tag || '',
-      memo: '',
+      memo: typeof memo === 'string' ? memo : '',
+      url: typeof url === 'string' ? url : '',
       status: 'reserved',
       createdAt: nowIso,
       updatedAt: nowIso,

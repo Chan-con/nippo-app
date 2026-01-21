@@ -739,7 +739,7 @@ class TaskManager {
         }
     }
 
-    async addTask(taskName, isBreak = false, dateString = null, tag = null, startTime = null) {
+    async addTask(taskName, isBreak = false, dateString = null, tag = null, startTime = null, _userId = null, memo = '', url = '') {
         /**タスクを追加 */
         await this.initialize();
         try {
@@ -788,6 +788,8 @@ class TaskManager {
                 endTime: '',
                 name: taskName,
                 tag: tag || '',
+                memo: typeof memo === 'string' ? memo : '',
+                url: typeof url === 'string' ? url : '',
                 status: null,
                 createdAt: now.toISOString(),
                 updatedAt: now.toISOString(),
@@ -1064,7 +1066,7 @@ class TaskManager {
         }
     }
 
-    async addReservation(taskName, startTime, tag = null, dateString = null) {
+    async addReservation(taskName, startTime, tag = null, dateString = null, _userId = null, memo = '', url = '') {
         await this.initialize();
 
         const trimmedName = (taskName || '').trim();
@@ -1112,6 +1114,8 @@ class TaskManager {
             endTime: null,
             name: trimmedName,
             tag: tag || '',
+            memo: typeof memo === 'string' ? memo : '',
+            url: typeof url === 'string' ? url : '',
             status: 'reserved',
             createdAt: now.toISOString(),
             updatedAt: now.toISOString(),
@@ -2307,6 +2311,8 @@ function createApp(taskManagerInstance, options = {}) {
             const dateString = data.dateString || null; // 日付パラメータ追加
             const tag = data.tag || null; // タグパラメータ追加
             const startTime = data.startTime || null; // 開始時刻パラメータ追加
+            const memo = typeof data.memo === 'string' ? data.memo : '';
+            const url = typeof data.url === 'string' ? data.url : '';
             
             console.log(`API - タスク追加リクエスト: name='${taskName}', requestedIsBreak=${requestedIsBreak}, dateString=${dateString}, tag=${tag}, startTime=${startTime}`);
             
@@ -2314,7 +2320,7 @@ function createApp(taskManagerInstance, options = {}) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
             }
             
-            const newTask = await taskManager.addTask(taskName, false, dateString, tag, startTime, req.userId);
+            const newTask = await taskManager.addTask(taskName, false, dateString, tag, startTime, req.userId, memo, url);
             try {
                 console.log(`API - 追加されたタスク: ${JSON.stringify(newTask)}`);
             } catch (error) {
@@ -2338,6 +2344,8 @@ function createApp(taskManagerInstance, options = {}) {
             const tag = data.tag || null;
             const startTime = data.startTime || null;
             const dateString = data.dateString || null;
+            const memo = typeof data.memo === 'string' ? data.memo : '';
+            const url = typeof data.url === 'string' ? data.url : '';
 
             if (!taskName) {
                 return res.status(400).json({ success: false, error: 'タスク名が必要です' });
@@ -2357,7 +2365,7 @@ function createApp(taskManagerInstance, options = {}) {
                 }
             }
 
-            const newReservation = await taskManager.addReservation(taskName, startTime, tag, dateString, req.userId);
+            const newReservation = await taskManager.addReservation(taskName, startTime, tag, dateString, req.userId, memo, url);
             res.json({ success: true, task: newReservation, taskId: newReservation.id });
         } catch (error) {
             res.status(400).json({ success: false, error: error.message });
