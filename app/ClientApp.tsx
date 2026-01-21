@@ -5396,6 +5396,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           {accessToken ? (
             <div className="today-panels-header">
               <div className="shortcut-launcher-frame" aria-label="ショートカットランチャー">
+                <div className="shortcut-launcher-label" aria-hidden="true">Shortcut</div>
                 <div
                   className="shortcut-launcher"
                   onDragOver={(ev) => {

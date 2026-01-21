@@ -2692,8 +2692,26 @@ input[type='number']::-webkit-inner-spin-button {
   border: 1px solid var(--border);
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-small);
-  padding: 8px;
+  position: relative;
+  padding: 14px 8px 8px;
   margin-bottom: 10px;
+}
+
+.shortcut-launcher-label {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  transform: translateY(-50%);
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-radius: 999px;
+  user-select: none;
+  pointer-events: none;
 }
 
 .shortcut-launcher {
