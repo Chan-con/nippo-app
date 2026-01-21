@@ -2378,15 +2378,18 @@ input[type='number']::-webkit-inner-spin-button {
   gap: 4px;
 }
 
-.today-panels-tabs {
-  margin-bottom: 14px;
-  /* ヘッダー側から移設した上余白（タブが最上段になるため） */
+.today-panels-header {
+  /* タブの上にショートカット枠も含めたヘッダー領域 */
   padding-top: calc(12px + 24px);
-  /* main-content の左右パディング(24px)分を相殺して、罫線を端まで伸ばす */
   margin-left: -24px;
   margin-right: -24px;
   padding-left: 24px;
   padding-right: 24px;
+  margin-bottom: 14px;
+}
+
+.today-panels-tabs {
+  margin: 0;
 }
 
 /* タブがある場合はヘッダー上余白を詰める */
@@ -2684,13 +2687,22 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 /* ショートカットランチャー（タブの上） */
+.shortcut-launcher-frame {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  box-shadow: var(--shadow-small);
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
 .shortcut-launcher {
   display: flex;
   align-items: center;
   gap: 8px;
   overflow-x: auto;
-  padding: 10px 8px 6px;
-  margin: 0 0 4px;
+  padding: 2px;
+  margin: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--accent) var(--bg-tertiary);
 }

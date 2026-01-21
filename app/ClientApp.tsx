@@ -5202,113 +5202,114 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
         <main className="main-content">
           {accessToken ? (
-            <>
-              <div
-                className="shortcut-launcher"
-                aria-label="ショートカットランチャー"
-                onDragOver={(ev) => {
-                  if (!shortcutDraggingId) return;
-                  ev.preventDefault();
-                  ev.dataTransfer.dropEffect = 'move';
-                  setShortcutDragOverId(null);
-                }}
-                onDrop={(ev) => {
-                  if (!shortcutDraggingId) return;
-                  ev.preventDefault();
-                  const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
-                  if (!id) return;
-                  moveShortcutByDrop(id, null);
-                  setShortcutDragOverId(null);
-                }}
-              >
-                {(Array.isArray(shortcuts) ? shortcuts : []).map((sc) => {
-                  const label = String(sc.title || sc.url || 'ショートカット');
-                  return (
-                    <a
-                      key={sc.id}
-                      href={sc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`shortcut-icon-button${shortcutDragOverId === sc.id ? ' drag-over' : ''}${shortcutDraggingId === sc.id ? ' dragging' : ''}`}
-                      title={label}
-                      aria-label={label}
-                      draggable
-                      onClick={(ev) => {
-                        if (shortcutDraggingId) {
+            <div className="today-panels-header">
+              <div className="shortcut-launcher-frame" aria-label="ショートカットランチャー">
+                <div
+                  className="shortcut-launcher"
+                  onDragOver={(ev) => {
+                    if (!shortcutDraggingId) return;
+                    ev.preventDefault();
+                    ev.dataTransfer.dropEffect = 'move';
+                    setShortcutDragOverId(null);
+                  }}
+                  onDrop={(ev) => {
+                    if (!shortcutDraggingId) return;
+                    ev.preventDefault();
+                    const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
+                    if (!id) return;
+                    moveShortcutByDrop(id, null);
+                    setShortcutDragOverId(null);
+                  }}
+                >
+                  {(Array.isArray(shortcuts) ? shortcuts : []).map((sc) => {
+                    const label = String(sc.title || sc.url || 'ショートカット');
+                    return (
+                      <a
+                        key={sc.id}
+                        href={sc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`shortcut-icon-button${shortcutDragOverId === sc.id ? ' drag-over' : ''}${shortcutDraggingId === sc.id ? ' dragging' : ''}`}
+                        title={label}
+                        aria-label={label}
+                        draggable
+                        onClick={(ev) => {
+                          if (shortcutDraggingId) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                          }
+                        }}
+                        onContextMenu={(ev) => {
                           ev.preventDefault();
                           ev.stopPropagation();
-                        }
-                      }}
-                      onContextMenu={(ev) => {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        const ok = window.confirm('このショートカットを削除しますか？');
-                        if (!ok) return;
-                        setShortcuts((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== sc.id) : prev));
-                      }}
-                      onDragStart={(ev) => {
-                        setShortcutDraggingId(sc.id);
-                        setShortcutDragOverId(null);
-                        try {
-                          ev.dataTransfer.effectAllowed = 'move';
-                          ev.dataTransfer.setData('text/plain', sc.id);
-                        } catch {
-                          // ignore
-                        }
-                      }}
-                      onDragEnd={() => {
-                        setShortcutDraggingId(null);
-                        setShortcutDragOverId(null);
-                      }}
-                      onDragOver={(ev) => {
-                        if (!shortcutDraggingId || shortcutDraggingId === sc.id) return;
-                        ev.preventDefault();
-                        ev.dataTransfer.dropEffect = 'move';
-                        setShortcutDragOverId(sc.id);
-                      }}
-                      onDragLeave={() => {
-                        if (shortcutDragOverId === sc.id) setShortcutDragOverId(null);
-                      }}
-                      onDrop={(ev) => {
-                        if (!shortcutDraggingId) return;
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
-                        if (!id || id === sc.id) return;
-                        moveShortcutByDrop(id, sc.id);
-                        setShortcutDragOverId(null);
-                      }}
-                    >
-                      {sc.iconUrl ? (
-                        <img
-                          className="shortcut-icon-img"
-                          src={sc.iconUrl}
-                          alt=""
-                          loading="lazy"
-                          onError={(e) => {
-                            // clear iconUrl to show fallback icon
-                            setShortcuts((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === sc.id ? { ...x, iconUrl: '' } : x)) : prev));
-                          }}
-                        />
-                      ) : null}
-                      <span className="material-icons shortcut-fallback-icon">link</span>
-                    </a>
-                  );
-                })}
-                <button
-                  type="button"
-                  className="shortcut-icon-button shortcut-add-button"
-                  title="ショートカットを追加"
-                  aria-label="ショートカットを追加"
-                  onClick={() => {
-                    setShortcutModalError(null);
-                    setShortcutModalUrl('');
-                    setShortcutModalOpen(true);
-                  }}
-                  disabled={busy}
-                >
-                  <span className="material-icons">add</span>
-                </button>
+                          const ok = window.confirm('このショートカットを削除しますか？');
+                          if (!ok) return;
+                          setShortcuts((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== sc.id) : prev));
+                        }}
+                        onDragStart={(ev) => {
+                          setShortcutDraggingId(sc.id);
+                          setShortcutDragOverId(null);
+                          try {
+                            ev.dataTransfer.effectAllowed = 'move';
+                            ev.dataTransfer.setData('text/plain', sc.id);
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        onDragEnd={() => {
+                          setShortcutDraggingId(null);
+                          setShortcutDragOverId(null);
+                        }}
+                        onDragOver={(ev) => {
+                          if (!shortcutDraggingId || shortcutDraggingId === sc.id) return;
+                          ev.preventDefault();
+                          ev.dataTransfer.dropEffect = 'move';
+                          setShortcutDragOverId(sc.id);
+                        }}
+                        onDragLeave={() => {
+                          if (shortcutDragOverId === sc.id) setShortcutDragOverId(null);
+                        }}
+                        onDrop={(ev) => {
+                          if (!shortcutDraggingId) return;
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          const id = ev.dataTransfer.getData('text/plain') || shortcutDraggingId;
+                          if (!id || id === sc.id) return;
+                          moveShortcutByDrop(id, sc.id);
+                          setShortcutDragOverId(null);
+                        }}
+                      >
+                        {sc.iconUrl ? (
+                          <img
+                            className="shortcut-icon-img"
+                            src={sc.iconUrl}
+                            alt=""
+                            loading="lazy"
+                            onError={() => {
+                              // clear iconUrl to show fallback icon
+                              setShortcuts((prev) => (Array.isArray(prev) ? prev.map((x) => (x.id === sc.id ? { ...x, iconUrl: '' } : x)) : prev));
+                            }}
+                          />
+                        ) : null}
+                        <span className="material-icons shortcut-fallback-icon">link</span>
+                      </a>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="shortcut-icon-button shortcut-add-button"
+                    title="ショートカットを追加"
+                    aria-label="ショートカットを追加"
+                    onClick={() => {
+                      setShortcutModalError(null);
+                      setShortcutModalUrl('');
+                      setShortcutModalOpen(true);
+                    }}
+                    disabled={busy}
+                  >
+                    <span className="material-icons">add</span>
+                  </button>
+                </div>
               </div>
 
               <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
@@ -5340,7 +5341,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   📝 ノート
                 </button>
               </div>
-            </>
+            </div>
           ) : null}
 
           {showMainHeader ? (
