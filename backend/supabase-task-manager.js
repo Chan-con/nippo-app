@@ -18,6 +18,21 @@ function isReservedTask(task) {
   return !!task && task.status === 'reserved';
 }
 
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function deepMerge(a, b) {
+  if (!isPlainObject(a)) a = {};
+  if (!isPlainObject(b)) return { ...a };
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    if (isPlainObject(v) && isPlainObject(out[k])) out[k] = deepMerge(out[k], v);
+    else out[k] = v;
+  }
+  return out;
+}
+
 function getNowMinutesJST() {
   const now = new Date();
   const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
@@ -755,7 +770,9 @@ class SupabaseTaskManager {
 
   async saveSettings(settings, userId) {
     if (!userId) throw new Error('userId is required');
-    await this._setDoc(userId, 'settings', 'default', settings || {});
+    const current = await this._getDoc(userId, 'settings', 'default', {});
+    const merged = deepMerge(current || {}, settings || {});
+    await this._setDoc(userId, 'settings', 'default', merged);
     return true;
   }
 }

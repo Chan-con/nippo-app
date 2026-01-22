@@ -477,6 +477,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsReservationNotifyEnabled, setSettingsReservationNotifyEnabled] = useState(false);
   const [settingsReservationNotifyMinutesBefore, setSettingsReservationNotifyMinutesBefore] = useState<number[]>([]);
   const [settingsReservationNotifyMinutesInput, setSettingsReservationNotifyMinutesInput] = useState('');
+  const [settingsAutoShowTimelineOnIdle, setSettingsAutoShowTimelineOnIdle] = useState(false);
   const [reservationNotificationPermission, setReservationNotificationPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>(
     'default'
   );
@@ -647,6 +648,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const timelineOpenUrlTimerRef = useRef<number | null>(null);
 
+  const autoShowTimelineLastActivityAtRef = useRef<number>(Date.now());
+  const autoShowTimelineIntervalRef = useRef<number | null>(null);
+  const autoShowTimelineTriggeredRef = useRef(false);
+
   const mainBodyRef = useRef<HTMLDivElement | null>(null);
 
   // today main panels tab (timeline / taskline)
@@ -673,6 +678,80 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       // ignore
     }
   }, [todayMainTab]);
+
+  // Auto show timeline tab after inactivity.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!accessToken) return;
+    if (!settingsAutoShowTimelineOnIdle) return;
+
+    const idleMs = 10 * 60 * 1000;
+
+    autoShowTimelineLastActivityAtRef.current = Date.now();
+    autoShowTimelineTriggeredRef.current = false;
+
+    const markActivity = () => {
+      autoShowTimelineLastActivityAtRef.current = Date.now();
+      autoShowTimelineTriggeredRef.current = false;
+    };
+
+    const onVisibilityChange = () => {
+      if (typeof document === 'undefined') return;
+      if (document.visibilityState === 'visible') markActivity();
+    };
+
+    const onFocus = () => {
+      markActivity();
+    };
+
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    for (const ev of events) {
+      try {
+        window.addEventListener(ev, markActivity, { passive: true });
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      window.addEventListener('visibilitychange', onVisibilityChange);
+      window.addEventListener('focus', onFocus);
+    } catch {
+      // ignore
+    }
+
+    const tick = () => {
+      if (!settingsAutoShowTimelineOnIdle) return;
+      if (settingsOpen) return;
+      const elapsed = Date.now() - autoShowTimelineLastActivityAtRef.current;
+      if (elapsed < idleMs) return;
+      if (autoShowTimelineTriggeredRef.current) return;
+
+      autoShowTimelineTriggeredRef.current = true;
+      setTodayMainTab((prev) => (prev === 'timeline' ? prev : 'timeline'));
+    };
+
+    autoShowTimelineIntervalRef.current = window.setInterval(tick, 5_000);
+
+    return () => {
+      if (autoShowTimelineIntervalRef.current != null) {
+        window.clearInterval(autoShowTimelineIntervalRef.current);
+        autoShowTimelineIntervalRef.current = null;
+      }
+      for (const ev of events) {
+        try {
+          window.removeEventListener(ev, markActivity);
+        } catch {
+          // ignore
+        }
+      }
+      try {
+        window.removeEventListener('visibilitychange', onVisibilityChange);
+        window.removeEventListener('focus', onFocus);
+      } catch {
+        // ignore
+      }
+    };
+  }, [accessToken, settingsAutoShowTimelineOnIdle, settingsOpen]);
 
   // notice (above shortcut launcher)
   const NOTICE_KEY = 'nippoNotice';
@@ -2602,6 +2681,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsTimeRoundingMode('nearest');
       setSettingsExcludeTaskNames([]);
       setSettingsExcludeTaskNameInput('');
+      setSettingsReservationNotifyEnabled(false);
+      setSettingsReservationNotifyMinutesBefore([]);
+      setSettingsReservationNotifyMinutesInput('');
+      setSettingsAutoShowTimelineOnIdle(false);
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
 
@@ -2878,6 +2961,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsReservationNotifyMinutesBefore(minutesBefore);
       setSettingsReservationNotifyMinutesInput('');
 
+      const ui = s?.ui || {};
+      setSettingsAutoShowTimelineOnIdle(!!ui?.autoShowTimelineOnIdle);
+
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
 
@@ -2935,6 +3021,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 enabled: !!settingsReservationNotifyEnabled,
                 minutesBefore,
               },
+            },
+            ui: {
+              autoShowTimelineOnIdle: !!settingsAutoShowTimelineOnIdle,
             },
           },
         }),
@@ -7526,6 +7615,33 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       >
                         <span className="material-icons">add</span>
                       </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <h4>🕒 自動表示</h4>
+              <p className="settings-hint">10分間操作（クリック/入力など）がない場合、タイムラインタブを表示します。</p>
+              <div className="settings-grid-2col">
+                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
+                  <label className="settings-label" htmlFor="auto-show-timeline-on-idle">
+                    無操作でタイムラインへ戻す
+                  </label>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <input
+                      id="auto-show-timeline-on-idle"
+                      type="checkbox"
+                      checked={!!settingsAutoShowTimelineOnIdle}
+                      onChange={(e) => {
+                        setSettingsAutoShowTimelineOnIdle(!!e.target.checked);
+                        setSettingsDirty(true);
+                      }}
+                      disabled={!accessToken || busy}
+                    />
+                    <div className="settings-hint" style={{ margin: 0 }}>
+                      {settingsAutoShowTimelineOnIdle ? 'ON' : 'OFF'}
                     </div>
                   </div>
                 </div>
