@@ -1343,6 +1343,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 .gantt-task.is-short .gantt-task-title {
   display: inline-block;
+  flex: 0 0 auto;
   max-width: var(--gantt-title-max, 9999px);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1359,6 +1360,7 @@ input[type='number']::-webkit-inner-spin-button {
   margin-left: -2px;
   line-height: 1.2;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  flex: 0 0 auto;
   max-width: none;
   overflow: visible;
   text-overflow: clip;
