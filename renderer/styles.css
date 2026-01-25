@@ -1399,6 +1399,27 @@ input[type='number']::-webkit-inner-spin-button {
   overflow: visible;
 }
 
+.gantt-task-label {
+  position: absolute;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 99997;
+}
+
 .gantt-task-handle {
   display: flex;
   align-items: center;

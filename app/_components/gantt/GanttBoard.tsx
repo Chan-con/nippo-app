@@ -58,6 +58,8 @@ export default function GanttBoard(props: {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollAdjustPxRef = useRef(0);
   const pendingCenterDayRef = useRef<number | null>(null);
+  const [scrollLeftPx, setScrollLeftPx] = useState(0);
+  const [viewportWidthPx, setViewportWidthPx] = useState(0);
 
   useEffect(() => {
     if (initialRangeSetRef.current) return;
@@ -119,6 +121,18 @@ export default function GanttBoard(props: {
     const target = dayIndex * w + w / 2 - el.clientWidth / 2;
     el.scrollLeft = Math.max(0, target);
   }, [viewStart, viewDays, dayWidth]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      setScrollLeftPx(Math.max(0, Math.trunc(el.scrollLeft || 0)));
+      setViewportWidthPx(Math.max(0, Math.trunc(el.clientWidth || 0)));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   const [draftTasks, setDraftTasks] = useState<GanttTask[]>(Array.isArray(props.tasks) ? props.tasks : []);
   const draggingRef = useRef<DragState | null>(null);
@@ -458,6 +472,8 @@ export default function GanttBoard(props: {
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
+    setScrollLeftPx(Math.max(0, Math.trunc(el.scrollLeft || 0)));
+    setViewportWidthPx(Math.max(0, Math.trunc(el.clientWidth || 0)));
     const w = Math.max(6, Math.trunc(dayWidth || 24));
     const threshold = 12 * w;
     const chunkDays = 60;
@@ -555,6 +571,43 @@ export default function GanttBoard(props: {
             ) : null}
 
             {tasksForRender.length === 0 ? <div className="gantt-empty-placeholder-text">ダブルクリックでタスクを追加</div> : null}
+
+            {/* If a long bar's left edge is out of view, show a pinned label so the title stays readable. */}
+            {tasksForRender.map((t) => {
+              const s = ymdToUtcDayNumber(t.startDate);
+              const e = ymdToUtcDayNumber(t.endDate);
+              if (s == null || e == null) return null;
+
+              const start = clampInt(s, rangeStartDay, rangeEndDay);
+              const end = clampInt(e, rangeStartDay, rangeEndDay);
+              if (end < rangeStartDay || start > rangeEndDay) return null;
+
+              const safeEnd = Math.max(start, end);
+              const x = (start - rangeStartDay) * Math.max(6, dayWidth);
+              const w = (safeEnd - start + 1) * Math.max(6, dayWidth);
+              const yRaw = (t as any)?.y;
+              const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
+
+              const visibleLeft = scrollLeftPx;
+              const visibleRight = scrollLeftPx + Math.max(0, viewportWidthPx);
+              const barVisible = x + w > visibleLeft && x < visibleRight;
+              const leftClipped = x < visibleLeft - 2;
+              if (!barVisible || !leftClipped) return null;
+
+              const pinLeft = Math.max(0, visibleLeft + 8);
+              const maxW = Math.max(0, visibleRight - pinLeft - 12);
+
+              return (
+                <div
+                  key={`pin-${t.id}`}
+                  className="gantt-task-label"
+                  style={{ left: pinLeft, top: y + 2, maxWidth: maxW }}
+                  aria-hidden="true"
+                >
+                  {String(t.title || '（無題）')}
+                </div>
+              );
+            })}
 
             {tasksForRender.map((t) => {
               const s = ymdToUtcDayNumber(t.startDate);
