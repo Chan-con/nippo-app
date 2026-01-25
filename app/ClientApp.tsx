@@ -27,7 +27,25 @@ type TaskLineCard = {
 
 type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'stock';
 
-type TodayMainTab = 'timeline' | 'taskline' | 'gantt' | 'notes';
+type TodayMainTab = 'timeline' | 'taskline' | 'gantt' | 'alerts' | 'notes';
+
+type AlertKind = 'once' | 'weekly' | 'monthly';
+
+type AlertItem = {
+  id: string;
+  title: string;
+  kind: AlertKind;
+  enabled: boolean;
+  // once
+  onceAt?: string; // ISO
+  // weekly/monthly
+  time?: string; // HH:MM
+  weeklyDays?: number[]; // 0=Sun..6=Sat
+  monthlyDay?: number | null; // 1..31
+  // computed
+  nextFireAt?: string; // ISO
+  lastFiredAt?: string; // ISO
+};
 
 type ShortcutItem = {
   id: string;
@@ -43,6 +61,164 @@ type NoticeData = {
   text: string;
   tone: NoticeTone;
 };
+
+function getNowJstDate() {
+  const now = new Date();
+  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+}
+
+function parseHHMMToParts(v: unknown) {
+  const m = String(v ?? '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return null;
+  return { hh: parseInt(m[1], 10), mm: parseInt(m[2], 10) };
+}
+
+function clampInt(v: unknown, min: number, max: number, fallback: number | null) {
+  const n = typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : parseInt(String(v ?? ''), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function formatIsoToJstYmdHm(iso: string) {
+  const ms = Date.parse(String(iso || ''));
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms);
+  // JST表示
+  try {
+    return d
+      .toLocaleString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Tokyo',
+      })
+      .replace(/\//g, '/');
+  } catch {
+    return d.toISOString();
+  }
+}
+
+function isoToJstDatetimeLocalValue(iso: string) {
+  const ms = Date.parse(String(iso || ''));
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms);
+  try {
+    // sv-SE: YYYY-MM-DD HH:mm:ss
+    const s = d.toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo', hour12: false });
+    const v = s.replace(' ', 'T');
+    return v.slice(0, 16);
+  } catch {
+    return '';
+  }
+}
+
+function jstDatetimeLocalValueToIso(v: string) {
+  const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!m) return '';
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const d = parseInt(m[3], 10);
+  const hh = parseInt(m[4], 10);
+  const mm = parseInt(m[5], 10);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d) || !Number.isFinite(hh) || !Number.isFinite(mm)) return '';
+  // JST(UTC+9) のローカル指定を UTC に変換
+  const utc = Date.UTC(y, mo - 1, d, hh - 9, mm, 0, 0);
+  return new Date(utc).toISOString();
+}
+
+function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
+  if (!alert?.enabled) return '';
+  const base = fromJstDate instanceof Date ? fromJstDate : getNowJstDate();
+
+  if (alert.kind === 'once') {
+    const ms = Date.parse(String(alert.onceAt || ''));
+    if (!Number.isFinite(ms)) return '';
+    return new Date(ms).toISOString();
+  }
+
+  if (alert.kind === 'weekly') {
+    const parts = parseHHMMToParts(alert.time);
+    if (!parts) return '';
+    const rawDays = Array.isArray(alert.weeklyDays) ? alert.weeklyDays : [];
+    const days = Array.from(new Set(rawDays.map((x) => clampInt(x, 0, 6, null)).filter((x) => typeof x === 'number'))).sort((a, b) => a - b);
+    if (days.length === 0) return '';
+
+    for (let delta = 0; delta <= 14; delta += 1) {
+      const cand = new Date(base.getFullYear(), base.getMonth(), base.getDate() + delta, parts.hh, parts.mm, 0, 0);
+      if (!days.includes(cand.getDay())) continue;
+      if (cand.getTime() <= base.getTime()) continue;
+      return cand.toISOString();
+    }
+    return '';
+  }
+
+  if (alert.kind === 'monthly') {
+    const parts = parseHHMMToParts(alert.time);
+    if (!parts) return '';
+    const day = clampInt(alert.monthlyDay, 1, 31, null);
+    if (day == null) return '';
+
+    for (let addMonths = 0; addMonths <= 24; addMonths += 1) {
+      const y = base.getFullYear();
+      const m0 = base.getMonth() + addMonths;
+      const y2 = y + Math.floor(m0 / 12);
+      const m2 = ((m0 % 12) + 12) % 12;
+      const lastDay = new Date(y2, m2 + 1, 0).getDate();
+      const d = Math.min(day, lastDay);
+      const cand = new Date(y2, m2, d, parts.hh, parts.mm, 0, 0);
+      if (cand.getTime() <= base.getTime()) continue;
+      return cand.toISOString();
+    }
+    return '';
+  }
+
+  return '';
+}
+
+function normalizeAlertItem(input: any, fallbackId: string) {
+  const id = typeof input?.id === 'string' ? String(input.id) : fallbackId;
+  const titleRaw = typeof input?.title === 'string' ? String(input.title) : '';
+  const kindRaw = input?.kind;
+  const kind: AlertKind = kindRaw === 'weekly' || kindRaw === 'monthly' || kindRaw === 'once' ? kindRaw : 'once';
+  const enabled = input?.enabled === false ? false : true;
+
+  const onceAt = typeof input?.onceAt === 'string' ? String(input.onceAt) : '';
+  const time = typeof input?.time === 'string' ? String(input.time) : '';
+  const weeklyDays = Array.isArray(input?.weeklyDays) ? input.weeklyDays : [];
+  const monthlyDay = input?.monthlyDay;
+  const lastFiredAt = typeof input?.lastFiredAt === 'string' ? String(input.lastFiredAt) : '';
+
+  const base: AlertItem = {
+    id: String(id || '').slice(0, 80),
+    title: (titleRaw.trim() ? titleRaw : '（無題）').slice(0, 120),
+    kind,
+    enabled,
+    onceAt: kind === 'once' ? onceAt.slice(0, 64) : '',
+    time: kind === 'weekly' || kind === 'monthly' ? time.slice(0, 10) : '',
+    weeklyDays: kind === 'weekly' ? weeklyDays.slice(0, 7).map((x: any) => clampInt(x, 0, 6, 0) ?? 0) : [],
+    monthlyDay: kind === 'monthly' ? clampInt(monthlyDay, 1, 31, 1) : null,
+    lastFiredAt: lastFiredAt.slice(0, 64),
+  };
+
+  base.nextFireAt = computeNextFireAt(base, getNowJstDate());
+  return base;
+}
+
+function normalizeAlerts(input: unknown): AlertItem[] {
+  const list = Array.isArray(input) ? input : [];
+  const out: AlertItem[] = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const item = (list as any[])[i];
+    const fallbackId = `alert-${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
+    const a = normalizeAlertItem(item, fallbackId);
+    if (!a.id) continue;
+    out.push(a);
+  }
+  return out;
+}
 
 const TASK_LINE_LANES: Array<{ key: TaskLineLane; label: string }> = [
   { key: 'mon', label: '月' },
@@ -363,6 +539,10 @@ function newId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function safeRandomId(prefix = 'id') {
+  return `${prefix}-${newId()}`;
+}
+
 function getSafeLocalStorage(): Storage | undefined {
   try {
     return window.localStorage;
@@ -663,7 +843,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (typeof window === 'undefined') return 'timeline';
     try {
       const raw = window.localStorage.getItem('nippoTodayMainTab');
-      return raw === 'taskline' || raw === 'gantt' || raw === 'timeline' || raw === 'notes' ? (raw as TodayMainTab) : 'timeline';
+      return raw === 'taskline' || raw === 'gantt' || raw === 'alerts' || raw === 'timeline' || raw === 'notes' ? (raw as TodayMainTab) : 'timeline';
     } catch {
       return 'timeline';
     }
@@ -1339,6 +1519,290 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const ganttLastSavedSnapshotRef = useRef<string>('');
   const ganttIsSavingRef = useRef(false);
   const ganttIsInteractingRef = useRef(false);
+
+  // alerts (one-shot / weekly / monthly) - synced via Supabase
+  const ALERTS_GLOBAL_KEY = 'global';
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsSaving, setAlertsSaving] = useState(false);
+  const [alertsDirty, setAlertsDirty] = useState(false);
+  const [alertsRemoteUpdatePending, setAlertsRemoteUpdatePending] = useState(false);
+  const [alertsError, setAlertsError] = useState<string | null>(null);
+  const alertsSaveTimerRef = useRef<number | null>(null);
+  const alertsLastSavedSnapshotRef = useRef<string>('');
+  const alertsIsSavingRef = useRef(false);
+  const alertsExecutorTimerRef = useRef<number | null>(null);
+  const alertsRef = useRef<AlertItem[]>([]);
+
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [alertEditingId, setAlertEditingId] = useState<string | null>(null);
+  const [alertDraft, setAlertDraft] = useState<AlertItem | null>(null);
+
+  useEffect(() => {
+    alertsRef.current = Array.isArray(alerts) ? alerts : [];
+  }, [alerts]);
+
+  function alertsSnapshot(list: AlertItem[]) {
+    try {
+      return JSON.stringify(
+        (Array.isArray(list) ? list : []).map((a) => ({
+          id: a.id,
+          title: a.title,
+          kind: a.kind,
+          enabled: a.enabled,
+          onceAt: a.onceAt || '',
+          time: a.time || '',
+          weeklyDays: Array.isArray(a.weeklyDays) ? a.weeklyDays.slice() : [],
+          monthlyDay: a.monthlyDay ?? null,
+          lastFiredAt: a.lastFiredAt || '',
+          nextFireAt: a.nextFireAt || '',
+        }))
+      );
+    } catch {
+      return '';
+    }
+  }
+
+  async function loadAlertsFromServer() {
+    if (!accessToken) return;
+    setAlertsLoading(true);
+    setAlertsError(null);
+    try {
+      const res = await apiFetch('/api/alerts', { cache: 'no-store' });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'アラートの取得に失敗しました');
+      const remote = normalizeAlerts(body?.alerts?.alerts);
+      setAlerts(remote);
+      alertsLastSavedSnapshotRef.current = alertsSnapshot(remote);
+      setAlertsDirty(false);
+      setAlertsRemoteUpdatePending(false);
+    } catch (e: any) {
+      setAlertsError(e?.message || String(e));
+      setAlerts([]);
+      alertsLastSavedSnapshotRef.current = '';
+      setAlertsDirty(false);
+    } finally {
+      setAlertsLoading(false);
+    }
+  }
+
+  async function saveAlertsToServer(list: AlertItem[], snapshotOverride?: string) {
+    if (!accessToken) return;
+    if (alertsIsSavingRef.current) return;
+    alertsIsSavingRef.current = true;
+    setAlertsSaving(true);
+    setAlertsError(null);
+    try {
+      const snapshot = snapshotOverride ?? alertsSnapshot(list);
+      const res = await apiFetch('/api/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alerts: list }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'アラートの保存に失敗しました');
+      alertsLastSavedSnapshotRef.current = snapshot;
+      setAlertsDirty(false);
+      setAlertsRemoteUpdatePending(false);
+    } catch (e: any) {
+      setAlertsError(e?.message || String(e));
+    } finally {
+      setAlertsSaving(false);
+      alertsIsSavingRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!accessToken) {
+      setAlerts([]);
+      setAlertsDirty(false);
+      setAlertsRemoteUpdatePending(false);
+      setAlertsError(null);
+      alertsLastSavedSnapshotRef.current = '';
+      return;
+    }
+    void loadAlertsFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    if (!alertsDirty) return;
+    if (alertsIsSavingRef.current) return;
+    if (alertModalOpen) return;
+
+    try {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) return;
+    } catch {
+      // ignore
+    }
+
+    const snapshot = alertsSnapshot(alerts);
+    if (snapshot && snapshot === alertsLastSavedSnapshotRef.current) {
+      setAlertsDirty(false);
+      return;
+    }
+
+    if (alertsSaveTimerRef.current) window.clearTimeout(alertsSaveTimerRef.current);
+    alertsSaveTimerRef.current = window.setTimeout(() => {
+      void saveAlertsToServer(alerts, snapshot);
+    }, 700);
+
+    return () => {
+      if (alertsSaveTimerRef.current) window.clearTimeout(alertsSaveTimerRef.current);
+      alertsSaveTimerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alerts, alertsDirty, alertModalOpen, accessToken]);
+
+  function openNewAlertModal() {
+    const id = safeRandomId('alert');
+    const base: AlertItem = {
+      id,
+      title: '',
+      kind: 'once',
+      enabled: true,
+      onceAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      weeklyDays: [1, 2, 3, 4, 5],
+      time: '09:00',
+      monthlyDay: 1,
+      lastFiredAt: '',
+      nextFireAt: '',
+    };
+    const next = normalizeAlertItem(base as any, id);
+    setAlertEditingId(null);
+    setAlertDraft(next);
+    setAlertModalOpen(true);
+  }
+
+  function openEditAlertModal(alertId: string) {
+    const id = String(alertId || '');
+    const found = (Array.isArray(alerts) ? alerts : []).find((a) => a.id === id) ?? null;
+    if (!found) return;
+    setAlertEditingId(id);
+    setAlertDraft({ ...found });
+    setAlertModalOpen(true);
+  }
+
+  function closeAlertModal() {
+    setAlertModalOpen(false);
+    setAlertEditingId(null);
+    setAlertDraft(null);
+  }
+
+  function upsertAlertFromDraft(draft: AlertItem) {
+    const normalized = normalizeAlertItem(draft as any, draft.id || safeRandomId('alert'));
+    normalized.nextFireAt = computeNextFireAt(normalized, getNowJstDate());
+
+    setAlerts((prev) => {
+      const list = Array.isArray(prev) ? prev.slice() : [];
+      const idx = list.findIndex((a) => a.id === normalized.id);
+      if (idx >= 0) list[idx] = normalized;
+      else list.push(normalized);
+      return list;
+    });
+    setAlertsDirty(true);
+    setAlertsRemoteUpdatePending(false);
+  }
+
+  function deleteAlert(alertId: string) {
+    const id = String(alertId || '');
+    if (!id) return;
+    setAlerts((prev) => (Array.isArray(prev) ? prev.filter((a) => a.id !== id) : prev));
+    setAlertsDirty(true);
+    setAlertsRemoteUpdatePending(false);
+  }
+
+  // alerts executor (only while app is open)
+  useEffect(() => {
+    if (!accessToken) return;
+
+    if (alertsExecutorTimerRef.current != null) {
+      window.clearTimeout(alertsExecutorTimerRef.current);
+      alertsExecutorTimerRef.current = null;
+    }
+
+    const nowJst = getNowJstDate();
+    const list = normalizeAlerts(alertsRef.current)
+      .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, nowJst) || a.nextFireAt || '' }))
+      .filter((a) => a.enabled);
+
+    const candidates = list
+      .map((a) => ({ a, ms: Date.parse(String(a.nextFireAt || '')) }))
+      .filter((x) => Number.isFinite(x.ms))
+      .sort((x, y) => x.ms - y.ms || String(x.a.id).localeCompare(String(y.a.id)));
+
+    if (candidates.length === 0) return;
+
+    const head = candidates[0];
+    const delay = Math.max(0, head.ms - nowJst.getTime());
+
+    const fire = async () => {
+      const now = getNowJstDate();
+      const current = normalizeAlerts(alertsRef.current);
+      const due = current
+        .filter((a) => {
+          if (!a.enabled) return false;
+          const ms = Date.parse(String(a.nextFireAt || computeNextFireAt(a, now) || ''));
+          return Number.isFinite(ms) && ms <= now.getTime();
+        })
+        .sort((x, y) => {
+          const xm = Date.parse(String(x.nextFireAt || ''));
+          const ym = Date.parse(String(y.nextFireAt || ''));
+          if (Number.isFinite(xm) && Number.isFinite(ym) && xm !== ym) return xm - ym;
+          return String(x.id).localeCompare(String(y.id));
+        });
+
+      if (due.length === 0) {
+        // reschedule
+        setAlerts((prev) => prev);
+        return;
+      }
+
+      const bumpedBase = new Date(now.getTime() + 60 * 1000);
+      const updated = current.map((a) => {
+        const isDue = due.some((d) => d.id === a.id);
+        if (!isDue) return a;
+
+        try {
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification(String(a.title || 'アラート'), { body: '時間になりました', silent: false });
+          }
+        } catch {
+          // ignore
+        }
+
+        const next: AlertItem = { ...a, lastFiredAt: now.toISOString() };
+        if (a.kind === 'once') {
+          next.enabled = false;
+          next.nextFireAt = '';
+        } else {
+          next.nextFireAt = computeNextFireAt(next, bumpedBase);
+        }
+        return next;
+      });
+
+      setAlerts(updated);
+      setAlertsDirty(true);
+      setAlertsRemoteUpdatePending(false);
+
+      // Save promptly (to sync to other devices)
+      const snap = alertsSnapshot(updated);
+      void saveAlertsToServer(updated, snap);
+    };
+
+    alertsExecutorTimerRef.current = window.setTimeout(fire, Math.min(delay, 2_147_000_000));
+    return () => {
+      if (alertsExecutorTimerRef.current != null) window.clearTimeout(alertsExecutorTimerRef.current);
+      alertsExecutorTimerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, alerts]);
 
   const [ganttDrawerOpen, setGanttDrawerOpen] = useState(false);
   const [ganttSelectedTaskId, setGanttSelectedTaskId] = useState<string | null>(null);
@@ -3578,6 +4042,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             return;
           }
 
+          if (docType === 'alerts' && typeof docKey === 'string' && docKey === ALERTS_GLOBAL_KEY) {
+            if (effectiveViewMode === 'history') return;
+            if (alertModalOpen) return;
+            if (alertsDirty) {
+              setAlertsRemoteUpdatePending(true);
+              return;
+            }
+            if (alertsIsSavingRef.current) return;
+            void loadAlertsFromServer();
+            return;
+          }
+
           if (docType === 'gantt' && typeof docKey === 'string' && docKey === GANTT_GLOBAL_KEY) {
             if (effectiveViewMode === 'history') return;
             if (ganttEditingId) return;
@@ -3622,6 +4098,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     ganttDirty,
     notesEditingId,
     notesDirty,
+    alertModalOpen,
+    alertsDirty,
     effectiveViewMode,
   ]);
 
@@ -6170,6 +6648,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 </button>
                 <button
                   type="button"
+                  className={`tab-button ${todayMainTab === 'alerts' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'alerts'}
+                  onClick={() => setTodayMainTab('alerts')}
+                >
+                  🔔 アラート
+                </button>
+                <button
+                  type="button"
                   className={`tab-button ${todayMainTab === 'notes' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'notes'}
@@ -6581,6 +7068,366 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+            ) : null}
+
+            {effectiveViewMode === 'today' && accessToken ? (
+              <div className="alerts-section" style={{ display: todayMainTab === 'alerts' ? undefined : 'none' }}>
+                <div className="alerts-toolbar">
+                  <div className="alerts-actions">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title="アラートを追加"
+                      aria-label="アラートを追加"
+                      onClick={() => {
+                        if (busy) return;
+                        openNewAlertModal();
+                      }}
+                      disabled={busy}
+                    >
+                      <span className="material-icons" aria-hidden="true">
+                        add
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title="通知の許可を確認"
+                      aria-label="通知の許可を確認"
+                      onClick={async () => {
+                        try {
+                          if (typeof Notification === 'undefined') return;
+                          if (Notification.permission === 'default') await Notification.requestPermission();
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      disabled={busy || typeof Notification === 'undefined'}
+                    >
+                      <span className="material-icons" aria-hidden="true">
+                        notifications
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="alerts-status" aria-live="polite">
+                    {alertsLoading ? <span className="alerts-status-item">同期中…</span> : null}
+                    {!alertsLoading && alertsSaving ? <span className="alerts-status-item">保存中…</span> : null}
+                    {!alertsLoading && !alertsSaving && alertsDirty ? <span className="alerts-status-item">未保存</span> : null}
+                    {alertsRemoteUpdatePending ? <span className="alerts-status-item">他端末で更新あり（保存後に反映）</span> : null}
+                    {alertsError ? <span className="alerts-status-item error">{alertsError}</span> : null}
+                    <span className="alerts-status-item" style={{ marginLeft: 12, opacity: 0.85 }}>
+                      {typeof Notification === 'undefined'
+                        ? '通知: 非対応'
+                        : Notification.permission === 'granted'
+                          ? '通知: 許可済み'
+                          : Notification.permission === 'denied'
+                            ? '通知: ブロック'
+                            : '通知: 未許可'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="alerts-list">
+                  {(() => {
+                    const now = getNowJstDate();
+                    const list = normalizeAlerts(alerts).map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, now) || a.nextFireAt || '' }));
+                    if (list.length === 0) return <div className="alerts-empty">アラートがありません</div>;
+
+                    const sorted = list
+                      .slice()
+                      .sort((a, b) => {
+                        const am = Date.parse(String(a.nextFireAt || ''));
+                        const bm = Date.parse(String(b.nextFireAt || ''));
+                        const aOk = Number.isFinite(am);
+                        const bOk = Number.isFinite(bm);
+                        if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+                        if (aOk && bOk && am !== bm) return am - bm;
+                        if (aOk && !bOk) return -1;
+                        if (!aOk && bOk) return 1;
+                        return String(a.id).localeCompare(String(b.id));
+                      });
+
+                    const weekdayLabel = (d: number) => (d === 0 ? '日' : d === 1 ? '月' : d === 2 ? '火' : d === 3 ? '水' : d === 4 ? '木' : d === 5 ? '金' : d === 6 ? '土' : '');
+
+                    return sorted.map((a) => {
+                      const nextText = a.nextFireAt ? formatIsoToJstYmdHm(a.nextFireAt) : '';
+                      const nextMs = Date.parse(String(a.nextFireAt || ''));
+                      const overdue = Number.isFinite(nextMs) && nextMs <= now.getTime();
+
+                      const ruleText =
+                        a.kind === 'once'
+                          ? '単発'
+                          : a.kind === 'weekly'
+                            ? `毎週(${(Array.isArray(a.weeklyDays) ? a.weeklyDays : []).slice().sort((x, y) => x - y).map(weekdayLabel).join('') || '未設定'}) ${String(a.time || '')}`
+                            : `毎月(${String(a.monthlyDay || '')}日) ${String(a.time || '')}`;
+
+                      return (
+                        <div key={a.id} className={`alerts-item${a.enabled ? '' : ' is-disabled'}${overdue ? ' is-overdue' : ''}`}>
+                          <div className="alerts-item-main">
+                            <div className="alerts-item-title">{String(a.title || '（無題）')}</div>
+                            <div className="alerts-item-meta">
+                              <span className="alerts-chip">{ruleText}</span>
+                              {nextText ? <span className="alerts-next">次回: {nextText}</span> : <span className="alerts-next">次回: —</span>}
+                            </div>
+                          </div>
+                          <div className="alerts-item-actions">
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title={a.enabled ? '無効化' : '有効化'}
+                              aria-label={a.enabled ? '無効化' : '有効化'}
+                              onClick={() => {
+                                if (busy) return;
+                                setAlerts((prev) =>
+                                  (Array.isArray(prev) ? prev : []).map((x) => {
+                                    if (x.id !== a.id) return x;
+                                    const toggled: AlertItem = { ...x, enabled: !x.enabled };
+                                    toggled.nextFireAt = toggled.enabled ? computeNextFireAt(toggled, getNowJstDate()) : '';
+                                    return toggled;
+                                  })
+                                );
+                                setAlertsDirty(true);
+                                setAlertsRemoteUpdatePending(false);
+                              }}
+                              disabled={busy}
+                            >
+                              <span className="material-icons" aria-hidden="true">
+                                {a.enabled ? 'notifications_active' : 'notifications_off'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="編集"
+                              aria-label="編集"
+                              onClick={() => {
+                                if (busy) return;
+                                openEditAlertModal(a.id);
+                              }}
+                              disabled={busy}
+                            >
+                              <span className="material-icons" aria-hidden="true">
+                                edit
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="削除"
+                              aria-label="削除"
+                              onClick={() => {
+                                if (busy) return;
+                                deleteAlert(a.id);
+                              }}
+                              disabled={busy}
+                            >
+                              <span className="material-icons" aria-hidden="true">
+                                delete
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+
+                <div
+                  className={`edit-dialog ${alertModalOpen ? 'show' : ''}`}
+                  aria-hidden={!alertModalOpen}
+                  onMouseDown={(e) => {
+                    if (e.target === e.currentTarget) closeAlertModal();
+                  }}
+                >
+                  {alertModalOpen && alertDraft ? (
+                    <div className="edit-content" role="dialog" aria-modal="true" aria-label="アラートの編集" onMouseDown={(e) => e.stopPropagation()}>
+                      <div className="edit-header">
+                        <h3>{alertEditingId ? '🔔 アラート編集' : '🔔 アラート追加'}</h3>
+                        <button className="edit-close" title="閉じる" aria-label="閉じる" type="button" onClick={() => closeAlertModal()}>
+                          <span className="material-icons">close</span>
+                        </button>
+                      </div>
+
+                      <div className="edit-body">
+                        <div className="edit-field">
+                          <label>タイトル</label>
+                          <input
+                            className="edit-input"
+                            value={String(alertDraft.title || '')}
+                            onChange={(e) => setAlertDraft({ ...alertDraft, title: e.target.value })}
+                            disabled={busy}
+                            placeholder="例: 退勤アラート"
+                          />
+                        </div>
+
+                        <div className="edit-field">
+                          <label>種類</label>
+                          <select
+                            className="edit-input"
+                            value={alertDraft.kind}
+                            onChange={(e) => {
+                              const kind = (e.target.value === 'weekly' || e.target.value === 'monthly' || e.target.value === 'once' ? e.target.value : 'once') as AlertKind;
+                              const next: AlertItem = { ...alertDraft, kind };
+                              if (kind === 'once') {
+                                next.onceAt = next.onceAt || new Date(Date.now() + 5 * 60 * 1000).toISOString();
+                              }
+                              if (kind === 'weekly') {
+                                next.time = next.time || '09:00';
+                                next.weeklyDays = Array.isArray(next.weeklyDays) && next.weeklyDays.length ? next.weeklyDays : [1, 2, 3, 4, 5];
+                              }
+                              if (kind === 'monthly') {
+                                next.time = next.time || '09:00';
+                                next.monthlyDay = typeof next.monthlyDay === 'number' ? next.monthlyDay : 1;
+                              }
+                              setAlertDraft(next);
+                            }}
+                            disabled={busy}
+                          >
+                            <option value="once">単発（指定日時）</option>
+                            <option value="weekly">毎週（曜日+時間）</option>
+                            <option value="monthly">毎月（日+時間）</option>
+                          </select>
+                        </div>
+
+                        <div className="edit-field">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={!!alertDraft.enabled}
+                              onChange={(e) => setAlertDraft({ ...alertDraft, enabled: e.target.checked })}
+                              disabled={busy}
+                              style={{ marginRight: 8 }}
+                            />
+                            有効
+                          </label>
+                        </div>
+
+                        {alertDraft.kind === 'once' ? (
+                          <div className="edit-field">
+                            <label>日時（JST）</label>
+                            <input
+                              type="datetime-local"
+                              className="edit-input"
+                              value={isoToJstDatetimeLocalValue(String(alertDraft.onceAt || ''))}
+                              onChange={(e) => {
+                                const iso = jstDatetimeLocalValueToIso(e.target.value);
+                                setAlertDraft({ ...alertDraft, onceAt: iso });
+                              }}
+                              disabled={busy}
+                            />
+                          </div>
+                        ) : null}
+
+                        {alertDraft.kind === 'weekly' ? (
+                          <div className="edit-field">
+                            <label>曜日</label>
+                            <div className="alerts-weekdays">
+                              {(
+                                [
+                                  { d: 0, label: '日' },
+                                  { d: 1, label: '月' },
+                                  { d: 2, label: '火' },
+                                  { d: 3, label: '水' },
+                                  { d: 4, label: '木' },
+                                  { d: 5, label: '金' },
+                                  { d: 6, label: '土' },
+                                ] as Array<{ d: number; label: string }>
+                              ).map((opt) => {
+                                const days = Array.isArray(alertDraft.weeklyDays) ? alertDraft.weeklyDays : [];
+                                const active = days.includes(opt.d);
+                                return (
+                                  <button
+                                    key={opt.d}
+                                    type="button"
+                                    className={`alerts-weekday-btn ${active ? 'active' : ''}`}
+                                    aria-pressed={active}
+                                    onClick={() => {
+                                      const cur = new Set(days);
+                                      if (cur.has(opt.d)) cur.delete(opt.d);
+                                      else cur.add(opt.d);
+                                      setAlertDraft({ ...alertDraft, weeklyDays: Array.from(cur).sort((a, b) => a - b) });
+                                    }}
+                                    disabled={busy}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {alertDraft.kind === 'weekly' || alertDraft.kind === 'monthly' ? (
+                          <div className="edit-field">
+                            <label>時間（JST）</label>
+                            <input
+                              type="time"
+                              step={60}
+                              className="edit-input"
+                              value={String(alertDraft.time || '')}
+                              onChange={(e) => setAlertDraft({ ...alertDraft, time: e.target.value })}
+                              disabled={busy}
+                            />
+                          </div>
+                        ) : null}
+
+                        {alertDraft.kind === 'monthly' ? (
+                          <div className="edit-field">
+                            <label>日（1〜31）</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={31}
+                              className="edit-input"
+                              value={String(alertDraft.monthlyDay ?? 1)}
+                              onChange={(e) => setAlertDraft({ ...alertDraft, monthlyDay: clampInt(e.target.value, 1, 31, 1) })}
+                              disabled={busy}
+                            />
+                            <div className="alerts-help">※ 存在しない日（例: 2月31日）はその月の最終日に繰り上げます。</div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="edit-footer">
+                        <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => closeAlertModal()} disabled={busy}>
+                          <span className="material-icons">close</span>
+                        </button>
+                        <button
+                          className="btn-primary"
+                          type="button"
+                          title="保存"
+                          aria-label="保存"
+                          onClick={() => {
+                            if (!alertDraft) return;
+                            upsertAlertFromDraft(alertDraft);
+                            closeAlertModal();
+                          }}
+                          disabled={busy || !String(alertDraft.title || '').trim()}
+                        >
+                          <span className="material-icons">done</span>
+                        </button>
+                        {alertEditingId ? (
+                          <button
+                            className="btn-danger"
+                            type="button"
+                            title="削除"
+                            aria-label="削除"
+                            onClick={() => {
+                              if (!alertEditingId) return;
+                              deleteAlert(alertEditingId);
+                              closeAlertModal();
+                            }}
+                            disabled={busy}
+                          >
+                            <span className="material-icons">delete</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}

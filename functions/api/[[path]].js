@@ -172,6 +172,146 @@ const GANTT_GLOBAL_KEY = 'global';
 
 const NOTICE_GLOBAL_KEY = 'global';
 
+const ALERTS_GLOBAL_KEY = 'global';
+
+function getNowJstDate() {
+  const now = new Date();
+  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+}
+
+function parseHHMMToParts(v) {
+  const m = String(v || '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return null;
+  return { hh: parseInt(m[1], 10), mm: parseInt(m[2], 10) };
+}
+
+function clampInt(n, min, max, fallback) {
+  const v = typeof n === 'number' && Number.isFinite(n) ? Math.trunc(n) : parseInt(String(n || ''), 10);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.max(min, Math.min(max, v));
+}
+
+function jstDateToIso(d) {
+  try {
+    return d instanceof Date && Number.isFinite(d.getTime()) ? d.toISOString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function computeNextFireAt(alert, fromJstDate) {
+  const kind = alert?.kind;
+  const enabled = !!alert?.enabled;
+  if (!enabled) return '';
+
+  const base = fromJstDate instanceof Date ? fromJstDate : getNowJstDate();
+
+  if (kind === 'once') {
+    const iso = typeof alert?.onceAt === 'string' ? String(alert.onceAt) : '';
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return '';
+    // Keep onceAt as nextFireAt if it's in the future (or slightly in past for catch-up)
+    return new Date(ms).toISOString();
+  }
+
+  if (kind === 'weekly') {
+    const parts = parseHHMMToParts(alert?.time);
+    if (!parts) return '';
+    const daysRaw = Array.isArray(alert?.weeklyDays) ? alert.weeklyDays : [];
+    const days = Array.from(
+      new Set(
+        daysRaw
+          .map((x) => clampInt(x, 0, 6, null))
+          .filter((x) => typeof x === 'number' && Number.isFinite(x))
+      )
+    ).sort((a, b) => a - b);
+    if (days.length === 0) return '';
+
+    for (let delta = 0; delta <= 14; delta += 1) {
+      const cand = new Date(base.getFullYear(), base.getMonth(), base.getDate() + delta, parts.hh, parts.mm, 0, 0);
+      const dow = cand.getDay();
+      if (!days.includes(dow)) continue;
+      if (cand.getTime() <= base.getTime()) continue;
+      return jstDateToIso(cand);
+    }
+    return '';
+  }
+
+  if (kind === 'monthly') {
+    const parts = parseHHMMToParts(alert?.time);
+    if (!parts) return '';
+    const day = clampInt(alert?.monthlyDay, 1, 31, null);
+    if (day == null) return '';
+
+    for (let addMonths = 0; addMonths <= 24; addMonths += 1) {
+      const y = base.getFullYear();
+      const m0 = base.getMonth() + addMonths;
+      const y2 = y + Math.floor(m0 / 12);
+      const m2 = ((m0 % 12) + 12) % 12;
+      const lastDay = new Date(y2, m2 + 1, 0).getDate();
+      const d = Math.min(day, lastDay);
+      const cand = new Date(y2, m2, d, parts.hh, parts.mm, 0, 0);
+      if (cand.getTime() <= base.getTime()) continue;
+      return jstDateToIso(cand);
+    }
+    return '';
+  }
+
+  return '';
+}
+
+function normalizeAlerts(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
+    const id = typeof item?.id === 'string' ? String(item.id) : '';
+    const title = typeof item?.title === 'string' ? String(item.title) : '';
+    const kindRaw = item?.kind;
+    const kind = kindRaw === 'once' || kindRaw === 'weekly' || kindRaw === 'monthly' ? kindRaw : 'once';
+
+    const enabled = item?.enabled === false ? false : true;
+
+    const onceAt = typeof item?.onceAt === 'string' ? String(item.onceAt) : '';
+    const time = typeof item?.time === 'string' ? String(item.time) : '';
+    const weeklyDays = Array.isArray(item?.weeklyDays) ? item.weeklyDays : [];
+    const monthlyDay = item?.monthlyDay;
+    const lastFiredAt = typeof item?.lastFiredAt === 'string' ? String(item.lastFiredAt) : '';
+
+    if (!id) continue;
+    const safeTitle = title.trim() ? title.slice(0, 120) : '（無題）';
+
+    const normalized = {
+      id: id.slice(0, 80),
+      title: safeTitle,
+      kind,
+      enabled,
+      onceAt: kind === 'once' ? onceAt.slice(0, 64) : '',
+      time: kind === 'weekly' || kind === 'monthly' ? time.slice(0, 10) : '',
+      weeklyDays: kind === 'weekly' ? weeklyDays.slice(0, 7) : [],
+      monthlyDay: kind === 'monthly' ? clampInt(monthlyDay, 1, 31, 1) : null,
+      lastFiredAt: lastFiredAt.slice(0, 64),
+    };
+
+    const base = getNowJstDate();
+    const nextFireAt = computeNextFireAt(normalized, base);
+    out.push({ ...normalized, nextFireAt });
+  }
+
+  // stable order: nextFireAt asc, then id
+  out.sort((a, b) => {
+    const am = Date.parse(a.nextFireAt || '');
+    const bm = Date.parse(b.nextFireAt || '');
+    const aOk = Number.isFinite(am);
+    const bOk = Number.isFinite(bm);
+    if (aOk && bOk && am !== bm) return am - bm;
+    if (aOk && !bOk) return -1;
+    if (!aOk && bOk) return 1;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  return out;
+}
+
 function normalizeNotice(input) {
   const obj = input && typeof input === 'object' ? input : {};
   const text = typeof obj?.text === 'string' ? String(obj.text) : '';
@@ -877,6 +1017,49 @@ export async function onRequest(context) {
         key: GANTT_GLOBAL_KEY,
         lanes,
         tasks,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return jsonResponse({ success: true });
+    }
+
+    // alerts (one-shot / weekly / monthly) - synced via Supabase docs
+    if (parts.length === 1 && parts[0] === 'alerts' && request.method === 'GET') {
+      const doc = await taskManager._getDoc(userId, 'alerts', ALERTS_GLOBAL_KEY, {
+        key: ALERTS_GLOBAL_KEY,
+        alerts: [],
+      });
+
+      const alerts = normalizeAlerts(doc?.alerts).slice(0, 500);
+      return jsonResponse({
+        success: true,
+        alerts: {
+          key: ALERTS_GLOBAL_KEY,
+          alerts,
+          updatedAt: typeof doc?.updatedAt === 'string' ? String(doc.updatedAt) : '',
+        },
+      });
+    }
+
+    if (parts.length === 1 && parts[0] === 'alerts' && request.method === 'POST') {
+      const alerts = normalizeAlerts(body?.alerts)
+        .map((a) => ({
+          id: String(a.id).slice(0, 80),
+          title: String(a.title || '').slice(0, 120),
+          kind: a.kind,
+          enabled: a.enabled !== false,
+          onceAt: a.kind === 'once' ? String(a.onceAt || '').slice(0, 64) : '',
+          time: a.kind === 'weekly' || a.kind === 'monthly' ? String(a.time || '').slice(0, 10) : '',
+          weeklyDays: a.kind === 'weekly' ? (Array.isArray(a.weeklyDays) ? a.weeklyDays.slice(0, 7) : []) : [],
+          monthlyDay: a.kind === 'monthly' ? clampInt(a.monthlyDay, 1, 31, 1) : null,
+          lastFiredAt: String(a.lastFiredAt || '').slice(0, 64),
+          nextFireAt: String(a.nextFireAt || '').slice(0, 64),
+        }))
+        .slice(0, 800);
+
+      await taskManager._setDoc(userId, 'alerts', ALERTS_GLOBAL_KEY, {
+        key: ALERTS_GLOBAL_KEY,
+        alerts,
         updatedAt: new Date().toISOString(),
       });
 

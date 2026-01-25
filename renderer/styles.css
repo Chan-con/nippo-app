@@ -2761,6 +2761,154 @@ input[type='number']::-webkit-inner-spin-button {
   padding-top: 12px;
 }
 
+/* Alerts */
+.alerts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.alerts-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.alerts-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alerts-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.alerts-status-item.error {
+  color: var(--error);
+}
+
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alerts-empty {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-medium);
+  text-align: center;
+}
+
+.alerts-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.alerts-item.is-disabled {
+  opacity: 0.55;
+}
+
+.alerts-item.is-overdue {
+  border-color: rgba(243, 139, 168, 0.45);
+  background: rgba(243, 139, 168, 0.06);
+}
+
+.alerts-item-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.alerts-item-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alerts-item-meta {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.alerts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid rgba(108, 112, 134, 0.6);
+  border-radius: 999px;
+  background: rgba(49, 50, 68, 0.65);
+}
+
+.alerts-next {
+  color: var(--text-muted);
+}
+
+.alerts-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.alerts-weekdays {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.alerts-weekday-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: var(--radius-small);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.alerts-weekday-btn:hover {
+  background: var(--surface);
+}
+
+.alerts-weekday-btn.active {
+  border-color: rgba(137, 180, 250, 0.6);
+  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.18);
+}
+
+.alerts-help {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* Notes (Keep-like) */
 .notes-section {
   display: flex;
