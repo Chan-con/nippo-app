@@ -35,7 +35,6 @@ type AlertItem = {
   id: string;
   title: string;
   kind: AlertKind;
-  enabled: boolean;
   // once
   onceAt?: string; // ISO
   // weekly/monthly
@@ -143,7 +142,6 @@ function jstDatetimeLocalValueToIso(v: string) {
 }
 
 function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
-  if (!alert?.enabled) return '';
   const base = fromJstDate instanceof Date ? fromJstDate : getNowJstDate();
 
   if (alert.kind === 'once') {
@@ -210,7 +208,6 @@ function normalizeAlertItem(input: any, fallbackId: string) {
   const titleRaw = typeof input?.title === 'string' ? String(input.title) : '';
   const kindRaw = input?.kind;
   const kind: AlertKind = kindRaw === 'weekly' || kindRaw === 'monthly' || kindRaw === 'once' ? kindRaw : 'once';
-  const enabled = input?.enabled === false ? false : true;
 
   const onceAt = typeof input?.onceAt === 'string' ? String(input.onceAt) : '';
   const time = typeof input?.time === 'string' ? String(input.time) : '';
@@ -223,7 +220,6 @@ function normalizeAlertItem(input: any, fallbackId: string) {
     id: String(id || '').slice(0, 80),
     title: (titleRaw.trim() ? titleRaw : getAlertDefaultTitle(kind)).slice(0, 120),
     kind,
-    enabled,
     onceAt: kind === 'once' ? onceAt.slice(0, 64) : '',
     time: kind === 'weekly' || kind === 'monthly' ? time.slice(0, 10) : '',
     weeklyDays: kind === 'weekly' ? weeklyDays.slice(0, 7).map((x: any) => clampInt(x, 0, 6, 0) ?? 0) : [],
@@ -1586,12 +1582,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           id: a.id,
           title: a.title,
           kind: a.kind,
-          enabled: a.enabled,
           onceAt: a.onceAt || '',
           time: a.time || '',
           weeklyDays: Array.isArray(a.weeklyDays) ? a.weeklyDays.slice() : [],
           monthlyDay: a.monthlyDay ?? null,
           lastFiredAt: a.lastFiredAt || '',
+          skipUntil: a.skipUntil || '',
           nextFireAt: a.nextFireAt || '',
         }))
       );
@@ -1703,7 +1699,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       id,
       title: '',
       kind: 'once',
-      enabled: true,
       onceAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
       weeklyDays: [1, 2, 3, 4, 5],
       time: '09:00',
@@ -1772,7 +1767,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const nowJst = getNowJstDate();
     const list = normalizeAlerts(alertsRef.current)
       .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowJst)) || a.nextFireAt || '' }))
-      .filter((a) => a.enabled);
+      .filter((a) => !!a);
 
     const candidates = list
       .map((a) => ({ a, ms: Date.parse(String(a.nextFireAt || '')) }))
@@ -1789,7 +1784,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const current = normalizeAlerts(alertsRef.current);
       const due = current
         .filter((a) => {
-          if (!a.enabled) return false;
           const ms = Date.parse(String(a.nextFireAt || computeNextFireAt(a, getAlertComputeBase(a, now)) || ''));
           return Number.isFinite(ms) && ms <= now.getTime();
         })
@@ -7200,7 +7194,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         const bm = Date.parse(String(b.nextFireAt || ''));
                         const aOk = Number.isFinite(am);
                         const bOk = Number.isFinite(bm);
-                        if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
                         if (aOk && bOk && am !== bm) return am - bm;
                         if (aOk && !bOk) return -1;
                         if (!aOk && bOk) return 1;
@@ -7222,7 +7215,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             : `毎月(${String(a.monthlyDay || '')}日) ${String(a.time || '')}`;
 
                       return (
-                        <div key={a.id} className={`alerts-item${a.enabled ? '' : ' is-disabled'}${overdue ? ' is-overdue' : ''}`}>
+                        <div key={a.id} className={`alerts-item${overdue ? ' is-overdue' : ''}`}>
                           <div className="alerts-item-main">
                             <div className="alerts-item-title">{String(a.title || getAlertDefaultTitle(a.kind))}</div>
                             <div className="alerts-item-meta">
@@ -7239,7 +7232,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               onClick={() => {
                                 if (busy) return;
                                 if (a.kind === 'once') return;
-                                if (!a.enabled) return;
 
                                 const curNext = String(a.nextFireAt || '').trim();
                                 if (!curNext) return;
@@ -7259,36 +7251,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 setAlertsDirty(true);
                                 setAlertsRemoteUpdatePending(false);
                               }}
-                              disabled={busy || !a.enabled || a.kind === 'once' || !String(a.nextFireAt || '').trim()}
+                              disabled={busy || a.kind === 'once' || !String(a.nextFireAt || '').trim()}
                             >
                               <span className="material-icons" aria-hidden="true">
                                 skip_next
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title={a.enabled ? '無効化' : '有効化'}
-                              aria-label={a.enabled ? '無効化' : '有効化'}
-                              onClick={() => {
-                                if (busy) return;
-                                setAlerts((prev) =>
-                                  (Array.isArray(prev) ? prev : []).map((x) => {
-                                    if (x.id !== a.id) return x;
-                                    const toggled: AlertItem = { ...x, enabled: !x.enabled };
-                                    if (!toggled.enabled) toggled.skipUntil = '';
-                                    const nowJst = getNowJstDate();
-                                    toggled.nextFireAt = toggled.enabled ? computeNextFireAt(toggled, getAlertComputeBase(toggled, nowJst)) : '';
-                                    return toggled;
-                                  })
-                                );
-                                setAlertsDirty(true);
-                                setAlertsRemoteUpdatePending(false);
-                              }}
-                              disabled={busy}
-                            >
-                              <span className="material-icons" aria-hidden="true">
-                                {a.enabled ? 'notifications_active' : 'notifications_off'}
                               </span>
                             </button>
                             <button
@@ -7382,19 +7348,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             <option value="weekly">毎週（曜日+時間）</option>
                             <option value="monthly">毎月（日+時間）</option>
                           </select>
-                        </div>
-
-                        <div className="edit-field">
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={!!alertDraft.enabled}
-                              onChange={(e) => setAlertDraft({ ...alertDraft, enabled: e.target.checked })}
-                              disabled={busy}
-                              style={{ marginRight: 8 }}
-                            />
-                            有効
-                          </label>
                         </div>
 
                         {alertDraft.kind === 'once' ? (

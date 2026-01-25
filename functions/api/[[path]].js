@@ -201,9 +201,6 @@ function jstDateToIso(d) {
 
 function computeNextFireAt(alert, fromJstDate) {
   const kind = alert?.kind;
-  const enabled = !!alert?.enabled;
-  if (!enabled) return '';
-
   const base = fromJstDate instanceof Date ? fromJstDate : getNowJstDate();
 
   if (kind === 'once') {
@@ -295,8 +292,6 @@ function normalizeAlerts(input) {
     const kindRaw = item?.kind;
     const kind = kindRaw === 'once' || kindRaw === 'weekly' || kindRaw === 'monthly' ? kindRaw : 'once';
 
-    const enabled = item?.enabled === false ? false : true;
-
     const onceAt = typeof item?.onceAt === 'string' ? String(item.onceAt) : '';
     const time = typeof item?.time === 'string' ? String(item.time) : '';
     const weeklyDays = Array.isArray(item?.weeklyDays) ? item.weeklyDays : [];
@@ -311,7 +306,6 @@ function normalizeAlerts(input) {
       id: id.slice(0, 80),
       title: safeTitle,
       kind,
-      enabled,
       onceAt: kind === 'once' ? onceAt.slice(0, 64) : '',
       time: kind === 'weekly' || kind === 'monthly' ? time.slice(0, 10) : '',
       weeklyDays: kind === 'weekly' ? weeklyDays.slice(0, 7) : [],
@@ -1080,12 +1074,12 @@ export async function onRequest(context) {
           id: String(a.id).slice(0, 80),
           title: String(a.title || '').slice(0, 120),
           kind: a.kind,
-          enabled: a.enabled !== false,
           onceAt: a.kind === 'once' ? String(a.onceAt || '').slice(0, 64) : '',
           time: a.kind === 'weekly' || a.kind === 'monthly' ? String(a.time || '').slice(0, 10) : '',
           weeklyDays: a.kind === 'weekly' ? (Array.isArray(a.weeklyDays) ? a.weeklyDays.slice(0, 7) : []) : [],
           monthlyDay: a.kind === 'monthly' ? clampInt(a.monthlyDay, 1, 31, 1) : null,
           lastFiredAt: String(a.lastFiredAt || '').slice(0, 64),
+          skipUntil: a.kind === 'weekly' || a.kind === 'monthly' ? String(a.skipUntil || '').slice(0, 64) : '',
           nextFireAt: String(a.nextFireAt || '').slice(0, 64),
         }))
         .slice(0, 800);

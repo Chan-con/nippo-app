@@ -2823,10 +2823,6 @@ input[type='number']::-webkit-inner-spin-button {
   background: rgba(255, 255, 255, 0.03);
 }
 
-.alerts-item.is-disabled {
-  opacity: 0.55;
-}
-
 .alerts-item.is-overdue {
   border-color: rgba(243, 139, 168, 0.45);
   background: rgba(243, 139, 168, 0.06);
