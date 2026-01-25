@@ -731,15 +731,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!('Notification' in window)) {
-      setReservationNotificationPermission('unsupported');
-      return;
-    }
-    try {
-      setReservationNotificationPermission(Notification.permission);
-    } catch {
-      setReservationNotificationPermission('unsupported');
-    }
+    const update = () => {
+      if (!('Notification' in window)) {
+        setReservationNotificationPermission('unsupported');
+        return;
+      }
+      try {
+        setReservationNotificationPermission(Notification.permission);
+      } catch {
+        setReservationNotificationPermission('unsupported');
+      }
+    };
+
+    update();
+    window.addEventListener('focus', update);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      window.removeEventListener('focus', update);
+      document.removeEventListener('visibilitychange', update);
+    };
   }, []);
 
   // tag work report (range)
@@ -1755,14 +1765,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setAlertsRemoteUpdatePending(false);
   }
 
+  const alertsAvailable = reservationNotificationPermission === 'granted';
+
+  useEffect(() => {
+    if (todayMainTab !== 'alerts') return;
+    if (alertsAvailable) return;
+    setTodayMainTab('gantt');
+  }, [todayMainTab, alertsAvailable]);
+
   // alerts executor (only while app is open)
   useEffect(() => {
-    if (!accessToken) return;
-
     if (alertsExecutorTimerRef.current != null) {
       window.clearTimeout(alertsExecutorTimerRef.current);
       alertsExecutorTimerRef.current = null;
     }
+
+    if (!accessToken) return;
+    if (!alertsAvailable) return;
 
     const nowJst = getNowJstDate();
     const list = normalizeAlerts(alertsRef.current)
@@ -1853,7 +1872,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       alertsExecutorTimerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, alerts]);
+  }, [accessToken, alerts, alertsAvailable]);
 
   const [ganttDrawerOpen, setGanttDrawerOpen] = useState(false);
   const [ganttSelectedTaskId, setGanttSelectedTaskId] = useState<string | null>(null);
@@ -6702,7 +6721,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   className={`tab-button ${todayMainTab === 'alerts' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'alerts'}
-                  onClick={() => setTodayMainTab('alerts')}
+                  onClick={() => {
+                    if (!alertsAvailable) return;
+                    setTodayMainTab('alerts');
+                  }}
+                  disabled={!alertsAvailable}
+                  title={alertsAvailable ? undefined : '通知の許可が必要です（設定から許可してください）'}
                 >
                   🔔 アラート
                 </button>
@@ -7142,25 +7166,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         add
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      title="通知の許可を確認"
-                      aria-label="通知の許可を確認"
-                      onClick={async () => {
-                        try {
-                          if (typeof Notification === 'undefined') return;
-                          if (Notification.permission === 'default') await Notification.requestPermission();
-                        } catch {
-                          // ignore
-                        }
-                      }}
-                      disabled={busy || typeof Notification === 'undefined'}
-                    >
-                      <span className="material-icons" aria-hidden="true">
-                        notifications
-                      </span>
-                    </button>
                   </div>
 
                   <div className="alerts-status" aria-live="polite">
@@ -7169,15 +7174,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     {!alertsLoading && !alertsSaving && alertsDirty ? <span className="alerts-status-item">未保存</span> : null}
                     {alertsRemoteUpdatePending ? <span className="alerts-status-item">他端末で更新あり（保存後に反映）</span> : null}
                     {alertsError ? <span className="alerts-status-item error">{alertsError}</span> : null}
-                    <span className="alerts-status-item" style={{ marginLeft: 12, opacity: 0.85 }}>
-                      {typeof Notification === 'undefined'
-                        ? '通知: 非対応'
-                        : Notification.permission === 'granted'
-                          ? '通知: 許可済み'
-                          : Notification.permission === 'denied'
-                            ? '通知: ブロック'
-                            : '通知: 未許可'}
-                    </span>
                   </div>
                 </div>
 
