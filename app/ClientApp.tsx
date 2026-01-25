@@ -6486,9 +6486,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     {!ganttLoading && !ganttSaving && ganttDirty ? <span className="gantt-status-item">未保存</span> : null}
                     {ganttRemoteUpdatePending ? <span className="gantt-status-item">他端末で更新あり（保存後に反映）</span> : null}
                     {ganttError ? <span className="gantt-status-item error">{ganttError}</span> : null}
-                    {!ganttLoading && !ganttSaving && !ganttError ? (
-                      <span className="gantt-status-item">ダブルクリックで追加 / ドラッグ中に最下部へドロップで新規レーン</span>
-                    ) : null}
                   </div>
                 </div>
 
@@ -6500,7 +6497,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   dayWidth={ganttDayWidth}
                   selectedTaskId={ganttSelectedTaskId}
                   onSelectTaskId={(id) => {
-                    if (!id) return;
+                    setGanttSelectedTaskId(id);
+                  }}
+                  onOpenTaskId={(id) => {
                     openGanttTask(id);
                   }}
                   onLaneDoubleClick={(laneId) => {

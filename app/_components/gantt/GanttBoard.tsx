@@ -52,6 +52,7 @@ export default function GanttBoard(props: {
   dayWidth: number;
   selectedTaskId: string | null;
   onSelectTaskId: (id: string | null) => void;
+  onOpenTaskId?: (id: string) => void;
   onCommitTasks: (nextTasks: GanttTask[]) => void;
   onLaneDoubleClick?: (laneId: string | null) => void;
   onInteractionChange?: (active: boolean) => void;
@@ -261,7 +262,7 @@ export default function GanttBoard(props: {
     // Commit
     props.onCommitTasks(draftTasks);
 
-    // If it was a click (no drag), open drawer
+    // If it was a click (no drag), just select
     if (!st.didDrag) {
       props.onSelectTaskId(st.taskId);
     }
@@ -380,8 +381,10 @@ export default function GanttBoard(props: {
                         tabIndex={0}
                         onPointerDown={(ev) => onTaskPointerDown(ev, t, 'move')}
                         onDoubleClick={(ev) => {
+                          if (draggingRef.current) return;
                           ev.preventDefault();
                           ev.stopPropagation();
+                          props.onOpenTaskId?.(t.id);
                         }}
                         onKeyDown={(ev) => {
                           if (ev.key === 'Enter' || ev.key === ' ') {
