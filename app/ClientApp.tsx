@@ -7215,7 +7215,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             : `毎月(${String(a.monthlyDay || '')}日) ${String(a.time || '')}`;
 
                       return (
-                        <div key={a.id} className={`alerts-item${overdue ? ' is-overdue' : ''}`}>
+                        <div
+                          key={a.id}
+                          className={`alerts-item${overdue ? ' is-overdue' : ''}`}
+                          onDoubleClick={(e) => {
+                            if (busy) return;
+                            if (e.target instanceof HTMLElement && e.target.closest('.alerts-item-actions')) return;
+                            openEditAlertModal(a.id);
+                          }}
+                        >
                           <div className="alerts-item-main">
                             <div className="alerts-item-title">{String(a.title || getAlertDefaultTitle(a.kind))}</div>
                             <div className="alerts-item-meta">
@@ -7255,36 +7263,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             >
                               <span className="material-icons" aria-hidden="true">
                                 skip_next
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title="編集"
-                              aria-label="編集"
-                              onClick={() => {
-                                if (busy) return;
-                                openEditAlertModal(a.id);
-                              }}
-                              disabled={busy}
-                            >
-                              <span className="material-icons" aria-hidden="true">
-                                edit
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title="削除"
-                              aria-label="削除"
-                              onClick={() => {
-                                if (busy) return;
-                                deleteAlert(a.id);
-                              }}
-                              disabled={busy}
-                            >
-                              <span className="material-icons" aria-hidden="true">
-                                delete
                               </span>
                             </button>
                           </div>
