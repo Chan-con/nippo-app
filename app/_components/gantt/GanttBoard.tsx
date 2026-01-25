@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { GanttTask } from './types';
 import { addDaysYmd, utcDayNumberToYmd, ymdToUtcDayNumber } from './date';
 
@@ -148,6 +149,8 @@ export default function GanttBoard(props: {
     return days;
   }, [viewStart, viewDays]);
 
+  const timelineWidth = Math.max(1, Math.trunc(viewDays || 1)) * Math.max(6, Math.trunc(dayWidth || 24));
+
   const tasksForRender = useMemo(() => {
     const list = Array.isArray(draftTasks) ? draftTasks : [];
     return list
@@ -160,6 +163,51 @@ export default function GanttBoard(props: {
         return String(a.id).localeCompare(String(b.id));
       });
   }, [draftTasks]);
+
+  const titleMaxPxById = useMemo(() => {
+    const byId = new Map<string, number>();
+    const list = Array.isArray(tasksForRender) ? tasksForRender : [];
+    const w = Math.max(6, Math.trunc(dayWidth || 24));
+    const HANDLE_W = 6;
+    const BODY_PAD_X = 6;
+    const INNER_GAP = 4;
+
+    const rowMap = new Map<number, Array<{ id: string; x: number }>>();
+    for (const t of list) {
+      const s = ymdToUtcDayNumber(t.startDate);
+      const e = ymdToUtcDayNumber(t.endDate);
+      if (s == null || e == null) continue;
+      const start = clampInt(s, rangeStartDay, rangeEndDay);
+      const end = clampInt(e, rangeStartDay, rangeEndDay);
+      if (end < rangeStartDay || start > rangeEndDay) continue;
+      const safeEnd = Math.max(start, end);
+      const x = (start - rangeStartDay) * w;
+      const yRaw = (t as any)?.y;
+      const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
+      const row = y;
+
+      const arr = rowMap.get(row) ?? [];
+      arr.push({ id: t.id, x });
+      rowMap.set(row, arr);
+
+      // default: allow up to end of timeline, capped
+      const availableToEnd = timelineWidth - x - (HANDLE_W * 2 + BODY_PAD_X * 2 + INNER_GAP);
+      byId.set(t.id, Math.max(0, Math.min(360, Math.trunc(availableToEnd))));
+    }
+
+    for (const [, arr] of rowMap.entries()) {
+      arr.sort((a, b) => a.x - b.x || String(a.id).localeCompare(String(b.id)));
+      for (let i = 0; i < arr.length; i += 1) {
+        const cur = arr[i];
+        const next = arr[i + 1];
+        if (!next) continue;
+        const available = next.x - cur.x - (HANDLE_W * 2 + BODY_PAD_X * 2 + INNER_GAP);
+        byId.set(cur.id, Math.max(0, Math.trunc(available)));
+      }
+    }
+
+    return byId;
+  }, [tasksForRender, dayWidth, rangeStartDay, rangeEndDay, timelineWidth]);
 
   const canvasHeight = useMemo(() => {
     const list = Array.isArray(draftTasks) ? draftTasks : [];
@@ -401,8 +449,6 @@ export default function GanttBoard(props: {
     setDraftTasks(Array.isArray(props.tasks) ? props.tasks : []);
   }
 
-  const timelineWidth = Math.max(1, Math.trunc(viewDays || 1)) * Math.max(6, Math.trunc(dayWidth || 24));
-
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
@@ -523,12 +569,19 @@ export default function GanttBoard(props: {
 
               const isSelected = props.selectedTaskId === t.id;
               const tone = normalizeGanttTone((t as any)?.color);
+              const isShort = w < 120;
+              const titleMaxPx = titleMaxPxById.get(t.id);
+
+              const style = { left: x, top: y, width: w, zIndex: z } as CSSProperties & Record<string, unknown>;
+              if (isShort && typeof titleMaxPx === 'number' && Number.isFinite(titleMaxPx)) {
+                style['--gantt-title-max'] = `${Math.max(0, Math.trunc(titleMaxPx))}px`;
+              }
 
               return (
                 <div
                   key={t.id}
-                  className={`gantt-task tone-${tone}${isSelected ? ' selected' : ''}`}
-                  style={{ left: x, top: y, width: w, zIndex: z }}
+                  className={`gantt-task tone-${tone}${isShort ? ' is-short' : ''}${isSelected ? ' selected' : ''}`}
+                  style={style}
                   role="button"
                   tabIndex={0}
                   onPointerDown={(ev) => onTaskPointerDown(ev, t, 'move')}
