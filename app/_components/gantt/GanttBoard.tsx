@@ -192,7 +192,7 @@ export default function GanttBoard(props: {
 
       // default: allow up to end of timeline, capped
       const availableToEnd = timelineWidth - x - (HANDLE_W * 2 + BODY_PAD_X * 2 + INNER_GAP);
-      byId.set(t.id, Math.max(0, Math.min(360, Math.trunc(availableToEnd))));
+      byId.set(t.id, Math.max(0, Math.trunc(availableToEnd)));
     }
 
     for (const [, arr] of rowMap.entries()) {
