@@ -1580,6 +1580,41 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [alertEditingId, setAlertEditingId] = useState<string | null>(null);
   const [alertDraft, setAlertDraft] = useState<AlertItem | null>(null);
+  const [alertMonthlyDayPickerOpen, setAlertMonthlyDayPickerOpen] = useState(false);
+  const alertMonthlyDayPickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!alertModalOpen) {
+      setAlertMonthlyDayPickerOpen(false);
+      return;
+    }
+    if (alertDraft?.kind !== 'monthly') {
+      setAlertMonthlyDayPickerOpen(false);
+    }
+  }, [alertModalOpen, alertDraft?.kind]);
+
+  useEffect(() => {
+    if (!alertMonthlyDayPickerOpen) return;
+
+    const onMouseDown = (ev: MouseEvent) => {
+      const root = alertMonthlyDayPickerRef.current;
+      if (!root) return;
+      if (ev.target instanceof Node && !root.contains(ev.target)) {
+        setAlertMonthlyDayPickerOpen(false);
+      }
+    };
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setAlertMonthlyDayPickerOpen(false);
+    };
+
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [alertMonthlyDayPickerOpen]);
 
   useEffect(() => {
     alertsRef.current = Array.isArray(alerts) ? alerts : [];
@@ -7396,15 +7431,65 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         {alertDraft.kind === 'monthly' ? (
                           <div className="edit-field">
                             <label>日（1〜31）</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={31}
-                              className="edit-input"
-                              value={String(alertDraft.monthlyDay ?? 1)}
-                              onChange={(e) => setAlertDraft({ ...alertDraft, monthlyDay: clampInt(e.target.value, 1, 31, 1) })}
-                              disabled={busy}
-                            />
+                            <div className="alerts-day-picker-wrap" ref={alertMonthlyDayPickerRef}>
+                              <div className="alerts-day-picker-row">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={31}
+                                  step={1}
+                                  className="edit-input"
+                                  value={String(alertDraft.monthlyDay ?? 1)}
+                                  onChange={(e) => setAlertDraft({ ...alertDraft, monthlyDay: clampInt(e.target.value, 1, 31, 1) })}
+                                  disabled={busy}
+                                  aria-label="日"
+                                />
+                                <button
+                                  type="button"
+                                  className="icon-btn alerts-day-picker-btn"
+                                  title="日を選択"
+                                  aria-label="日を選択"
+                                  aria-haspopup="dialog"
+                                  aria-expanded={alertMonthlyDayPickerOpen}
+                                  onClick={() => setAlertMonthlyDayPickerOpen((v) => !v)}
+                                  disabled={busy}
+                                >
+                                  <span className="material-icons" aria-hidden="true">
+                                    event
+                                  </span>
+                                </button>
+                              </div>
+
+                              {alertMonthlyDayPickerOpen ? (
+                                <div
+                                  className="alerts-day-popover"
+                                  role="dialog"
+                                  aria-label="日を選択"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  <div className="alerts-day-grid">
+                                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
+                                      const active = (alertDraft.monthlyDay ?? 1) === d;
+                                      return (
+                                        <button
+                                          key={`monthly-day-pop-${d}`}
+                                          type="button"
+                                          className={`alerts-day-cell ${active ? 'active' : ''}`}
+                                          aria-pressed={active}
+                                          onClick={() => {
+                                            setAlertDraft({ ...alertDraft, monthlyDay: d });
+                                            setAlertMonthlyDayPickerOpen(false);
+                                          }}
+                                          disabled={busy}
+                                        >
+                                          {d}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
                             <div className="alerts-help">※ 存在しない日（例: 2月31日）はその月の最終日に繰り上げます。</div>
                           </div>
                         ) : null}

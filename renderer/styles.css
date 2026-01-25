@@ -2899,6 +2899,61 @@ input[type='number']::-webkit-inner-spin-button {
   box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.18);
 }
 
+.alerts-day-picker-wrap {
+  position: relative;
+}
+
+.alerts-day-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alerts-day-picker-btn {
+  flex: 0 0 auto;
+}
+
+.alerts-day-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 50;
+  padding: 10px;
+  border: 1px solid rgba(108, 112, 134, 0.6);
+  border-radius: var(--radius-small);
+  background: rgba(30, 30, 46, 0.98);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  max-width: min(360px, 90vw);
+}
+
+.alerts-day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.alerts-day-cell {
+  height: 34px;
+  min-width: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.alerts-day-cell:hover {
+  background: var(--surface);
+}
+
+.alerts-day-cell.active {
+  border-color: rgba(137, 180, 250, 0.6);
+  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.18);
+}
+
 .alerts-help {
   margin-top: 6px;
   font-size: 12px;
