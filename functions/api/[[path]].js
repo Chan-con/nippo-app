@@ -260,6 +260,12 @@ function computeNextFireAt(alert, fromJstDate) {
   return '';
 }
 
+function getAlertDefaultTitle(kind) {
+  if (kind === 'weekly') return '週次アラート';
+  if (kind === 'monthly') return '月次アラート';
+  return 'アラート';
+}
+
 function normalizeAlerts(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
@@ -279,7 +285,7 @@ function normalizeAlerts(input) {
     const lastFiredAt = typeof item?.lastFiredAt === 'string' ? String(item.lastFiredAt) : '';
 
     if (!id) continue;
-    const safeTitle = title.trim() ? title.slice(0, 120) : '（無題）';
+  const safeTitle = title.trim() ? title.slice(0, 120) : getAlertDefaultTitle(kind);
 
     const normalized = {
       id: id.slice(0, 80),

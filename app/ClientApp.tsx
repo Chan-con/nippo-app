@@ -178,6 +178,12 @@ function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
   return '';
 }
 
+function getAlertDefaultTitle(kind: AlertKind) {
+  if (kind === 'weekly') return '週次アラート';
+  if (kind === 'monthly') return '月次アラート';
+  return 'アラート';
+}
+
 function normalizeAlertItem(input: any, fallbackId: string) {
   const id = typeof input?.id === 'string' ? String(input.id) : fallbackId;
   const titleRaw = typeof input?.title === 'string' ? String(input.title) : '';
@@ -193,7 +199,7 @@ function normalizeAlertItem(input: any, fallbackId: string) {
 
   const base: AlertItem = {
     id: String(id || '').slice(0, 80),
-    title: (titleRaw.trim() ? titleRaw : '（無題）').slice(0, 120),
+    title: (titleRaw.trim() ? titleRaw : getAlertDefaultTitle(kind)).slice(0, 120),
     kind,
     enabled,
     onceAt: kind === 'once' ? onceAt.slice(0, 64) : '',
@@ -1675,6 +1681,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       nextFireAt: '',
     };
     const next = normalizeAlertItem(base as any, id);
+    // タイトルは空欄がデフォルト（保存時にデフォルト名へ補完）
+    next.title = '';
     setAlertEditingId(null);
     setAlertDraft(next);
     setAlertModalOpen(true);
@@ -1696,7 +1704,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function upsertAlertFromDraft(draft: AlertItem) {
-    const normalized = normalizeAlertItem(draft as any, draft.id || safeRandomId('alert'));
+    const effectiveTitle = String(draft.title || '').trim() ? String(draft.title) : getAlertDefaultTitle(draft.kind);
+    const normalized = normalizeAlertItem({ ...(draft as any), title: effectiveTitle } as any, draft.id || safeRandomId('alert'));
     normalized.nextFireAt = computeNextFireAt(normalized, getNowJstDate());
 
     setAlerts((prev) => {
@@ -7182,7 +7191,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       return (
                         <div key={a.id} className={`alerts-item${a.enabled ? '' : ' is-disabled'}${overdue ? ' is-overdue' : ''}`}>
                           <div className="alerts-item-main">
-                            <div className="alerts-item-title">{String(a.title || '（無題）')}</div>
+                            <div className="alerts-item-title">{String(a.title || getAlertDefaultTitle(a.kind))}</div>
                             <div className="alerts-item-meta">
                               <span className="alerts-chip">{ruleText}</span>
                               {nextText ? <span className="alerts-next">次回: {nextText}</span> : <span className="alerts-next">次回: —</span>}
@@ -7258,14 +7267,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   }}
                 >
                   {alertModalOpen && alertDraft ? (
-                    <div className="edit-content" role="dialog" aria-modal="true" aria-label="アラートの編集" onMouseDown={(e) => e.stopPropagation()}>
-                      <div className="edit-header">
-                        <h3>{alertEditingId ? '🔔 アラート編集' : '🔔 アラート追加'}</h3>
-                        <button className="edit-close" title="閉じる" aria-label="閉じる" type="button" onClick={() => closeAlertModal()}>
-                          <span className="material-icons">close</span>
-                        </button>
-                      </div>
-
+                    <div
+                      className="edit-content"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label={alertEditingId ? 'アラート編集' : 'アラート追加'}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
                       <div className="edit-body">
                         <div className="edit-field">
                           <label>タイトル</label>
@@ -7274,7 +7282,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             value={String(alertDraft.title || '')}
                             onChange={(e) => setAlertDraft({ ...alertDraft, title: e.target.value })}
                             disabled={busy}
-                            placeholder="例: 退勤アラート"
+                            placeholder={getAlertDefaultTitle(alertDraft.kind)}
                           />
                         </div>
 
@@ -7417,10 +7425,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           aria-label="保存"
                           onClick={() => {
                             if (!alertDraft) return;
-                            upsertAlertFromDraft(alertDraft);
+                            const effectiveTitle = String(alertDraft.title || '').trim() ? String(alertDraft.title) : getAlertDefaultTitle(alertDraft.kind);
+                            upsertAlertFromDraft({ ...alertDraft, title: effectiveTitle });
                             closeAlertModal();
                           }}
-                          disabled={busy || !String(alertDraft.title || '').trim()}
+                          disabled={busy}
                         >
                           <span className="material-icons">done</span>
                         </button>
