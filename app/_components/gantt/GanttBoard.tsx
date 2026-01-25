@@ -31,6 +31,12 @@ function clampInt(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+function dayNumberLabel(ymd: string) {
+  const m = String(ymd || '').match(/^\d{4}-\d{2}-(\d{2})$/);
+  if (!m) return '';
+  return String(Number(m[1]));
+}
+
 export default function GanttBoard(props: {
   tasks: GanttTask[];
   rangeStart: string; // YYYY-MM-DD
@@ -572,6 +578,14 @@ export default function GanttBoard(props: {
               const isShort = w < 120;
               const titleMaxPx = titleMaxPxById.get(t.id);
 
+              const drag = draggingRef.current;
+              const isDraggingThis = !!drag && drag.taskId === t.id;
+              const dragMode = isDraggingThis ? drag.mode : null;
+              const showLeftBubble = isDraggingThis && (dragMode === 'move' || dragMode === 'resize-left');
+              const showRightBubble = isDraggingThis && (dragMode === 'move' || dragMode === 'resize-right');
+              const startDayLabel = dayNumberLabel(t.startDate);
+              const endDayLabel = dayNumberLabel(t.endDate);
+
               const style = { left: x, top: y, width: w, zIndex: z } as CSSProperties & Record<string, unknown>;
               if (isShort && typeof titleMaxPx === 'number' && Number.isFinite(titleMaxPx)) {
                 style['--gantt-title-max'] = `${Math.max(0, Math.trunc(titleMaxPx))}px`;
@@ -580,7 +594,7 @@ export default function GanttBoard(props: {
               return (
                 <div
                   key={t.id}
-                  className={`gantt-task tone-${tone}${isShort ? ' is-short' : ''}${isSelected ? ' selected' : ''}`}
+                  className={`gantt-task tone-${tone}${isShort ? ' is-short' : ''}${isDraggingThis ? ' is-dragging' : ''}${isSelected ? ' selected' : ''}`}
                   style={style}
                   role="button"
                   tabIndex={0}
@@ -611,6 +625,17 @@ export default function GanttBoard(props: {
                     <div className="gantt-task-title">{String(t.title || '（無題）')}</div>
                   </div>
                   <div className="gantt-task-handle right" onPointerDown={(ev) => onTaskPointerDown(ev, t, 'resize-right')} />
+
+                  {showLeftBubble ? (
+                    <div className="gantt-date-bubble left" aria-hidden="true">
+                      {startDayLabel}
+                    </div>
+                  ) : null}
+                  {showRightBubble ? (
+                    <div className="gantt-date-bubble right" aria-hidden="true">
+                      {endDayLabel}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

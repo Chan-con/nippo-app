@@ -1310,6 +1310,35 @@ input[type='number']::-webkit-inner-spin-button {
   cursor: grabbing;
 }
 
+.gantt-task.is-dragging {
+  z-index: 99998 !important;
+}
+
+.gantt-date-bubble {
+  position: absolute;
+  top: -26px;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.gantt-date-bubble.left {
+  left: 0;
+}
+
+.gantt-date-bubble.right {
+  left: 100%;
+}
+
 /* On hover, bring the hovered task above others so the title (which may fly out) stays readable. */
 .gantt-task:hover {
   z-index: 99999 !important;
