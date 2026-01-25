@@ -104,8 +104,6 @@ export default function GanttDrawer(props: {
             title="削除"
             aria-label="削除"
             onClick={() => {
-              const ok = window.confirm('このタスクを削除しますか？');
-              if (!ok) return;
               props.onDelete(task.id);
             }}
             disabled={props.disabled}
