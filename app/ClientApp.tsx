@@ -1764,28 +1764,43 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         return;
       }
 
-      const bumpedBase = new Date(now.getTime() + 60 * 1000);
-      const updated = current.map((a) => {
-        const isDue = due.some((d) => d.id === a.id);
-        if (!isDue) return a;
-
+      // 起動時など「超過分が複数」ある場合は、通知を1回にまとめる
+      const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+      if (canNotify) {
         try {
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          if (due.length === 1) {
+            const a = due[0];
             new Notification(String(a.title || 'アラート'), { body: '時間になりました', silent: false });
+          } else {
+            const titles = due
+              .map((a) => String(a.title || '（無題）').trim())
+              .filter(Boolean)
+              .slice(0, 3);
+            const suffix = due.length > titles.length ? ` ほか${due.length - titles.length}件` : '';
+            const body = titles.length ? `${titles.join(' / ')}${suffix}` : `${due.length}件のアラート`;
+            new Notification('アラート（期限超過）', { body, silent: false });
           }
         } catch {
           // ignore
         }
+      }
 
-        const next: AlertItem = { ...a, lastFiredAt: now.toISOString() };
-        if (a.kind === 'once') {
-          next.enabled = false;
-          next.nextFireAt = '';
-        } else {
+      const bumpedBase = new Date(now.getTime() + 60 * 1000);
+      const dueIds = new Set(due.map((d) => d.id));
+      const updated = current
+        .map((a) => {
+          if (!dueIds.has(a.id)) return a;
+
+          // 「完了したら消失」
+          // - 単発: 役目を終えたら削除
+          // - 繰り返し: 過去分は残さず、次回分へ更新
+          if (a.kind === 'once') return null;
+
+          const next: AlertItem = { ...a, lastFiredAt: now.toISOString() };
           next.nextFireAt = computeNextFireAt(next, bumpedBase);
-        }
-        return next;
-      });
+          return next;
+        })
+        .filter((x): x is AlertItem => !!x);
 
       setAlerts(updated);
       setAlertsDirty(true);
