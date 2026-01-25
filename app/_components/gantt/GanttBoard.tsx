@@ -63,6 +63,7 @@ export default function GanttBoard(props: {
   const [viewDays, setViewDays] = useState(() => Math.max(180, Math.trunc(props.rangeDays || 1)));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollAdjustPxRef = useRef(0);
+  const pendingCenterDayRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (initialRangeSetRef.current) return;
@@ -82,11 +83,24 @@ export default function GanttBoard(props: {
 
   useEffect(() => {
     const el = scrollRef.current;
+    if (!el) return;
+
     const shift = pendingScrollAdjustPxRef.current;
-    if (!el || !shift) return;
-    pendingScrollAdjustPxRef.current = 0;
-    el.scrollLeft += shift;
-  }, [viewStart, viewDays]);
+    if (shift) {
+      pendingScrollAdjustPxRef.current = 0;
+      el.scrollLeft += shift;
+    }
+
+    const centerDay = pendingCenterDayRef.current;
+    if (centerDay == null) return;
+    pendingCenterDayRef.current = null;
+
+    const startDay = ymdToUtcDayNumber(viewStart) ?? 0;
+    const w = Math.max(6, Math.trunc(props.dayWidth || 24));
+    const dayIndex = centerDay - startDay;
+    const target = dayIndex * w + w / 2 - el.clientWidth / 2;
+    el.scrollLeft = Math.max(0, target);
+  }, [viewStart, viewDays, props.dayWidth]);
   const laneOrder = useMemo(() => {
     return (Array.isArray(props.lanes) ? props.lanes : []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [props.lanes]);
@@ -101,8 +115,24 @@ export default function GanttBoard(props: {
     setDraftTasks(Array.isArray(props.tasks) ? props.tasks : []);
   }, [props.tasks]);
 
-  const rangeStartDay = ymdToUtcDayNumber(viewStart) ?? ymdToUtcDayNumber(utcDayNumberToYmd(Math.floor(Date.now() / 86400000))) ?? 0;
+  const todayDay = Math.floor(Date.now() / 86400000);
+  const todayYmd = utcDayNumberToYmd(todayDay);
+  const rangeStartDay = ymdToUtcDayNumber(viewStart) ?? ymdToUtcDayNumber(todayYmd) ?? 0;
   const rangeEndDay = rangeStartDay + Math.max(1, Math.trunc(viewDays || 1)) - 1;
+  const todayIndex = todayDay - rangeStartDay;
+  const isTodayInView = todayIndex >= 0 && todayIndex < Math.max(1, Math.trunc(viewDays || 1));
+
+  function centerToday() {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const n = Math.max(1, Math.trunc(viewDays || 1));
+    const half = Math.max(0, Math.floor(n / 2));
+    pendingCenterDayRef.current = todayDay;
+
+    setViewStart(addDaysYmd(todayYmd, -half));
+    if (n < 180) setViewDays(180);
+  }
 
   const visibleDays = useMemo(() => {
     const days: string[] = [];
@@ -369,7 +399,7 @@ export default function GanttBoard(props: {
               const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
               const label = m ? `${Number(m[2])}/${Number(m[3])}` : ymd;
               return (
-                <div key={ymd} className="gantt-day" style={{ width: Math.max(6, props.dayWidth) }}>
+                <div key={ymd} className={`gantt-day${ymd === todayYmd ? ' is-today' : ''}`} style={{ width: Math.max(6, props.dayWidth) }}>
                   {label}
                 </div>
               );
@@ -387,6 +417,15 @@ export default function GanttBoard(props: {
                   className={`gantt-timeline-row${isNewLaneDrop ? ' is-new-lane-drop' : ''}${isEmptyPlaceholder ? ' is-empty-placeholder' : ''}`}
                   data-gantt-lane-id={lane.id}
                   style={{ height, width: timelineWidth }}
+                  onMouseDown={(ev) => {
+                    if (props.disabled) return;
+                    if (draggingRef.current) return;
+                    if (isNewLaneDrop) return;
+                    if (ev.button !== 1) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    centerToday();
+                  }}
                   onDoubleClick={(ev) => {
                     if (props.disabled) return;
                     if (draggingRef.current) return;
@@ -407,6 +446,13 @@ export default function GanttBoard(props: {
                   title={props.disabled ? '' : 'ダブルクリックでここにタスク追加'}
                 >
                   <div className="gantt-row-grid" style={{ width: timelineWidth, backgroundSize: `${Math.max(6, props.dayWidth)}px 1px` }} />
+                  {isTodayInView ? (
+                    <div
+                      className="gantt-today-column"
+                      style={{ left: todayIndex * Math.max(6, props.dayWidth), width: Math.max(6, props.dayWidth) }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
 
                   {isNewLaneDrop ? <div className="gantt-new-lane-drop-text">ここにドロップで新規レーン</div> : null}
                   {isEmptyPlaceholder ? <div className="gantt-empty-placeholder-text">ダブルクリックでタスクを追加</div> : null}
