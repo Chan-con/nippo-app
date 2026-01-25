@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { GanttLane, GanttTask } from './types';
+import type { GanttTask } from './types';
 
 export default function GanttDrawer(props: {
   open: boolean;
   task: GanttTask | null;
-  lanes: GanttLane[];
   onClose: () => void;
   onSave: (next: GanttTask) => void;
   onDelete: (taskId: string) => void;

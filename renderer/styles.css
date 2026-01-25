@@ -1157,7 +1157,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 .gantt-scroll-x {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1167,6 +1167,9 @@ input[type='number']::-webkit-inner-spin-button {
   height: 36px;
   border-bottom: 1px solid rgba(108, 112, 134, 0.35);
   background: rgba(49, 50, 68, 0.6);
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .gantt-day {
@@ -1191,6 +1194,20 @@ input[type='number']::-webkit-inner-spin-button {
 .gantt-timeline {
   display: flex;
   flex-direction: column;
+}
+
+.gantt-canvas {
+  position: relative;
+}
+
+.gantt-canvas-grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background-image: linear-gradient(to right, rgba(108, 112, 134, 0.14) 1px, transparent 1px);
+  pointer-events: none;
 }
 
 .gantt-timeline-row {

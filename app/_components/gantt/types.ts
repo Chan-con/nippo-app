@@ -13,6 +13,10 @@ export type GanttTask = {
   endDate: string; // YYYY-MM-DD (inclusive)
   memo?: string;
   color?: string;
+  // 自由配置（縦位置）: px。未指定はクライアント側で自動割当。
+  y?: number;
+  // 重なり順: 大きいほど手前。未指定はクライアント側で自動割当。
+  z?: number;
 };
 
 export type GanttDoc = {

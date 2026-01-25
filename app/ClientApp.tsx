@@ -1328,7 +1328,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   // gantt (roadmap) - lanes + draggable/resizable bars (synced via Supabase)
   const GANTT_GLOBAL_KEY = 'global';
-  const GANTT_NEW_LANE_DROP_ID = '__gantt_new_lane__';
   const [ganttLanes, setGanttLanes] = useState<GanttLane[]>([]);
   const [ganttTasks, setGanttTasks] = useState<GanttTask[]>([]);
   const [ganttLoading, setGanttLoading] = useState(false);
@@ -1351,79 +1350,40 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return (Array.isArray(ganttTasks) ? ganttTasks : []).find((t) => t.id === id) ?? null;
   }, [ganttSelectedTaskId, ganttTasks]);
 
-  function normalizeGanttLanes(input: unknown): GanttLane[] {
-    const list = Array.isArray(input) ? input : [];
-    const temp: GanttLane[] = [];
-    for (let i = 0; i < list.length; i += 1) {
-      const item = list[i] as any;
-      const id = typeof item?.id === 'string' ? String(item.id) : '';
-      const name = typeof item?.name === 'string' ? String(item.name) : '';
-      const orderRaw = item?.order;
-      const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? Math.trunc(orderRaw) : i;
-      if (!id) continue;
-      temp.push({ id: id.slice(0, 80), name: name.slice(0, 60), order });
-    }
-    temp.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.id).localeCompare(String(b.id)));
-    return temp.map((l, idx) => ({ ...l, order: idx }));
-  }
-
   function normalizeGanttTasks(input: unknown): GanttTask[] {
     const list = Array.isArray(input) ? input : [];
     const isYmd = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
     const out: GanttTask[] = [];
-    for (const item of list as any[]) {
+    for (let i = 0; i < (list as any[]).length; i += 1) {
+      const item = (list as any[])[i];
       const id = typeof item?.id === 'string' ? String(item.id) : '';
       const title = typeof item?.title === 'string' ? String(item.title) : '';
       const memo = typeof item?.memo === 'string' ? String(item.memo) : '';
       const color = typeof item?.color === 'string' ? String(item.color) : '';
-      const laneId = typeof item?.laneId === 'string' ? String(item.laneId) : '';
+      const laneIdRaw = typeof item?.laneId === 'string' ? String(item.laneId) : '';
       const startDate = typeof item?.startDate === 'string' ? String(item.startDate) : '';
       const endDate = typeof item?.endDate === 'string' ? String(item.endDate) : '';
+      const yRaw = item?.y;
+      const zRaw = item?.z;
       if (!id) continue;
-      if (!laneId) continue;
       if (!isYmd(startDate) || !isYmd(endDate)) continue;
       const safeTitle = title.trim() ? title.slice(0, 200) : '（無題）';
       // Ensure inclusive range is valid
       const safeStart = startDate;
       const safeEnd = endDate < safeStart ? safeStart : endDate;
-      out.push({ id: id.slice(0, 80), title: safeTitle, memo: memo.slice(0, 8000), laneId: laneId.slice(0, 80), startDate: safeStart, endDate: safeEnd, color: color.slice(0, 40) });
+      const laneId = (laneIdRaw || 'default').slice(0, 80);
+      const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.max(0, Math.trunc(yRaw)) : 8 + i * 28;
+      const z = typeof zRaw === 'number' && Number.isFinite(zRaw) ? Math.trunc(zRaw) : i;
+      out.push({ id: id.slice(0, 80), title: safeTitle, memo: memo.slice(0, 8000), laneId, startDate: safeStart, endDate: safeEnd, color: color.slice(0, 40), y, z });
     }
     return out;
   }
 
-  function deriveGanttLanesFromTasks(tasks: GanttTask[], prevLanes: GanttLane[]) {
-    const used = new Set(
-      (Array.isArray(tasks) ? tasks : [])
-        .map((t) => String(t?.laneId || ''))
-        .filter((id) => !!id && id !== GANTT_NEW_LANE_DROP_ID)
-    );
-
-    const base = normalizeGanttLanes(prevLanes).filter((l) => used.has(l.id));
-    const seen = new Set(base.map((l) => l.id));
-
-    for (const id of used) {
-      if (seen.has(id)) continue;
-      base.push({ id, name: '', order: base.length });
-      seen.add(id);
-    }
-
-    return normalizeGanttLanes(base);
-  }
-
   function commitGanttTasks(nextTasksRaw: GanttTask[]) {
-    const nextTasks0 = Array.isArray(nextTasksRaw) ? nextTasksRaw : [];
-
-    // ドラッグ中の「新規レーン」Dropゾーンに落とした場合は実体レーンIDへ変換
-    const needsNewLane = nextTasks0.some((t) => t?.laneId === GANTT_NEW_LANE_DROP_ID);
-    const createdLaneId = needsNewLane ? `lane-${newId()}` : '';
-
-    const nextTasks = nextTasks0.map((t) => {
-      if (t?.laneId !== GANTT_NEW_LANE_DROP_ID) return t;
-      return { ...t, laneId: createdLaneId };
-    });
+    const nextTasks = normalizeGanttTasks(nextTasksRaw).map((t) => ({ ...t, laneId: 'default' }));
 
     setGanttTasks(nextTasks);
-    setGanttLanes((prev) => deriveGanttLanesFromTasks(nextTasks, prev));
+    setGanttLanes([{ id: 'default', name: '', order: 0 }]);
     setGanttDirty(true);
     setGanttRemoteUpdatePending(false);
   }
@@ -1432,7 +1392,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     try {
       return JSON.stringify({
         lanes: (Array.isArray(lanes) ? lanes : []).map((l) => ({ id: l.id, name: l.name || '', order: l.order })),
-        tasks: (Array.isArray(tasks) ? tasks : []).map((t) => ({ id: t.id, title: t.title, laneId: t.laneId, startDate: t.startDate, endDate: t.endDate, memo: t.memo || '', color: t.color || '' })),
+        tasks: (Array.isArray(tasks) ? tasks : []).map((t) => ({ id: t.id, title: t.title, laneId: t.laneId, startDate: t.startDate, endDate: t.endDate, memo: t.memo || '', color: t.color || '', y: t.y ?? null, z: t.z ?? null })),
       });
     } catch {
       return '';
@@ -1448,8 +1408,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const body = await res.json().catch(() => null as any);
       if (!res.ok || !body?.success) throw new Error(body?.error || 'ガントの取得に失敗しました');
 
-      const tasks = normalizeGanttTasks(body?.gantt?.tasks);
-      const lanes = deriveGanttLanesFromTasks(tasks, normalizeGanttLanes(body?.gantt?.lanes));
+      const tasks = normalizeGanttTasks(body?.gantt?.tasks).map((t) => ({ ...t, laneId: 'default' }));
+      const lanes = [{ id: 'default', name: '', order: 0 }];
 
       setGanttTasks(tasks);
       setGanttLanes(lanes);
@@ -1556,14 +1516,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setGanttEditingId(null);
   }
 
-  function createGanttTaskAt(args: { laneId: string | null; startDate: string; endDate: string }) {
+  function createGanttTaskAt(args: { laneId: string | null; startDate: string; endDate: string; y?: number }) {
     if (busy) return;
-    const laneId = args.laneId || `lane-${newId()}`;
+    const laneId = args.laneId || 'default';
     const startDate = String(args.startDate || '').slice(0, 10);
     const endRaw = String(args.endDate || '').slice(0, 10);
     const endDate = endRaw && endRaw < startDate ? startDate : endRaw;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return;
+
+    const maxZ = Math.max(-1, ...(Array.isArray(ganttTasks) ? ganttTasks : []).map((t) => (typeof (t as any)?.z === 'number' ? (t as any).z : -1)));
+    const yRaw = args?.y;
+    const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.max(0, Math.trunc(yRaw)) : 8;
 
     const task: GanttTask = {
       id: `gantt-${newId()}`,
@@ -1573,6 +1537,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       endDate,
       memo: '',
       color: '',
+      y,
+      z: maxZ + 1,
     };
 
     commitGanttTasks([task, ...(Array.isArray(ganttTasks) ? ganttTasks : [])]);
@@ -6448,7 +6414,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 </div>
 
                 <GanttBoard
-                  lanes={deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes)}
                   tasks={normalizeGanttTasks(ganttTasks)}
                   rangeStart={ganttRangeStart}
                   rangeDays={ganttRangeDays}
@@ -6475,7 +6440,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <GanttDrawer
                   open={ganttDrawerOpen}
                   task={ganttSelectedTask}
-                  lanes={deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes)}
                   onClose={() => closeGanttDrawer()}
                   onDelete={(taskId) => {
                     const nextTasks = (Array.isArray(ganttTasks) ? ganttTasks : []).filter((t) => t.id !== taskId);

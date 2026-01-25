@@ -221,25 +221,34 @@ function normalizeGanttTasks(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
   const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
-  for (const item of list) {
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
     const id = typeof item?.id === 'string' ? String(item.id) : '';
     const title = typeof item?.title === 'string' ? String(item.title) : '';
-    const laneId = typeof item?.laneId === 'string' ? String(item.laneId) : '';
+    const laneIdRaw = typeof item?.laneId === 'string' ? String(item.laneId) : '';
     const startDate = typeof item?.startDate === 'string' ? String(item.startDate) : '';
     const endDate = typeof item?.endDate === 'string' ? String(item.endDate) : '';
     const memo = typeof item?.memo === 'string' ? String(item.memo) : '';
     const color = typeof item?.color === 'string' ? String(item.color) : '';
+    const yRaw = item?.y;
+    const zRaw = item?.z;
     if (!id) continue;
-    if (!laneId) continue;
     if (!isYmd(startDate) || !isYmd(endDate)) continue;
+
+    const laneId = (laneIdRaw || 'default').slice(0, 80);
+    const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.max(0, Math.trunc(yRaw)) : 8 + i * 28;
+    const z = typeof zRaw === 'number' && Number.isFinite(zRaw) ? Math.trunc(zRaw) : i;
+
     out.push({
       id: id.slice(0, 80),
       title: title.slice(0, 200),
-      laneId: laneId.slice(0, 80),
+      laneId,
       startDate: startDate.slice(0, 10),
       endDate: endDate.slice(0, 10),
       memo: memo.slice(0, 8000),
       color: color.slice(0, 40),
+      y,
+      z,
     });
   }
   return out;
