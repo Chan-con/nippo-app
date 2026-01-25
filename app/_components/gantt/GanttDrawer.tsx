@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GanttTask } from './types';
 
+type GanttTone = 'info' | 'danger' | 'success' | 'warning' | 'default';
+
+function normalizeGanttTone(v: unknown): GanttTone {
+  return v === 'info' || v === 'danger' || v === 'success' || v === 'warning' || v === 'default' ? v : 'default';
+}
+
 export default function GanttDrawer(props: {
   open: boolean;
   task: GanttTask | null;
@@ -11,11 +17,11 @@ export default function GanttDrawer(props: {
   onDelete: (taskId: string) => void;
   disabled?: boolean;
 }) {
-  const [draft, setDraft] = useState<GanttTask | null>(props.task);
+  const [draft, setDraft] = useState<GanttTask | null>(props.task ? { ...props.task, color: normalizeGanttTone((props.task as any)?.color) } : props.task);
   const titleRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setDraft(props.task);
+    setDraft(props.task ? { ...props.task, color: normalizeGanttTone((props.task as any)?.color) } : props.task);
   }, [props.task]);
 
   useEffect(() => {
@@ -43,6 +49,7 @@ export default function GanttDrawer(props: {
 
   const trimmedTitle = String(task.title || '').trim();
   const canSave = trimmedTitle.length > 0 && String(task.startDate || '').length === 10 && String(task.endDate || '').length === 10;
+  const tone = normalizeGanttTone((task as any)?.color);
 
   return (
     <div
@@ -65,6 +72,38 @@ export default function GanttDrawer(props: {
               disabled={props.disabled}
               placeholder="例: 仕様策定"
             />
+          </div>
+
+          <div className="edit-field">
+            <label>カラー</label>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { tone: 'info', label: 'Info', cls: 'bg-blue-950/50 border-blue-700/40' },
+                  { tone: 'danger', label: 'Danger', cls: 'bg-rose-950/55 border-rose-700/40' },
+                  { tone: 'success', label: 'Success', cls: 'bg-emerald-950/50 border-emerald-700/40' },
+                  { tone: 'warning', label: 'Warning', cls: 'bg-amber-950/55 border-amber-700/40' },
+                  { tone: 'default', label: 'Default', cls: 'bg-slate-900/60 border-slate-700/50' },
+                ] as Array<{ tone: GanttTone; label: string; cls: string }>
+              ).map((opt) => {
+                const active = tone === opt.tone;
+                return (
+                  <button
+                    key={opt.tone}
+                    type="button"
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${opt.cls} ${
+                      active ? 'ring-2 ring-[rgba(137,180,250,0.25)]' : 'hover:bg-white/5'
+                    }`}
+                    aria-pressed={active}
+                    onClick={() => setDraft({ ...task, color: opt.tone })}
+                    disabled={props.disabled}
+                  >
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-white/70" aria-hidden="true" />
+                    <span className="text-[color:var(--text-primary)]">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="edit-field">
@@ -92,7 +131,7 @@ export default function GanttDrawer(props: {
             aria-label="保存"
             onClick={() => {
               if (!canSave) return;
-              props.onSave({ ...task, title: trimmedTitle });
+              props.onSave({ ...task, title: trimmedTitle, color: normalizeGanttTone((task as any)?.color) });
             }}
             disabled={props.disabled || !canSave}
           >
