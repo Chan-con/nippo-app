@@ -2903,6 +2903,11 @@ input[type='number']::-webkit-inner-spin-button {
   max-width: 800px;
 }
 
+/* ガント追加モーダルはノートよりコンパクト */
+.gantt-add-content {
+  max-width: 520px;
+}
+
 /* ノート編集はフッターボタンと左右を揃えて広く使う */
 .notes-edit-content .edit-body {
   padding: 16px;
