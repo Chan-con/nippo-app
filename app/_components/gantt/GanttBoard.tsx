@@ -54,10 +54,39 @@ export default function GanttBoard(props: {
   onSelectTaskId: (id: string | null) => void;
   onOpenTaskId?: (id: string) => void;
   onCommitTasks: (nextTasks: GanttTask[]) => void;
-  onLaneDoubleClick?: (laneId: string | null) => void;
+  onCreateTaskAt?: (args: { laneId: string | null; startDate: string; endDate: string }) => void;
   onInteractionChange?: (active: boolean) => void;
   disabled?: boolean;
 }) {
+  const initialRangeSetRef = useRef(false);
+  const [viewStart, setViewStart] = useState(props.rangeStart);
+  const [viewDays, setViewDays] = useState(() => Math.max(180, Math.trunc(props.rangeDays || 1)));
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollAdjustPxRef = useRef(0);
+
+  useEffect(() => {
+    if (initialRangeSetRef.current) return;
+    initialRangeSetRef.current = true;
+    setViewStart(props.rangeStart);
+    setViewDays(Math.max(180, Math.trunc(props.rangeDays || 1)));
+    const t = window.setTimeout(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const w = Math.max(6, Math.trunc(props.dayWidth || 24));
+      // rangeStart が「今日-7日」なので、初期表示はだいたい今日付近へ
+      el.scrollLeft = Math.max(0, 7 * w - 180);
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    const shift = pendingScrollAdjustPxRef.current;
+    if (!el || !shift) return;
+    pendingScrollAdjustPxRef.current = 0;
+    el.scrollLeft += shift;
+  }, [viewStart, viewDays]);
   const laneOrder = useMemo(() => {
     return (Array.isArray(props.lanes) ? props.lanes : []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [props.lanes]);
@@ -72,15 +101,15 @@ export default function GanttBoard(props: {
     setDraftTasks(Array.isArray(props.tasks) ? props.tasks : []);
   }, [props.tasks]);
 
-  const rangeStartDay = ymdToUtcDayNumber(props.rangeStart) ?? ymdToUtcDayNumber(utcDayNumberToYmd(Math.floor(Date.now() / 86400000))) ?? 0;
-  const rangeEndDay = rangeStartDay + Math.max(1, Math.trunc(props.rangeDays || 1)) - 1;
+  const rangeStartDay = ymdToUtcDayNumber(viewStart) ?? ymdToUtcDayNumber(utcDayNumberToYmd(Math.floor(Date.now() / 86400000))) ?? 0;
+  const rangeEndDay = rangeStartDay + Math.max(1, Math.trunc(viewDays || 1)) - 1;
 
   const visibleDays = useMemo(() => {
     const days: string[] = [];
-    const n = Math.max(1, Math.trunc(props.rangeDays || 1));
-    for (let i = 0; i < n; i += 1) days.push(addDaysYmd(props.rangeStart, i));
+    const n = Math.max(1, Math.trunc(viewDays || 1));
+    for (let i = 0; i < n; i += 1) days.push(addDaysYmd(viewStart, i));
     return days;
-  }, [props.rangeStart, props.rangeDays]);
+  }, [viewStart, viewDays]);
 
   const tasksByLane = useMemo(() => {
     const map = new Map<string, GanttTask[]>();
@@ -282,7 +311,26 @@ export default function GanttBoard(props: {
     setDraftTasks(Array.isArray(props.tasks) ? props.tasks : []);
   }
 
-  const timelineWidth = Math.max(1, Math.trunc(props.rangeDays || 1)) * Math.max(6, Math.trunc(props.dayWidth || 24));
+  const timelineWidth = Math.max(1, Math.trunc(viewDays || 1)) * Math.max(6, Math.trunc(props.dayWidth || 24));
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const w = Math.max(6, Math.trunc(props.dayWidth || 24));
+    const threshold = 12 * w;
+    const chunkDays = 60;
+
+    if (el.scrollLeft < threshold) {
+      pendingScrollAdjustPxRef.current += chunkDays * w;
+      setViewStart((prev) => addDaysYmd(prev, -chunkDays));
+      setViewDays((prev) => Math.max(1, Math.trunc(prev || 1)) + chunkDays);
+      return;
+    }
+
+    if (el.scrollLeft + el.clientWidth > el.scrollWidth - threshold) {
+      setViewDays((prev) => Math.max(1, Math.trunc(prev || 1)) + chunkDays);
+    }
+  }
 
   const laneLayout = useMemo(() => {
     const baseLanes = laneOrder.length ? laneOrder : [{ id: EMPTY_LANE_ID, order: 0, name: '' }];
@@ -315,7 +363,7 @@ export default function GanttBoard(props: {
       onPointerCancel={onRootPointerCancel}
     >
       <div className="gantt-frame">
-        <div className="gantt-scroll-x">
+        <div className="gantt-scroll-x" ref={scrollRef} onScroll={onScroll}>
           <div className="gantt-days" style={{ width: timelineWidth }}>
             {visibleDays.map((ymd) => {
               const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -345,9 +393,18 @@ export default function GanttBoard(props: {
                     if (isNewLaneDrop) return;
                     ev.preventDefault();
                     ev.stopPropagation();
-                    props.onLaneDoubleClick?.(isEmptyPlaceholder ? null : lane.id);
+
+                    const w = Math.max(6, props.dayWidth || 24);
+                    const rowRect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                    const scroller = scrollRef.current;
+                    const x = ev.clientX - rowRect.left + (scroller?.scrollLeft || 0);
+                    const dayIndex = Math.max(0, Math.floor(x / w));
+                    const startDate = addDaysYmd(viewStart, dayIndex);
+                    const endDate = addDaysYmd(startDate, 1);
+
+                    props.onCreateTaskAt?.({ laneId: isEmptyPlaceholder ? null : lane.id, startDate, endDate });
                   }}
-                  title={props.disabled ? '' : 'ダブルクリックでこのレーンに追加'}
+                  title={props.disabled ? '' : 'ダブルクリックでここにタスク追加'}
                 >
                   <div className="gantt-row-grid" style={{ width: timelineWidth, backgroundSize: `${Math.max(6, props.dayWidth)}px 1px` }} />
 

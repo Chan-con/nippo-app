@@ -1564,6 +1564,29 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setGanttEditingId(null);
   }
 
+  function createGanttTaskAt(args: { laneId: string | null; startDate: string; endDate: string }) {
+    if (busy) return;
+    const laneId = args.laneId || `lane-${newId()}`;
+    const startDate = String(args.startDate || '').slice(0, 10);
+    const endRaw = String(args.endDate || '').slice(0, 10);
+    const endDate = endRaw && endRaw < startDate ? startDate : endRaw;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return;
+
+    const task: GanttTask = {
+      id: `gantt-${newId()}`,
+      title: 'タスク',
+      laneId,
+      startDate,
+      endDate,
+      memo: '',
+      color: '',
+    };
+
+    commitGanttTasks([task, ...(Array.isArray(ganttTasks) ? ganttTasks : [])]);
+    setGanttSelectedTaskId(task.id);
+  }
+
   function openGanttAddModal(laneIdOverride?: string | null) {
     if (busy) return;
     const lanes = deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes);
@@ -6502,8 +6525,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   onOpenTaskId={(id) => {
                     openGanttTask(id);
                   }}
-                  onLaneDoubleClick={(laneId) => {
-                    openGanttAddModal(laneId);
+                  onCreateTaskAt={(args) => {
+                    createGanttTaskAt(args);
                   }}
                   onCommitTasks={(nextTasks) => {
                     commitGanttTasks(nextTasks);

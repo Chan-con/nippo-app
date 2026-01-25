@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GanttLane, GanttTask } from './types';
 
 export default function GanttDrawer(props: {
@@ -18,10 +18,6 @@ export default function GanttDrawer(props: {
   useEffect(() => {
     setDraft(props.task);
   }, [props.task]);
-
-  const laneOptions = useMemo(() => {
-    return (Array.isArray(props.lanes) ? props.lanes : []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [props.lanes]);
 
   useEffect(() => {
     if (!props.open) return;
@@ -71,45 +67,6 @@ export default function GanttDrawer(props: {
               disabled={props.disabled}
               placeholder="例: 仕様策定"
             />
-          </label>
-
-          <div className="gantt-field-grid">
-            <label className="gantt-field">
-              <div className="gantt-field-label">開始日</div>
-              <input
-                type="date"
-                className="gantt-input"
-                value={task.startDate}
-                onChange={(e) => setDraft({ ...task, startDate: e.target.value })}
-                disabled={props.disabled}
-              />
-            </label>
-            <label className="gantt-field">
-              <div className="gantt-field-label">終了日</div>
-              <input
-                type="date"
-                className="gantt-input"
-                value={task.endDate}
-                onChange={(e) => setDraft({ ...task, endDate: e.target.value })}
-                disabled={props.disabled}
-              />
-            </label>
-          </div>
-
-          <label className="gantt-field">
-            <div className="gantt-field-label">レーン</div>
-            <select
-              className="gantt-input"
-              value={task.laneId}
-              onChange={(e) => setDraft({ ...task, laneId: e.target.value })}
-              disabled={props.disabled}
-            >
-              {laneOptions.map((l, idx) => (
-                <option key={l.id} value={l.id}>
-                  {`レーン${idx + 1}`}
-                </option>
-              ))}
-            </select>
           </label>
 
           <label className="gantt-field">
