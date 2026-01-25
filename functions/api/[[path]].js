@@ -266,6 +266,25 @@ function getAlertDefaultTitle(kind) {
   return 'アラート';
 }
 
+function isoToJstDate(iso) {
+  const ms = Date.parse(String(iso || ''));
+  if (!Number.isFinite(ms)) return null;
+  const d = new Date(ms);
+  try {
+    return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  } catch {
+    return null;
+  }
+}
+
+function getAlertComputeBase(alert, nowJst) {
+  if (alert?.kind === 'once') return nowJst;
+  const su = isoToJstDate(String(alert?.skipUntil || ''));
+  if (!su) return nowJst;
+  if (su.getTime() <= nowJst.getTime()) return nowJst;
+  return su;
+}
+
 function normalizeAlerts(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
@@ -283,6 +302,7 @@ function normalizeAlerts(input) {
     const weeklyDays = Array.isArray(item?.weeklyDays) ? item.weeklyDays : [];
     const monthlyDay = item?.monthlyDay;
     const lastFiredAt = typeof item?.lastFiredAt === 'string' ? String(item.lastFiredAt) : '';
+    const skipUntil = typeof item?.skipUntil === 'string' ? String(item.skipUntil) : '';
 
     if (!id) continue;
   const safeTitle = title.trim() ? title.slice(0, 120) : getAlertDefaultTitle(kind);
@@ -297,9 +317,16 @@ function normalizeAlerts(input) {
       weeklyDays: kind === 'weekly' ? weeklyDays.slice(0, 7) : [],
       monthlyDay: kind === 'monthly' ? clampInt(monthlyDay, 1, 31, 1) : null,
       lastFiredAt: lastFiredAt.slice(0, 64),
+      skipUntil: kind === 'weekly' || kind === 'monthly' ? skipUntil.slice(0, 64) : '',
     };
 
-    const base = getNowJstDate();
+    const nowJst = getNowJstDate();
+    if (normalized.skipUntil) {
+      const su = isoToJstDate(normalized.skipUntil);
+      if (!su || su.getTime() <= nowJst.getTime()) normalized.skipUntil = '';
+    }
+
+    const base = getAlertComputeBase(normalized, nowJst);
     const nextFireAt = computeNextFireAt(normalized, base);
     out.push({ ...normalized, nextFireAt });
   }

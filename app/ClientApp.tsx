@@ -42,6 +42,8 @@ type AlertItem = {
   time?: string; // HH:MM
   weeklyDays?: number[]; // 0=Sun..6=Sat
   monthlyDay?: number | null; // 1..31
+  // weekly/monthly: 次回のみスキップ用（ISO）。この時刻を超える次回へ進める。
+  skipUntil?: string; // ISO
   // computed
   nextFireAt?: string; // ISO
   lastFiredAt?: string; // ISO
@@ -65,6 +67,17 @@ type NoticeData = {
 function getNowJstDate() {
   const now = new Date();
   return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+}
+
+function isoToJstDate(iso: string) {
+  const ms = Date.parse(String(iso || ''));
+  if (!Number.isFinite(ms)) return null;
+  const d = new Date(ms);
+  try {
+    return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  } catch {
+    return null;
+  }
 }
 
 function parseHHMMToParts(v: unknown) {
@@ -184,6 +197,14 @@ function getAlertDefaultTitle(kind: AlertKind) {
   return 'アラート';
 }
 
+function getAlertComputeBase(alert: AlertItem, nowJst: Date) {
+  if (alert.kind === 'once') return nowJst;
+  const su = isoToJstDate(String(alert.skipUntil || ''));
+  if (!su) return nowJst;
+  if (su.getTime() <= nowJst.getTime()) return nowJst;
+  return su;
+}
+
 function normalizeAlertItem(input: any, fallbackId: string) {
   const id = typeof input?.id === 'string' ? String(input.id) : fallbackId;
   const titleRaw = typeof input?.title === 'string' ? String(input.title) : '';
@@ -196,6 +217,7 @@ function normalizeAlertItem(input: any, fallbackId: string) {
   const weeklyDays = Array.isArray(input?.weeklyDays) ? input.weeklyDays : [];
   const monthlyDay = input?.monthlyDay;
   const lastFiredAt = typeof input?.lastFiredAt === 'string' ? String(input.lastFiredAt) : '';
+  const skipUntilRaw = typeof input?.skipUntil === 'string' ? String(input.skipUntil) : '';
 
   const base: AlertItem = {
     id: String(id || '').slice(0, 80),
@@ -207,9 +229,18 @@ function normalizeAlertItem(input: any, fallbackId: string) {
     weeklyDays: kind === 'weekly' ? weeklyDays.slice(0, 7).map((x: any) => clampInt(x, 0, 6, 0) ?? 0) : [],
     monthlyDay: kind === 'monthly' ? clampInt(monthlyDay, 1, 31, 1) : null,
     lastFiredAt: lastFiredAt.slice(0, 64),
+    skipUntil: kind === 'weekly' || kind === 'monthly' ? skipUntilRaw.slice(0, 64) : '',
   };
 
-  base.nextFireAt = computeNextFireAt(base, getNowJstDate());
+  // skipUntil が過去ならクリア
+  if (base.skipUntil) {
+    const nowJst = getNowJstDate();
+    const su = isoToJstDate(base.skipUntil);
+    if (!su || su.getTime() <= nowJst.getTime()) base.skipUntil = '';
+  }
+
+  const nowJst = getNowJstDate();
+  base.nextFireAt = computeNextFireAt(base, getAlertComputeBase(base, nowJst));
   return base;
 }
 
@@ -1678,6 +1709,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       time: '09:00',
       monthlyDay: 1,
       lastFiredAt: '',
+      skipUntil: '',
       nextFireAt: '',
     };
     const next = normalizeAlertItem(base as any, id);
@@ -1706,7 +1738,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function upsertAlertFromDraft(draft: AlertItem) {
     const effectiveTitle = String(draft.title || '').trim() ? String(draft.title) : getAlertDefaultTitle(draft.kind);
     const normalized = normalizeAlertItem({ ...(draft as any), title: effectiveTitle } as any, draft.id || safeRandomId('alert'));
-    normalized.nextFireAt = computeNextFireAt(normalized, getNowJstDate());
+    const nowJst = getNowJstDate();
+    normalized.nextFireAt = computeNextFireAt(normalized, getAlertComputeBase(normalized, nowJst));
 
     setAlerts((prev) => {
       const list = Array.isArray(prev) ? prev.slice() : [];
@@ -1738,7 +1771,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
     const nowJst = getNowJstDate();
     const list = normalizeAlerts(alertsRef.current)
-      .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, nowJst) || a.nextFireAt || '' }))
+      .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowJst)) || a.nextFireAt || '' }))
       .filter((a) => a.enabled);
 
     const candidates = list
@@ -1757,7 +1790,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const due = current
         .filter((a) => {
           if (!a.enabled) return false;
-          const ms = Date.parse(String(a.nextFireAt || computeNextFireAt(a, now) || ''));
+          const ms = Date.parse(String(a.nextFireAt || computeNextFireAt(a, getAlertComputeBase(a, now)) || ''));
           return Number.isFinite(ms) && ms <= now.getTime();
         })
         .sort((x, y) => {
@@ -1805,7 +1838,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           // - 繰り返し: 過去分は残さず、次回分へ更新
           if (a.kind === 'once') return null;
 
-          const next: AlertItem = { ...a, lastFiredAt: now.toISOString() };
+          const next: AlertItem = { ...a, lastFiredAt: now.toISOString(), skipUntil: '' };
           next.nextFireAt = computeNextFireAt(next, bumpedBase);
           return next;
         })
@@ -7157,7 +7190,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <div className="alerts-list">
                   {(() => {
                     const now = getNowJstDate();
-                    const list = normalizeAlerts(alerts).map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, now) || a.nextFireAt || '' }));
+                    const list = normalizeAlerts(alerts).map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, now)) || a.nextFireAt || '' }));
                     if (list.length === 0) return <div className="alerts-empty">アラートがありません</div>;
 
                     const sorted = list
@@ -7201,6 +7234,40 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             <button
                               type="button"
                               className="icon-btn"
+                              title="次回をスキップ"
+                              aria-label="次回をスキップ"
+                              onClick={() => {
+                                if (busy) return;
+                                if (a.kind === 'once') return;
+                                if (!a.enabled) return;
+
+                                const curNext = String(a.nextFireAt || '').trim();
+                                if (!curNext) return;
+
+                                const base = isoToJstDate(curNext);
+                                if (!base) return;
+
+                                setAlerts((prev) =>
+                                  (Array.isArray(prev) ? prev : []).map((x) => {
+                                    if (x.id !== a.id) return x;
+                                    if (x.kind === 'once') return x;
+                                    const next: AlertItem = { ...x, skipUntil: curNext };
+                                    next.nextFireAt = computeNextFireAt(next, base);
+                                    return next;
+                                  })
+                                );
+                                setAlertsDirty(true);
+                                setAlertsRemoteUpdatePending(false);
+                              }}
+                              disabled={busy || !a.enabled || a.kind === 'once' || !String(a.nextFireAt || '').trim()}
+                            >
+                              <span className="material-icons" aria-hidden="true">
+                                skip_next
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn"
                               title={a.enabled ? '無効化' : '有効化'}
                               aria-label={a.enabled ? '無効化' : '有効化'}
                               onClick={() => {
@@ -7209,7 +7276,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                   (Array.isArray(prev) ? prev : []).map((x) => {
                                     if (x.id !== a.id) return x;
                                     const toggled: AlertItem = { ...x, enabled: !x.enabled };
-                                    toggled.nextFireAt = toggled.enabled ? computeNextFireAt(toggled, getNowJstDate()) : '';
+                                    if (!toggled.enabled) toggled.skipUntil = '';
+                                    const nowJst = getNowJstDate();
+                                    toggled.nextFireAt = toggled.enabled ? computeNextFireAt(toggled, getAlertComputeBase(toggled, nowJst)) : '';
                                     return toggled;
                                   })
                                 );
