@@ -168,6 +168,8 @@ const NOTES_GLOBAL_KEY = 'global';
 
 const SHORTCUTS_GLOBAL_KEY = 'global';
 
+const GANTT_GLOBAL_KEY = 'global';
+
 const NOTICE_GLOBAL_KEY = 'global';
 
 function normalizeNotice(input) {
@@ -193,6 +195,52 @@ function normalizeTaskLineCards(input) {
     if (!id) continue;
     // 背景色をカードごとに変える機能は廃止（常にクライアント側の固定配色を使う）
     out.push({ id, text, color: '', lane, order });
+  }
+  return out;
+}
+
+function normalizeGanttLanes(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
+    const id = typeof item?.id === 'string' ? String(item.id) : '';
+    const name = typeof item?.name === 'string' ? String(item.name) : '';
+    const orderRaw = item?.order;
+    const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? Math.trunc(orderRaw) : i;
+    if (!id) continue;
+    out.push({ id: id.slice(0, 80), name: name.slice(0, 60), order });
+  }
+  // stable ordering
+  out.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.id).localeCompare(String(b.id)));
+  // reindex order
+  return out.map((l, idx) => ({ ...l, order: idx }));
+}
+
+function normalizeGanttTasks(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = [];
+  const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+  for (const item of list) {
+    const id = typeof item?.id === 'string' ? String(item.id) : '';
+    const title = typeof item?.title === 'string' ? String(item.title) : '';
+    const laneId = typeof item?.laneId === 'string' ? String(item.laneId) : '';
+    const startDate = typeof item?.startDate === 'string' ? String(item.startDate) : '';
+    const endDate = typeof item?.endDate === 'string' ? String(item.endDate) : '';
+    const memo = typeof item?.memo === 'string' ? String(item.memo) : '';
+    const color = typeof item?.color === 'string' ? String(item.color) : '';
+    if (!id) continue;
+    if (!laneId) continue;
+    if (!isYmd(startDate) || !isYmd(endDate)) continue;
+    out.push({
+      id: id.slice(0, 80),
+      title: title.slice(0, 200),
+      laneId: laneId.slice(0, 80),
+      startDate: startDate.slice(0, 10),
+      endDate: endDate.slice(0, 10),
+      memo: memo.slice(0, 8000),
+      color: color.slice(0, 40),
+    });
   }
   return out;
 }
@@ -771,6 +819,52 @@ export async function onRequest(context) {
         cards,
         updatedAt: new Date().toISOString(),
       });
+      return jsonResponse({ success: true });
+    }
+
+    // gantt (roadmap-style)
+    if (parts.length === 1 && parts[0] === 'gantt' && request.method === 'GET') {
+      const doc = await taskManager._getDoc(userId, 'gantt', GANTT_GLOBAL_KEY, {
+        key: GANTT_GLOBAL_KEY,
+        lanes: [
+          { id: 'lane-plan', name: 'Plan', order: 0 },
+          { id: 'lane-do', name: 'Doing', order: 1 },
+          { id: 'lane-done', name: 'Done', order: 2 },
+        ],
+        tasks: [],
+      });
+
+      const lanes = normalizeGanttLanes(doc?.lanes);
+      const tasks = normalizeGanttTasks(doc?.tasks)
+        .slice(0, 800)
+        .map((t) => ({ ...t, laneId: lanes.some((l) => l.id === t.laneId) ? t.laneId : lanes?.[0]?.id || 'lane-plan' }));
+
+      return jsonResponse({
+        success: true,
+        gantt: {
+          key: GANTT_GLOBAL_KEY,
+          lanes,
+          tasks,
+          updatedAt: typeof doc?.updatedAt === 'string' ? String(doc.updatedAt) : '',
+        },
+      });
+    }
+
+    if (parts.length === 1 && parts[0] === 'gantt' && request.method === 'POST') {
+      const lanes = normalizeGanttLanes(body?.lanes).slice(0, 24);
+      const laneIds = new Set(lanes.map((l) => l.id));
+
+      const tasks = normalizeGanttTasks(body?.tasks)
+        .slice(0, 1200)
+        .map((t) => ({ ...t, laneId: laneIds.has(t.laneId) ? t.laneId : lanes?.[0]?.id || 'lane-plan' }));
+
+      await taskManager._setDoc(userId, 'gantt', GANTT_GLOBAL_KEY, {
+        key: GANTT_GLOBAL_KEY,
+        lanes,
+        tasks,
+        updatedAt: new Date().toISOString(),
+      });
+
       return jsonResponse({ success: true });
     }
 
