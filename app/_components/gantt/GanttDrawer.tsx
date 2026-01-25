@@ -45,55 +45,64 @@ export default function GanttDrawer(props: {
   const canSave = trimmedTitle.length > 0 && String(task.startDate || '').length === 10 && String(task.endDate || '').length === 10;
 
   return (
-    <div className="gantt-drawer-backdrop" role="presentation" onMouseDown={props.onClose}>
-      <div
-        className="gantt-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label="ガントタスクの編集"
-        onMouseDown={(e) => {
-          e.stopPropagation();
-        }}
-      >
-        <div className="gantt-drawer-header">
-          <div className="gantt-drawer-title">タスク編集</div>
-          <button type="button" className="gantt-drawer-close" onClick={props.onClose} disabled={props.disabled}>
-            <span className="material-icons" aria-hidden="true">
-              close
-            </span>
-          </button>
-        </div>
-
-        <div className="gantt-drawer-body">
-          <label className="gantt-field">
-            <div className="gantt-field-label">タイトル</div>
+    <div
+      className={`edit-dialog ${props.open ? 'show' : ''}`}
+      aria-hidden={!props.open}
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) props.onClose();
+      }}
+    >
+      <div className="edit-content" role="dialog" aria-modal="true" aria-label="ガントタスクの編集" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="edit-body">
+          <div className="edit-field">
+            <label>タイトル</label>
             <input
               ref={titleRef}
-              className="gantt-input"
+              className="edit-input"
               value={task.title}
               onChange={(e) => setDraft({ ...task, title: e.target.value })}
               disabled={props.disabled}
               placeholder="例: 仕様策定"
             />
-          </label>
+          </div>
 
-          <label className="gantt-field">
-            <div className="gantt-field-label">詳細メモ</div>
+          <div className="edit-field">
+            <label>詳細メモ</label>
             <textarea
-              className="gantt-textarea"
+              className="edit-input"
               value={task.memo || ''}
               onChange={(e) => setDraft({ ...task, memo: e.target.value })}
               disabled={props.disabled}
               placeholder="背景、補足、リンクなど"
               rows={8}
+              style={{ resize: 'vertical', minHeight: 160, lineHeight: 1.5 }}
             />
-          </label>
+          </div>
         </div>
 
-        <div className="gantt-drawer-footer">
+        <div className="edit-footer">
+          <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={props.onClose} disabled={props.disabled}>
+            <span className="material-icons">close</span>
+          </button>
           <button
+            className="btn-primary"
             type="button"
-            className="btn-secondary"
+            title="保存"
+            aria-label="保存"
+            onClick={() => {
+              if (!canSave) return;
+              props.onSave({ ...task, title: trimmedTitle });
+            }}
+            disabled={props.disabled || !canSave}
+          >
+            <span className="material-icons">done</span>
+          </button>
+          <button
+            className="btn-danger"
+            type="button"
+            title="削除"
+            aria-label="削除"
             onClick={() => {
               const ok = window.confirm('このタスクを削除しますか？');
               if (!ok) return;
@@ -102,20 +111,6 @@ export default function GanttDrawer(props: {
             disabled={props.disabled}
           >
             <span className="material-icons">delete</span>
-            削除
-          </button>
-          <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              if (!canSave) return;
-              props.onSave({ ...task, title: trimmedTitle });
-            }}
-            disabled={props.disabled || !canSave}
-          >
-            <span className="material-icons">save</span>
-            保存
           </button>
         </div>
       </div>
