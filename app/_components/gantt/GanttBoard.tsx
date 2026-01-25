@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GanttLane, GanttTask } from './types';
 import { addDaysYmd, utcDayNumberToYmd, ymdToUtcDayNumber } from './date';
 
+const NEW_LANE_DROP_ID = '__gantt_new_lane__';
+const EMPTY_LANE_ID = '__gantt_empty__';
+
 type DragMode = 'move' | 'resize-left' | 'resize-right';
 
 type DragState = {
@@ -50,6 +53,7 @@ export default function GanttBoard(props: {
   selectedTaskId: string | null;
   onSelectTaskId: (id: string | null) => void;
   onCommitTasks: (nextTasks: GanttTask[]) => void;
+  onLaneDoubleClick?: (laneId: string | null) => void;
   onInteractionChange?: (active: boolean) => void;
   disabled?: boolean;
 }) {
@@ -58,6 +62,7 @@ export default function GanttBoard(props: {
   }, [props.lanes]);
 
   const [draftTasks, setDraftTasks] = useState<GanttTask[]>(Array.isArray(props.tasks) ? props.tasks : []);
+  const [isDragging, setIsDragging] = useState(false);
   const draggingRef = useRef<DragState | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,7 +83,9 @@ export default function GanttBoard(props: {
 
   const tasksByLane = useMemo(() => {
     const map = new Map<string, GanttTask[]>();
-    for (const lane of laneOrder) map.set(lane.id, []);
+    const baseLanes = laneOrder.length ? laneOrder : [{ id: EMPTY_LANE_ID, order: 0, name: '' }];
+    for (const lane of baseLanes) map.set(lane.id, []);
+    if (isDragging) map.set(NEW_LANE_DROP_ID, []);
     for (const t of Array.isArray(draftTasks) ? draftTasks : []) {
       if (!t?.id) continue;
       const laneId = String(t.laneId || '');
@@ -86,7 +93,7 @@ export default function GanttBoard(props: {
       map.get(laneId)!.push(t);
     }
     return map;
-  }, [draftTasks, laneOrder]);
+  }, [draftTasks, laneOrder, isDragging]);
 
   const stackedMetaByLane = useMemo(() => {
     const out = new Map<string, { rowByTaskId: Map<string, number>; rowCount: number; clipped: Array<{ id: string; start: number; end: number }> }>();
@@ -168,6 +175,8 @@ export default function GanttBoard(props: {
       didDrag: false,
     };
 
+    setIsDragging(true);
+
     try {
       props.onInteractionChange?.(true);
     } catch {
@@ -241,6 +250,7 @@ export default function GanttBoard(props: {
     if (st.pointerId !== ev.pointerId) return;
 
     draggingRef.current = null;
+    setIsDragging(false);
 
     try {
       props.onInteractionChange?.(false);
@@ -262,6 +272,7 @@ export default function GanttBoard(props: {
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
     draggingRef.current = null;
+    setIsDragging(false);
     try {
       props.onInteractionChange?.(false);
     } catch {
@@ -273,15 +284,26 @@ export default function GanttBoard(props: {
   const timelineWidth = Math.max(1, Math.trunc(props.rangeDays || 1)) * Math.max(6, Math.trunc(props.dayWidth || 24));
 
   const laneLayout = useMemo(() => {
-    return laneOrder.map((lane) => {
+    const baseLanes = laneOrder.length ? laneOrder : [{ id: EMPTY_LANE_ID, order: 0, name: '' }];
+    const lanesToRender = isDragging ? baseLanes.concat([{ id: NEW_LANE_DROP_ID, order: 999999, name: '' }]) : baseLanes;
+    return lanesToRender.map((lane) => {
       const list = tasksByLane.get(lane.id) || [];
       const meta = stackedMetaByLane.get(lane.id);
+
+      if (lane.id === NEW_LANE_DROP_ID) {
+        return { lane, list, meta, rowHeight: 0, height: 34 };
+      }
+
+      if (lane.id === EMPTY_LANE_ID) {
+        return { lane, list, meta, rowHeight: 0, height: 72 };
+      }
+
       const rowCount = meta?.rowCount ?? 1;
       const rowHeight = 28;
       const height = Math.max(56, rowCount * rowHeight + 16);
       return { lane, list, meta, rowHeight, height };
     });
-  }, [laneOrder, tasksByLane, stackedMetaByLane]);
+  }, [laneOrder, tasksByLane, stackedMetaByLane, isDragging]);
 
   return (
     <div
@@ -292,95 +314,101 @@ export default function GanttBoard(props: {
       onPointerCancel={onRootPointerCancel}
     >
       <div className="gantt-frame">
-        <div className="gantt-left">
-          <div className="gantt-left-header">レーン</div>
-          {laneLayout.map(({ lane, height }) => (
-            <div key={lane.id} className="gantt-left-row" style={{ height }} title={lane.name}>
-              {lane.name}
-            </div>
-          ))}
-        </div>
+        <div className="gantt-scroll-x">
+          <div className="gantt-days" style={{ width: timelineWidth }}>
+            {visibleDays.map((ymd) => {
+              const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+              const label = m ? `${Number(m[2])}/${Number(m[3])}` : ymd;
+              return (
+                <div key={ymd} className="gantt-day" style={{ width: Math.max(6, props.dayWidth) }}>
+                  {label}
+                </div>
+              );
+            })}
+          </div>
 
-        <div className="gantt-right">
-          <div className="gantt-scroll-x">
-            <div className="gantt-days" style={{ width: timelineWidth }}>
-              {visibleDays.map((ymd) => {
-                const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                const label = m ? `${Number(m[2])}/${Number(m[3])}` : ymd;
-                return (
-                  <div key={ymd} className="gantt-day" style={{ width: Math.max(6, props.dayWidth) }}>
-                    {label}
-                  </div>
-                );
-              })}
-            </div>
+          <div className="gantt-timeline">
+            {laneLayout.map(({ lane, list, meta, rowHeight, height }) => {
+              const isNewLaneDrop = lane.id === NEW_LANE_DROP_ID;
+              const isEmptyPlaceholder = lane.id === EMPTY_LANE_ID;
 
-            <div className="gantt-timeline">
-              {laneLayout.map(({ lane, list, meta, rowHeight, height }) => {
-                return (
-                  <div
-                    key={lane.id}
-                    className="gantt-timeline-row"
-                    data-gantt-lane-id={lane.id}
-                    style={{ height, width: timelineWidth }}
-                  >
-                    <div
-                      className="gantt-row-grid"
-                      style={{ width: timelineWidth, backgroundSize: `${Math.max(6, props.dayWidth)}px 1px` }}
-                    />
-                    {(Array.isArray(list) ? list : []).map((t) => {
-                      const s = ymdToUtcDayNumber(t.startDate);
-                      const e = ymdToUtcDayNumber(t.endDate);
-                      if (s == null || e == null) return null;
+              return (
+                <div
+                  key={lane.id}
+                  className={`gantt-timeline-row${isNewLaneDrop ? ' is-new-lane-drop' : ''}${isEmptyPlaceholder ? ' is-empty-placeholder' : ''}`}
+                  data-gantt-lane-id={lane.id}
+                  style={{ height, width: timelineWidth }}
+                  onDoubleClick={(ev) => {
+                    if (props.disabled) return;
+                    if (draggingRef.current) return;
+                    if (isNewLaneDrop) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    props.onLaneDoubleClick?.(isEmptyPlaceholder ? null : lane.id);
+                  }}
+                  title={props.disabled ? '' : 'ダブルクリックでこのレーンに追加'}
+                >
+                  <div className="gantt-row-grid" style={{ width: timelineWidth, backgroundSize: `${Math.max(6, props.dayWidth)}px 1px` }} />
 
-                      const start = clampInt(s, rangeStartDay, rangeEndDay);
-                      const end = clampInt(e, rangeStartDay, rangeEndDay);
-                      if (end < rangeStartDay || start > rangeEndDay) return null;
+                  {isNewLaneDrop ? <div className="gantt-new-lane-drop-text">ここにドロップで新規レーン</div> : null}
+                  {isEmptyPlaceholder ? <div className="gantt-empty-placeholder-text">ダブルクリックでタスクを追加</div> : null}
 
-                      const safeEnd = Math.max(start, end);
-                      const x = (start - rangeStartDay) * Math.max(6, props.dayWidth);
-                      const w = (safeEnd - start + 1) * Math.max(6, props.dayWidth);
-                      const rowByTaskId = meta?.rowByTaskId;
-                      const subRow = rowByTaskId?.get(t.id) ?? 0;
-                      const y = 8 + subRow * rowHeight;
+                  {(Array.isArray(list) ? list : []).map((t) => {
+                    const s = ymdToUtcDayNumber(t.startDate);
+                    const e = ymdToUtcDayNumber(t.endDate);
+                    if (s == null || e == null) return null;
 
-                      const isSelected = props.selectedTaskId === t.id;
+                    const start = clampInt(s, rangeStartDay, rangeEndDay);
+                    const end = clampInt(e, rangeStartDay, rangeEndDay);
+                    if (end < rangeStartDay || start > rangeEndDay) return null;
 
-                      return (
-                        <div
-                          key={t.id}
-                          className={`gantt-task${isSelected ? ' selected' : ''}`}
-                          style={{ left: x, top: y, width: w }}
-                          role="button"
-                          tabIndex={0}
-                          onPointerDown={(ev) => onTaskPointerDown(ev, t, 'move')}
-                          onKeyDown={(ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                              ev.preventDefault();
-                              props.onSelectTaskId(t.id);
-                            }
-                          }}
-                          onClick={(ev) => {
-                            if (draggingRef.current) {
-                              ev.preventDefault();
-                              ev.stopPropagation();
-                              return;
-                            }
+                    const safeEnd = Math.max(start, end);
+                    const x = (start - rangeStartDay) * Math.max(6, props.dayWidth);
+                    const w = (safeEnd - start + 1) * Math.max(6, props.dayWidth);
+                    const rowByTaskId = meta?.rowByTaskId;
+                    const subRow = rowByTaskId?.get(t.id) ?? 0;
+                    const y = 8 + subRow * rowHeight;
+
+                    const isSelected = props.selectedTaskId === t.id;
+
+                    return (
+                      <div
+                        key={t.id}
+                        className={`gantt-task${isSelected ? ' selected' : ''}`}
+                        style={{ left: x, top: y, width: w }}
+                        role="button"
+                        tabIndex={0}
+                        onPointerDown={(ev) => onTaskPointerDown(ev, t, 'move')}
+                        onDoubleClick={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                        }}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
                             props.onSelectTaskId(t.id);
-                          }}
-                        >
-                          <div className="gantt-task-handle left" onPointerDown={(ev) => onTaskPointerDown(ev, t, 'resize-left')} />
-                          <div className="gantt-task-body">
-                            <div className="gantt-task-title">{String(t.title || '（無題）')}</div>
-                          </div>
-                          <div className="gantt-task-handle right" onPointerDown={(ev) => onTaskPointerDown(ev, t, 'resize-right')} />
+                          }
+                        }}
+                        onClick={(ev) => {
+                          if (draggingRef.current) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            return;
+                          }
+                          props.onSelectTaskId(t.id);
+                        }}
+                      >
+                        <div className="gantt-task-handle left" onPointerDown={(ev) => onTaskPointerDown(ev, t, 'resize-left')} />
+                        <div className="gantt-task-body">
+                          <div className="gantt-task-title">{String(t.title || '（無題）')}</div>
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
+                        <div className="gantt-task-handle right" onPointerDown={(ev) => onTaskPointerDown(ev, t, 'resize-right')} />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -104,9 +104,9 @@ export default function GanttDrawer(props: {
               onChange={(e) => setDraft({ ...task, laneId: e.target.value })}
               disabled={props.disabled}
             >
-              {laneOptions.map((l) => (
+              {laneOptions.map((l, idx) => (
                 <option key={l.id} value={l.id}>
-                  {l.name}
+                  {`レーン${idx + 1}`}
                 </option>
               ))}
             </select>

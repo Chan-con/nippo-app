@@ -245,6 +245,22 @@ function normalizeGanttTasks(input) {
   return out;
 }
 
+function deriveGanttLanesFromTasks(tasks, lanes) {
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  const used = new Set(safeTasks.map((t) => String(t?.laneId || '')).filter((id) => !!id));
+
+  const base = normalizeGanttLanes(lanes).filter((l) => used.has(l.id));
+  const seen = new Set(base.map((l) => l.id));
+
+  for (const id of used) {
+    if (seen.has(id)) continue;
+    base.push({ id, name: '', order: base.length });
+    seen.add(id);
+  }
+
+  return normalizeGanttLanes(base);
+}
+
 function normalizeNotes(input) {
   const list = Array.isArray(input) ? input : [];
   const out = [];
@@ -826,18 +842,12 @@ export async function onRequest(context) {
     if (parts.length === 1 && parts[0] === 'gantt' && request.method === 'GET') {
       const doc = await taskManager._getDoc(userId, 'gantt', GANTT_GLOBAL_KEY, {
         key: GANTT_GLOBAL_KEY,
-        lanes: [
-          { id: 'lane-plan', name: 'Plan', order: 0 },
-          { id: 'lane-do', name: 'Doing', order: 1 },
-          { id: 'lane-done', name: 'Done', order: 2 },
-        ],
+        lanes: [],
         tasks: [],
       });
 
-      const lanes = normalizeGanttLanes(doc?.lanes);
-      const tasks = normalizeGanttTasks(doc?.tasks)
-        .slice(0, 800)
-        .map((t) => ({ ...t, laneId: lanes.some((l) => l.id === t.laneId) ? t.laneId : lanes?.[0]?.id || 'lane-plan' }));
+      const tasks = normalizeGanttTasks(doc?.tasks).slice(0, 800);
+      const lanes = deriveGanttLanesFromTasks(tasks, doc?.lanes);
 
       return jsonResponse({
         success: true,
@@ -851,12 +861,8 @@ export async function onRequest(context) {
     }
 
     if (parts.length === 1 && parts[0] === 'gantt' && request.method === 'POST') {
-      const lanes = normalizeGanttLanes(body?.lanes).slice(0, 24);
-      const laneIds = new Set(lanes.map((l) => l.id));
-
-      const tasks = normalizeGanttTasks(body?.tasks)
-        .slice(0, 1200)
-        .map((t) => ({ ...t, laneId: laneIds.has(t.laneId) ? t.laneId : lanes?.[0]?.id || 'lane-plan' }));
+      const tasks = normalizeGanttTasks(body?.tasks).slice(0, 1200);
+      const lanes = deriveGanttLanesFromTasks(tasks, body?.lanes).slice(0, 120);
 
       await taskManager._setDoc(userId, 'gantt', GANTT_GLOBAL_KEY, {
         key: GANTT_GLOBAL_KEY,

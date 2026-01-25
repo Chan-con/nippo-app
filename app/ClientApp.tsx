@@ -1328,6 +1328,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   // gantt (roadmap) - lanes + draggable/resizable bars (synced via Supabase)
   const GANTT_GLOBAL_KEY = 'global';
+  const GANTT_NEW_LANE_DROP_ID = '__gantt_new_lane__';
   const [ganttLanes, setGanttLanes] = useState<GanttLane[]>([]);
   const [ganttTasks, setGanttTasks] = useState<GanttTask[]>([]);
   const [ganttLoading, setGanttLoading] = useState(false);
@@ -1374,10 +1375,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return temp.map((l, idx) => ({ ...l, order: idx }));
   }
 
-  function normalizeGanttTasks(input: unknown, lanes: GanttLane[]): GanttTask[] {
+  function normalizeGanttTasks(input: unknown): GanttTask[] {
     const list = Array.isArray(input) ? input : [];
-    const laneIds = new Set((Array.isArray(lanes) ? lanes : []).map((l) => l.id));
-    const fallbackLaneId = lanes?.[0]?.id || 'lane-plan';
     const isYmd = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
     const out: GanttTask[] = [];
     for (const item of list as any[]) {
@@ -1385,11 +1384,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const title = typeof item?.title === 'string' ? String(item.title) : '';
       const memo = typeof item?.memo === 'string' ? String(item.memo) : '';
       const color = typeof item?.color === 'string' ? String(item.color) : '';
-      const laneIdRaw = typeof item?.laneId === 'string' ? String(item.laneId) : '';
-      const laneId = laneIds.has(laneIdRaw) ? laneIdRaw : fallbackLaneId;
+      const laneId = typeof item?.laneId === 'string' ? String(item.laneId) : '';
       const startDate = typeof item?.startDate === 'string' ? String(item.startDate) : '';
       const endDate = typeof item?.endDate === 'string' ? String(item.endDate) : '';
       if (!id) continue;
+      if (!laneId) continue;
       if (!isYmd(startDate) || !isYmd(endDate)) continue;
       const safeTitle = title.trim() ? title.slice(0, 200) : '（無題）';
       // Ensure inclusive range is valid
@@ -1400,10 +1399,47 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return out;
   }
 
+  function deriveGanttLanesFromTasks(tasks: GanttTask[], prevLanes: GanttLane[]) {
+    const used = new Set(
+      (Array.isArray(tasks) ? tasks : [])
+        .map((t) => String(t?.laneId || ''))
+        .filter((id) => !!id && id !== GANTT_NEW_LANE_DROP_ID)
+    );
+
+    const base = normalizeGanttLanes(prevLanes).filter((l) => used.has(l.id));
+    const seen = new Set(base.map((l) => l.id));
+
+    for (const id of used) {
+      if (seen.has(id)) continue;
+      base.push({ id, name: '', order: base.length });
+      seen.add(id);
+    }
+
+    return normalizeGanttLanes(base);
+  }
+
+  function commitGanttTasks(nextTasksRaw: GanttTask[]) {
+    const nextTasks0 = Array.isArray(nextTasksRaw) ? nextTasksRaw : [];
+
+    // ドラッグ中の「新規レーン」Dropゾーンに落とした場合は実体レーンIDへ変換
+    const needsNewLane = nextTasks0.some((t) => t?.laneId === GANTT_NEW_LANE_DROP_ID);
+    const createdLaneId = needsNewLane ? `lane-${newId()}` : '';
+
+    const nextTasks = nextTasks0.map((t) => {
+      if (t?.laneId !== GANTT_NEW_LANE_DROP_ID) return t;
+      return { ...t, laneId: createdLaneId };
+    });
+
+    setGanttTasks(nextTasks);
+    setGanttLanes((prev) => deriveGanttLanesFromTasks(nextTasks, prev));
+    setGanttDirty(true);
+    setGanttRemoteUpdatePending(false);
+  }
+
   function ganttSnapshot(lanes: GanttLane[], tasks: GanttTask[]) {
     try {
       return JSON.stringify({
-        lanes: (Array.isArray(lanes) ? lanes : []).map((l) => ({ id: l.id, name: l.name, order: l.order })),
+        lanes: (Array.isArray(lanes) ? lanes : []).map((l) => ({ id: l.id, name: l.name || '', order: l.order })),
         tasks: (Array.isArray(tasks) ? tasks : []).map((t) => ({ id: t.id, title: t.title, laneId: t.laneId, startDate: t.startDate, endDate: t.endDate, memo: t.memo || '', color: t.color || '' })),
       });
     } catch {
@@ -1420,19 +1456,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const body = await res.json().catch(() => null as any);
       if (!res.ok || !body?.success) throw new Error(body?.error || 'ガントの取得に失敗しました');
 
-      const lanes = normalizeGanttLanes(body?.gantt?.lanes);
-      const safeLanes = lanes.length
-        ? lanes
-        : normalizeGanttLanes([
-            { id: 'lane-plan', name: 'Plan', order: 0 },
-            { id: 'lane-do', name: 'Doing', order: 1 },
-            { id: 'lane-done', name: 'Done', order: 2 },
-          ]);
-      const tasks = normalizeGanttTasks(body?.gantt?.tasks, safeLanes);
+      const tasks = normalizeGanttTasks(body?.gantt?.tasks);
+      const lanes = deriveGanttLanesFromTasks(tasks, normalizeGanttLanes(body?.gantt?.lanes));
 
-      setGanttLanes(safeLanes);
       setGanttTasks(tasks);
-      ganttLastSavedSnapshotRef.current = ganttSnapshot(safeLanes, tasks);
+      setGanttLanes(lanes);
+      ganttLastSavedSnapshotRef.current = ganttSnapshot(lanes, tasks);
       setGanttDirty(false);
       setGanttRemoteUpdatePending(false);
     } catch (e: any) {
@@ -1535,24 +1564,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setGanttEditingId(null);
   }
 
-  function addGanttLane() {
+  function openGanttAddModal(laneIdOverride?: string | null) {
     if (busy) return;
-    const name = window.prompt('レーン名', 'New Lane');
-    if (!name) return;
-    const id = `lane-${newId()}`;
-    setGanttLanes((prev) => {
-      const base = normalizeGanttLanes(prev);
-      const next = base.concat([{ id, name: String(name).slice(0, 60), order: base.length }]);
-      return normalizeGanttLanes(next);
-    });
-    setGanttDirty(true);
-    setGanttRemoteUpdatePending(false);
-  }
-
-  function openGanttAddModal() {
-    if (busy) return;
-    const lanes = normalizeGanttLanes(ganttLanes);
-    const laneId = lanes?.[0]?.id || 'lane-plan';
+    const lanes = deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes);
+    const laneIds = new Set(lanes.map((l) => l.id));
+    const laneId = laneIdOverride && laneIds.has(laneIdOverride) ? laneIdOverride : '';
     const today = formatDateISO(new Date());
     const end = addDaysYmd(today, 1);
     setGanttAddTitle('');
@@ -1569,9 +1585,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function createGanttTaskFromModal() {
     if (busy) return;
-    const lanes = normalizeGanttLanes(ganttLanes);
+    const lanes = deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes);
     const laneIds = new Set(lanes.map((l) => l.id));
-    const laneId = laneIds.has(ganttAddLaneId) ? ganttAddLaneId : (lanes?.[0]?.id || 'lane-plan');
+    const laneId = laneIds.has(ganttAddLaneId) ? ganttAddLaneId : `lane-${newId()}`;
     const title = String(ganttAddTitle || '').trim();
     const startDate = String(ganttAddStartDate || '').slice(0, 10);
     const endRaw = String(ganttAddEndDate || '').slice(0, 10);
@@ -1590,9 +1606,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       color: '',
     };
 
-    setGanttTasks((prev) => [task, ...(Array.isArray(prev) ? prev : [])]);
-    setGanttDirty(true);
-    setGanttRemoteUpdatePending(false);
+    // 追加後に空レーンは消滅させたいので、commit経由で整合性を取る
+    commitGanttTasks([task, ...(Array.isArray(ganttTasks) ? ganttTasks : [])]);
     setGanttSelectedTaskId(task.id);
     setGanttAddModalOpen(false);
   }
@@ -6465,29 +6480,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             {effectiveViewMode === 'today' && accessToken ? (
               <div className="gantt-section" style={{ display: todayMainTab === 'gantt' ? undefined : 'none' }}>
                 <div className="gantt-toolbar">
-                  <div className="gantt-toolbar-left">
-                    <button type="button" className="btn-secondary" onClick={() => openGanttAddModal()} disabled={busy}>
-                      <span className="material-icons">add</span>
-                      タスク
-                    </button>
-                    <button type="button" className="btn-secondary" onClick={() => addGanttLane()} disabled={busy}>
-                      <span className="material-icons">view_column</span>
-                      レーン
-                    </button>
-                  </div>
-
                   <div className="gantt-status" aria-live="polite">
                     {ganttLoading ? <span className="gantt-status-item">同期中…</span> : null}
                     {!ganttLoading && ganttSaving ? <span className="gantt-status-item">保存中…</span> : null}
                     {!ganttLoading && !ganttSaving && ganttDirty ? <span className="gantt-status-item">未保存</span> : null}
                     {ganttRemoteUpdatePending ? <span className="gantt-status-item">他端末で更新あり（保存後に反映）</span> : null}
                     {ganttError ? <span className="gantt-status-item error">{ganttError}</span> : null}
+                    {!ganttLoading && !ganttSaving && !ganttError ? (
+                      <span className="gantt-status-item">ダブルクリックで追加 / ドラッグ中に最下部へドロップで新規レーン</span>
+                    ) : null}
                   </div>
                 </div>
 
                 <GanttBoard
-                  lanes={normalizeGanttLanes(ganttLanes)}
-                  tasks={normalizeGanttTasks(ganttTasks, normalizeGanttLanes(ganttLanes))}
+                  lanes={deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes)}
+                  tasks={normalizeGanttTasks(ganttTasks)}
                   rangeStart={ganttRangeStart}
                   rangeDays={ganttRangeDays}
                   dayWidth={ganttDayWidth}
@@ -6496,10 +6503,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     if (!id) return;
                     openGanttTask(id);
                   }}
+                  onLaneDoubleClick={(laneId) => {
+                    openGanttAddModal(laneId);
+                  }}
                   onCommitTasks={(nextTasks) => {
-                    setGanttTasks(nextTasks);
-                    setGanttDirty(true);
-                    setGanttRemoteUpdatePending(false);
+                    commitGanttTasks(nextTasks);
                   }}
                   onInteractionChange={(active) => {
                     ganttIsInteractingRef.current = !!active;
@@ -6510,19 +6518,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <GanttDrawer
                   open={ganttDrawerOpen}
                   task={ganttSelectedTask}
-                  lanes={normalizeGanttLanes(ganttLanes)}
+                  lanes={deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes)}
                   onClose={() => closeGanttDrawer()}
                   onDelete={(taskId) => {
-                    setGanttTasks((prev) => (Array.isArray(prev) ? prev.filter((t) => t.id !== taskId) : prev));
-                    setGanttDirty(true);
-                    setGanttRemoteUpdatePending(false);
+                    const nextTasks = (Array.isArray(ganttTasks) ? ganttTasks : []).filter((t) => t.id !== taskId);
+                    commitGanttTasks(nextTasks);
                     closeGanttDrawer();
                   }}
                   onSave={(next) => {
                     const safe = { ...next, endDate: String(next.endDate || '') < String(next.startDate || '') ? String(next.startDate || '') : next.endDate };
-                    setGanttTasks((prev) => (Array.isArray(prev) ? prev.map((t) => (t.id === safe.id ? safe : t)) : prev));
-                    setGanttDirty(true);
-                    setGanttRemoteUpdatePending(false);
+                    const nextTasks = (Array.isArray(ganttTasks) ? ganttTasks : []).map((t) => (t.id === safe.id ? safe : t));
+                    commitGanttTasks(nextTasks);
                     closeGanttDrawer();
                   }}
                   disabled={busy}
@@ -7180,22 +7186,29 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               />
             </div>
 
-            <div className="edit-field">
-              <label htmlFor="gantt-add-lane">レーン</label>
-              <select
-                id="gantt-add-lane"
-                className="edit-input"
-                value={ganttAddLaneId}
-                onChange={(e) => setGanttAddLaneId(e.target.value)}
-                disabled={busy}
-              >
-                {normalizeGanttLanes(ganttLanes).map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {(() => {
+              const lanes = deriveGanttLanesFromTasks(normalizeGanttTasks(ganttTasks), ganttLanes);
+              if (!lanes.length) return null;
+              return (
+                <div className="edit-field">
+                  <label htmlFor="gantt-add-lane">レーン</label>
+                  <select
+                    id="gantt-add-lane"
+                    className="edit-input"
+                    value={ganttAddLaneId}
+                    onChange={(e) => setGanttAddLaneId(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="">新規レーン</option>
+                    {lanes.map((l, idx) => (
+                      <option key={l.id} value={l.id}>
+                        {`レーン${idx + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
 
             <div className="edit-field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>

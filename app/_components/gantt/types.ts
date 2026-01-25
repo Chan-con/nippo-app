@@ -1,6 +1,7 @@
 export type GanttLane = {
   id: string;
-  name: string;
+  // レーン名はUI上不要になったため任意（既存データ互換のため残す）
+  name?: string;
   order: number;
 };
 
