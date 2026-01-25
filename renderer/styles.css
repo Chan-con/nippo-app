@@ -1273,6 +1273,31 @@ input[type='number']::-webkit-inner-spin-button {
   user-select: none;
 }
 
+.gantt-task.tone-info {
+  border-color: rgba(137, 180, 250, 0.55);
+  background: rgba(137, 180, 250, 0.14);
+}
+
+.gantt-task.tone-danger {
+  border-color: rgba(243, 139, 168, 0.55);
+  background: rgba(243, 139, 168, 0.14);
+}
+
+.gantt-task.tone-success {
+  border-color: rgba(166, 227, 161, 0.55);
+  background: rgba(166, 227, 161, 0.14);
+}
+
+.gantt-task.tone-warning {
+  border-color: rgba(249, 226, 175, 0.55);
+  background: rgba(249, 226, 175, 0.14);
+}
+
+.gantt-task.tone-default {
+  border-color: rgba(108, 112, 134, 0.45);
+  background: rgba(108, 112, 134, 0.14);
+}
+
 .gantt-task:active {
   cursor: grabbing;
 }

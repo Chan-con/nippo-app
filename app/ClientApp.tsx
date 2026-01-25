@@ -1536,7 +1536,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       startDate,
       endDate,
       memo: '',
-      color: '',
+      color: 'default',
       y,
       z: maxZ + 1,
     };

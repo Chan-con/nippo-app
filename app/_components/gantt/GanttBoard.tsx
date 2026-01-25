@@ -19,6 +19,12 @@ type DragState = {
   didPromoteZ: boolean;
 };
 
+type GanttTone = 'info' | 'danger' | 'success' | 'warning' | 'default';
+
+function normalizeGanttTone(v: unknown): GanttTone {
+  return v === 'info' || v === 'danger' || v === 'success' || v === 'warning' || v === 'default' ? v : 'default';
+}
+
 function clampInt(n: number, min: number, max: number) {
   const v = Math.trunc(n);
   return Math.max(min, Math.min(max, v));
@@ -473,11 +479,12 @@ export default function GanttBoard(props: {
               const z = typeof zRaw === 'number' && Number.isFinite(zRaw) ? Math.trunc(zRaw) : 0;
 
               const isSelected = props.selectedTaskId === t.id;
+              const tone = normalizeGanttTone((t as any)?.color);
 
               return (
                 <div
                   key={t.id}
-                  className={`gantt-task${isSelected ? ' selected' : ''}`}
+                  className={`gantt-task tone-${tone}${isSelected ? ' selected' : ''}`}
                   style={{ left: x, top: y, width: w, zIndex: z }}
                   role="button"
                   tabIndex={0}
