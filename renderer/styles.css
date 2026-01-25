@@ -1159,6 +1159,13 @@ input[type='number']::-webkit-inner-spin-button {
   overflow-x: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge legacy */
+}
+
+.gantt-scroll-x::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .gantt-days {
