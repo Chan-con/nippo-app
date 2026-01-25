@@ -46,6 +46,7 @@ export default function GanttBoard(props: {
   const initialRangeSetRef = useRef(false);
   const [viewStart, setViewStart] = useState(props.rangeStart);
   const [viewDays, setViewDays] = useState(() => Math.max(180, Math.trunc(props.rangeDays || 1)));
+  const [dayWidth, setDayWidth] = useState(() => Math.max(6, Math.trunc(props.dayWidth || 24)));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollAdjustPxRef = useRef(0);
@@ -68,6 +69,30 @@ export default function GanttBoard(props: {
   }, []);
 
   useEffect(() => {
+    setDayWidth(Math.max(6, Math.trunc(props.dayWidth || 24)));
+  }, [props.dayWidth]);
+
+  function zoomAtClientX(clientX: number, deltaY: number) {
+    const el = scrollRef.current;
+    if (!el) return;
+    const oldW = Math.max(6, Math.trunc(dayWidth || 24));
+    const factor = Math.pow(1.0015, -deltaY);
+    const nextW = clampInt(Math.round(oldW * factor), 6, 80);
+    if (nextW === oldW) return;
+
+    const rect = el.getBoundingClientRect();
+    const offsetX = clientX - rect.left;
+    const x = offsetX + el.scrollLeft;
+    const ratio = nextW / oldW;
+
+    setDayWidth(nextW);
+    window.requestAnimationFrame(() => {
+      // keep the day under the cursor as stable as possible
+      el.scrollLeft = Math.max(0, x * ratio - offsetX);
+    });
+  }
+
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
@@ -82,11 +107,11 @@ export default function GanttBoard(props: {
     pendingCenterDayRef.current = null;
 
     const startDay = ymdToUtcDayNumber(viewStart) ?? 0;
-    const w = Math.max(6, Math.trunc(props.dayWidth || 24));
+    const w = Math.max(6, Math.trunc(dayWidth || 24));
     const dayIndex = centerDay - startDay;
     const target = dayIndex * w + w / 2 - el.clientWidth / 2;
     el.scrollLeft = Math.max(0, target);
-  }, [viewStart, viewDays, props.dayWidth]);
+  }, [viewStart, viewDays, dayWidth]);
 
   const [draftTasks, setDraftTasks] = useState<GanttTask[]>(Array.isArray(props.tasks) ? props.tasks : []);
   const draggingRef = useRef<DragState | null>(null);
@@ -376,12 +401,12 @@ export default function GanttBoard(props: {
     setDraftTasks(Array.isArray(props.tasks) ? props.tasks : []);
   }
 
-  const timelineWidth = Math.max(1, Math.trunc(viewDays || 1)) * Math.max(6, Math.trunc(props.dayWidth || 24));
+  const timelineWidth = Math.max(1, Math.trunc(viewDays || 1)) * Math.max(6, Math.trunc(dayWidth || 24));
 
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
-    const w = Math.max(6, Math.trunc(props.dayWidth || 24));
+    const w = Math.max(6, Math.trunc(dayWidth || 24));
     const threshold = 12 * w;
     const chunkDays = 60;
 
@@ -407,12 +432,22 @@ export default function GanttBoard(props: {
     >
       <div className="gantt-frame">
         <div className="gantt-scroll-x" ref={scrollRef} onScroll={onScroll}>
-          <div className="gantt-days" style={{ width: timelineWidth }}>
+          <div
+            className="gantt-days"
+            style={{ width: timelineWidth }}
+            onWheel={(ev) => {
+              if (props.disabled) return;
+              if (!ev.deltaY) return;
+              // Zoom date spacing by vertical wheel on the header
+              ev.preventDefault();
+              zoomAtClientX(ev.clientX, ev.deltaY);
+            }}
+          >
             {visibleDays.map((ymd) => {
               const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
               const label = m ? `${Number(m[2])}/${Number(m[3])}` : ymd;
               return (
-                <div key={ymd} className={`gantt-day${ymd === todayYmd ? ' is-today' : ''}`} style={{ width: Math.max(6, props.dayWidth) }}>
+                <div key={ymd} className={`gantt-day${ymd === todayYmd ? ' is-today' : ''}`} style={{ width: Math.max(6, dayWidth) }}>
                   {label}
                 </div>
               );
@@ -423,6 +458,14 @@ export default function GanttBoard(props: {
             ref={canvasRef}
             className="gantt-canvas"
             style={{ width: timelineWidth, height: canvasHeight }}
+            onWheel={(ev) => {
+              // Allow zoom anywhere when holding Ctrl/Alt (keeps normal vertical scroll otherwise)
+              if (props.disabled) return;
+              if (!ev.deltaY) return;
+              if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) return;
+              ev.preventDefault();
+              zoomAtClientX(ev.clientX, ev.deltaY);
+            }}
             onMouseDown={(ev) => {
               if (props.disabled) return;
               if (draggingRef.current) return;
@@ -441,7 +484,7 @@ export default function GanttBoard(props: {
               const y = getYInCanvasFromClientY(ev.clientY);
               if (x == null || y == null) return;
 
-              const w = Math.max(6, props.dayWidth || 24);
+              const w = Math.max(6, dayWidth || 24);
               const dayIndex = Math.max(0, Math.floor(x / w));
               const startDate = addDaysYmd(viewStart, dayIndex);
               const endDate = addDaysYmd(startDate, 1);
@@ -450,11 +493,11 @@ export default function GanttBoard(props: {
             }}
             title={props.disabled ? '' : 'ダブルクリックでここにタスク追加'}
           >
-            <div className="gantt-canvas-grid" style={{ width: timelineWidth, backgroundSize: `${Math.max(6, props.dayWidth)}px 1px` }} />
+            <div className="gantt-canvas-grid" style={{ width: timelineWidth, backgroundSize: `${Math.max(6, dayWidth)}px 1px` }} />
             {isTodayInView ? (
               <div
                 className="gantt-today-column"
-                style={{ left: todayIndex * Math.max(6, props.dayWidth), width: Math.max(6, props.dayWidth) }}
+                style={{ left: todayIndex * Math.max(6, dayWidth), width: Math.max(6, dayWidth) }}
                 aria-hidden="true"
               />
             ) : null}
@@ -471,8 +514,8 @@ export default function GanttBoard(props: {
               if (end < rangeStartDay || start > rangeEndDay) return null;
 
               const safeEnd = Math.max(start, end);
-              const x = (start - rangeStartDay) * Math.max(6, props.dayWidth);
-              const w = (safeEnd - start + 1) * Math.max(6, props.dayWidth);
+              const x = (start - rangeStartDay) * Math.max(6, dayWidth);
+              const w = (safeEnd - start + 1) * Math.max(6, dayWidth);
               const yRaw = (t as any)?.y;
               const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
               const zRaw = (t as any)?.z;
