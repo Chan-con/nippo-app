@@ -28,6 +28,15 @@ export default function GanttDrawer(props: {
     return () => window.clearTimeout(t);
   }, [props.open]);
 
+  useEffect(() => {
+    if (!props.open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [props.open, props.onClose]);
+
   if (!props.open) return null;
 
   const task = draft;
