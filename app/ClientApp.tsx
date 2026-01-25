@@ -1344,6 +1344,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [ganttSelectedTaskId, setGanttSelectedTaskId] = useState<string | null>(null);
   const [ganttEditingId, setGanttEditingId] = useState<string | null>(null);
 
+  const [ganttBulkDeleteOpen, setGanttBulkDeleteOpen] = useState(false);
+  const [ganttBulkDeleteCutoffYmd, setGanttBulkDeleteCutoffYmd] = useState<string | null>(null);
+
   const ganttSelectedTask = useMemo(() => {
     const id = String(ganttSelectedTaskId || '');
     if (!id) return null;
@@ -1514,6 +1517,62 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setGanttDrawerOpen(false);
     setGanttSelectedTaskId(null);
     setGanttEditingId(null);
+  }
+
+  function openGanttBulkDelete(cutoffYmd: string) {
+    const ymd = String(cutoffYmd || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return;
+    setGanttBulkDeleteCutoffYmd(ymd);
+    setGanttBulkDeleteOpen(true);
+  }
+
+  function closeGanttBulkDelete() {
+    setGanttBulkDeleteOpen(false);
+    setGanttBulkDeleteCutoffYmd(null);
+  }
+
+  useEffect(() => {
+    if (!ganttBulkDeleteOpen) return;
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      closeGanttBulkDelete();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [ganttBulkDeleteOpen]);
+
+  const ganttBulkDeleteTargets = useMemo(() => {
+    const cutoff = String(ganttBulkDeleteCutoffYmd || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return { cutoff: '', count: 0 };
+    const list = Array.isArray(ganttTasks) ? ganttTasks : [];
+    const count = list.filter((t) => String(t?.endDate || '') && String(t.endDate) <= cutoff).length;
+    return { cutoff, count };
+  }, [ganttBulkDeleteCutoffYmd, ganttTasks]);
+
+  function confirmGanttBulkDelete() {
+    if (busy) return;
+    if (!accessToken) return;
+
+    const cutoff = String(ganttBulkDeleteCutoffYmd || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) {
+      closeGanttBulkDelete();
+      return;
+    }
+
+    const prev = Array.isArray(ganttTasks) ? ganttTasks : [];
+    const next = prev.filter((t) => String(t?.endDate || '') && String(t.endDate) > cutoff);
+    if (next.length === prev.length) {
+      closeGanttBulkDelete();
+      return;
+    }
+
+    const selectedId = String(ganttSelectedTaskId || '');
+    const selectedWillBeDeleted = !!selectedId && prev.some((t) => t.id === selectedId && String(t?.endDate || '') && String(t.endDate) <= cutoff);
+
+    commitGanttTasks(next);
+    if (selectedWillBeDeleted) closeGanttDrawer();
+    closeGanttBulkDelete();
   }
 
   function createGanttTaskAt(args: { laneId: string | null; startDate: string; endDate: string; y?: number }) {
@@ -6431,6 +6490,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   onCommitTasks={(nextTasks) => {
                     commitGanttTasks(nextTasks);
                   }}
+                  onHeaderDayContextMenu={(ymd) => {
+                    if (busy) return;
+                    if (!accessToken) return;
+                    openGanttBulkDelete(ymd);
+                  }}
                   onInteractionChange={(active) => {
                     ganttIsInteractingRef.current = !!active;
                   }}
@@ -6454,6 +6518,70 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   }}
                   disabled={busy}
                 />
+
+                <div
+                  className={`edit-dialog ${ganttBulkDeleteOpen ? 'show' : ''}`}
+                  id="gantt-bulk-delete-dialog"
+                  aria-hidden={!ganttBulkDeleteOpen}
+                  onMouseDown={(e) => {
+                    if (e.target === e.currentTarget) closeGanttBulkDelete();
+                  }}
+                >
+                  <div className="edit-content" onMouseDown={(e) => e.stopPropagation()}>
+                    <div className="edit-header">
+                      <h3>🗑️ 一括削除</h3>
+                      <button
+                        className="edit-close"
+                        title="閉じる"
+                        aria-label="閉じる"
+                        type="button"
+                        onClick={() => closeGanttBulkDelete()}
+                      >
+                        <span className="material-icons">close</span>
+                      </button>
+                    </div>
+                    <div className="edit-body">
+                      <div className="edit-field">
+                        <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                          {ganttBulkDeleteTargets.cutoff ? (
+                            <>
+                              <div>
+                                <strong>{ganttBulkDeleteTargets.cutoff.replace(/-/g, '/')}</strong> 以前（終了日がこの日付以前）のタスクを削除します。
+                              </div>
+                              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+                                対象: {ganttBulkDeleteTargets.count} 件（この日付を跨ぐタスクは残ります）
+                              </div>
+                            </>
+                          ) : (
+                            <div>対象日付が不正です。</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="edit-footer">
+                      <button
+                        className="btn-cancel"
+                        type="button"
+                        title="キャンセル"
+                        aria-label="キャンセル"
+                        onClick={() => closeGanttBulkDelete()}
+                        disabled={busy}
+                      >
+                        <span className="material-icons">close</span>
+                      </button>
+                      <button
+                        className="btn-danger"
+                        type="button"
+                        title="削除"
+                        aria-label="削除"
+                        onClick={() => confirmGanttBulkDelete()}
+                        disabled={!accessToken || busy || !ganttBulkDeleteTargets.cutoff || ganttBulkDeleteTargets.count === 0}
+                      >
+                        <span className="material-icons">delete</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : null}
 

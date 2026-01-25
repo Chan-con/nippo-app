@@ -47,6 +47,7 @@ export default function GanttBoard(props: {
   onOpenTaskId?: (id: string) => void;
   onCommitTasks: (nextTasks: GanttTask[]) => void;
   onCreateTaskAt?: (args: { laneId: string | null; startDate: string; endDate: string; y?: number }) => void;
+  onHeaderDayContextMenu?: (ymd: string) => void;
   onInteractionChange?: (active: boolean) => void;
   disabled?: boolean;
 }) {
@@ -515,7 +516,17 @@ export default function GanttBoard(props: {
               const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
               const label = m ? `${Number(m[2])}/${Number(m[3])}` : ymd;
               return (
-                <div key={ymd} className={`gantt-day${ymd === todayYmd ? ' is-today' : ''}`} style={{ width: Math.max(6, dayWidth) }}>
+                <div
+                  key={ymd}
+                  className={`gantt-day${ymd === todayYmd ? ' is-today' : ''}`}
+                  style={{ width: Math.max(6, dayWidth) }}
+                  onContextMenu={(ev) => {
+                    if (props.disabled) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    props.onHeaderDayContextMenu?.(ymd);
+                  }}
+                >
                   {label}
                 </div>
               );
