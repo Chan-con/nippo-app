@@ -230,6 +230,42 @@ export default function GanttBoard(props: {
     return byId;
   }, [tasksForRender, dayWidth, rangeStartDay, rangeEndDay, timelineWidth]);
 
+  const pinnedLabelStyleById = useMemo(() => {
+    const byId = new Map<string, { left: number; top: number; maxWidth: number }>();
+    const list = Array.isArray(tasksForRender) ? tasksForRender : [];
+    const w = Math.max(6, Math.trunc(dayWidth || 24));
+
+    const visibleLeft = scrollLeftPx;
+    const visibleRight = scrollLeftPx + Math.max(0, viewportWidthPx);
+
+    for (const t of list) {
+      const s = ymdToUtcDayNumber(t.startDate);
+      const e = ymdToUtcDayNumber(t.endDate);
+      if (s == null || e == null) continue;
+
+      const start = clampInt(s, rangeStartDay, rangeEndDay);
+      const end = clampInt(e, rangeStartDay, rangeEndDay);
+      if (end < rangeStartDay || start > rangeEndDay) continue;
+
+      const safeEnd = Math.max(start, end);
+      const x = (start - rangeStartDay) * w;
+      const barW = (safeEnd - start + 1) * w;
+
+      const barVisible = x + barW > visibleLeft && x < visibleRight;
+      const leftClipped = x < visibleLeft - 2;
+      if (!barVisible || !leftClipped) continue;
+
+      const yRaw = (t as any)?.y;
+      const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
+
+      const pinLeft = Math.max(0, visibleLeft + 8);
+      const maxW = Math.max(0, visibleRight - pinLeft - 12);
+      byId.set(t.id, { left: pinLeft, top: y + 2, maxWidth: maxW });
+    }
+
+    return byId;
+  }, [tasksForRender, dayWidth, rangeStartDay, rangeEndDay, scrollLeftPx, viewportWidthPx]);
+
   const canvasHeight = useMemo(() => {
     const list = Array.isArray(draftTasks) ? draftTasks : [];
     const maxY = Math.max(
@@ -585,36 +621,10 @@ export default function GanttBoard(props: {
 
             {/* If a long bar's left edge is out of view, show a pinned label so the title stays readable. */}
             {tasksForRender.map((t) => {
-              const s = ymdToUtcDayNumber(t.startDate);
-              const e = ymdToUtcDayNumber(t.endDate);
-              if (s == null || e == null) return null;
-
-              const start = clampInt(s, rangeStartDay, rangeEndDay);
-              const end = clampInt(e, rangeStartDay, rangeEndDay);
-              if (end < rangeStartDay || start > rangeEndDay) return null;
-
-              const safeEnd = Math.max(start, end);
-              const x = (start - rangeStartDay) * Math.max(6, dayWidth);
-              const w = (safeEnd - start + 1) * Math.max(6, dayWidth);
-              const yRaw = (t as any)?.y;
-              const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
-
-              const visibleLeft = scrollLeftPx;
-              const visibleRight = scrollLeftPx + Math.max(0, viewportWidthPx);
-              const barVisible = x + w > visibleLeft && x < visibleRight;
-              const leftClipped = x < visibleLeft - 2;
-              if (!barVisible || !leftClipped) return null;
-
-              const pinLeft = Math.max(0, visibleLeft + 8);
-              const maxW = Math.max(0, visibleRight - pinLeft - 12);
-
+              const style = pinnedLabelStyleById.get(t.id);
+              if (!style) return null;
               return (
-                <div
-                  key={`pin-${t.id}`}
-                  className="gantt-task-label"
-                  style={{ left: pinLeft, top: y + 2, maxWidth: maxW }}
-                  aria-hidden="true"
-                >
+                <div key={`pin-${t.id}`} className="gantt-task-label" style={style} aria-hidden="true">
                   {String(t.title || '（無題）')}
                 </div>
               );
@@ -641,6 +651,7 @@ export default function GanttBoard(props: {
               const tone = normalizeGanttTone((t as any)?.color);
               const isShort = w < 120;
               const titleMaxPx = titleMaxPxById.get(t.id);
+              const hasPinnedLabel = pinnedLabelStyleById.has(t.id);
 
               const drag = draggingRef.current;
               const isDraggingThis = !!drag && drag.taskId === t.id;
@@ -658,7 +669,7 @@ export default function GanttBoard(props: {
               return (
                 <div
                   key={t.id}
-                  className={`gantt-task tone-${tone}${isShort ? ' is-short' : ''}${isDraggingThis ? ' is-dragging' : ''}${isSelected ? ' selected' : ''}`}
+                  className={`gantt-task tone-${tone}${isShort ? ' is-short' : ''}${hasPinnedLabel ? ' has-pinned-label' : ''}${isDraggingThis ? ' is-dragging' : ''}${isSelected ? ' selected' : ''}`}
                   style={style}
                   role="button"
                   tabIndex={0}

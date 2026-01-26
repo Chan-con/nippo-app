@@ -1399,6 +1399,12 @@ input[type='number']::-webkit-inner-spin-button {
   overflow: visible;
 }
 
+/* When a pinned label is shown (left edge clipped), hide the in-bar title to avoid double-render overlap. */
+.gantt-task.has-pinned-label .gantt-task-title,
+.gantt-task.has-pinned-label:hover .gantt-task-title {
+  opacity: 0;
+}
+
 .gantt-task-label {
   position: absolute;
   height: 18px;
