@@ -15,6 +15,15 @@
   --purple: #cba6f7;
   --pink: #f5c2e7;
   --border: #6c7086;
+
+  /* System colors (not part of task color presets) */
+  --system-accent: var(--purple);
+  --system-outline: rgba(203, 166, 247, 0.28);
+  --system-ring: rgba(203, 166, 247, 0.55);
+  --system-today-bg: rgba(203, 166, 247, 0.10);
+  --system-today-col-bg: rgba(203, 166, 247, 0.06);
+  --system-today-col-border-l: rgba(203, 166, 247, 0.35);
+  --system-today-col-border-r: rgba(203, 166, 247, 0.15);
   
   /* シャドウ */
   --shadow-small: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -862,7 +871,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* 今日の曜日がひと目で分かるように、ノート(付箋)と同系色の薄いオレンジでアウトラインを付ける */
 .taskline-column.is-today {
-  outline: 2px solid rgba(249, 226, 175, 0.22);
+  outline: 2px solid var(--system-outline);
   outline-offset: 2px;
 }
 
@@ -1192,9 +1201,9 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .gantt-day.is-today {
-  color: var(--accent);
-  background: rgba(137, 180, 250, 0.10);
-  box-shadow: inset 0 0 0 1px rgba(137, 180, 250, 0.55);
+  color: var(--system-accent);
+  background: var(--system-today-bg);
+  box-shadow: inset 0 0 0 1px var(--system-ring);
 }
 
 
@@ -1226,9 +1235,9 @@ input[type='number']::-webkit-inner-spin-button {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(137, 180, 250, 0.06);
-  border-left: 1px solid rgba(137, 180, 250, 0.35);
-  border-right: 1px solid rgba(137, 180, 250, 0.15);
+  background: var(--system-today-col-bg);
+  border-left: 1px solid var(--system-today-col-border-l);
+  border-right: 1px solid var(--system-today-col-border-r);
   pointer-events: none;
 }
 
@@ -1341,11 +1350,11 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* On hover, bring the hovered task above others so the title (which may fly out) stays readable. */
 .gantt-task:hover {
-  z-index: 99999 !important;
+  z-index: 1500 !important;
 }
 
 .gantt-task.selected {
-  outline: 2px solid rgba(249, 226, 175, 0.22);
+  outline: 2px solid var(--system-outline);
   outline-offset: 2px;
 }
 
@@ -1423,7 +1432,7 @@ input[type='number']::-webkit-inner-spin-button {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-  z-index: 99997;
+  z-index: 1501;
 }
 
 .gantt-task-handle {
