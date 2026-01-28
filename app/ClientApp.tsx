@@ -1810,28 +1810,37 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   // alerts executor (only while app is open)
   useEffect(() => {
-    if (alertsExecutorTimerRef.current != null) {
-      window.clearTimeout(alertsExecutorTimerRef.current);
-      alertsExecutorTimerRef.current = null;
-    }
+    const clearTimer = () => {
+      if (alertsExecutorTimerRef.current != null) {
+        window.clearTimeout(alertsExecutorTimerRef.current);
+        alertsExecutorTimerRef.current = null;
+      }
+    };
+
+    clearTimer();
 
     if (!accessToken) return;
     if (!alertsAvailable) return;
 
-    const nowJst = getNowJstDate();
-    const list = normalizeAlerts(alertsRef.current)
-      .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowJst)) || a.nextFireAt || '' }))
-      .filter((a) => !!a);
+    const scheduleNext = () => {
+      clearTimer();
 
-    const candidates = list
-      .map((a) => ({ a, ms: Date.parse(String(a.nextFireAt || '')) }))
-      .filter((x) => Number.isFinite(x.ms))
-      .sort((x, y) => x.ms - y.ms || String(x.a.id).localeCompare(String(y.a.id)));
+      const nowJst = getNowJstDate();
+      const list = normalizeAlerts(alertsRef.current)
+        .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowJst)) || a.nextFireAt || '' }))
+        .filter((a) => !!a);
 
-    if (candidates.length === 0) return;
+      const candidates = list
+        .map((a) => ({ a, ms: Date.parse(String(a.nextFireAt || '')) }))
+        .filter((x) => Number.isFinite(x.ms))
+        .sort((x, y) => x.ms - y.ms || String(x.a.id).localeCompare(String(y.a.id)));
 
-    const head = candidates[0];
-    const delay = Math.max(0, head.ms - nowJst.getTime());
+      if (candidates.length === 0) return;
+
+      const head = candidates[0];
+      const delay = Math.max(0, head.ms - nowJst.getTime());
+      alertsExecutorTimerRef.current = window.setTimeout(fire, Math.min(delay, 2_147_000_000));
+    };
 
     const fire = async () => {
       const now = getNowJstDate();
@@ -1849,8 +1858,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         });
 
       if (due.length === 0) {
-        // reschedule
-        setAlerts((prev) => prev);
+        // Timer can fire slightly early; ensure we keep scheduling.
+        scheduleNext();
         return;
       }
 
@@ -1901,10 +1910,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       void saveAlertsToServer(updated, snap);
     };
 
-    alertsExecutorTimerRef.current = window.setTimeout(fire, Math.min(delay, 2_147_000_000));
+    scheduleNext();
     return () => {
-      if (alertsExecutorTimerRef.current != null) window.clearTimeout(alertsExecutorTimerRef.current);
-      alertsExecutorTimerRef.current = null;
+      clearTimer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, alerts, alertsAvailable]);
@@ -7498,6 +7506,40 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       <div className="edit-footer">
                         <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => closeAlertModal()} disabled={busy}>
                           <span className="material-icons">close</span>
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          type="button"
+                          title="テスト通知"
+                          aria-label="テスト通知"
+                          onClick={async () => {
+                            if (typeof window === 'undefined') return;
+                            if (!('Notification' in window)) {
+                              setReservationNotificationPermission('unsupported');
+                              return;
+                            }
+
+                            try {
+                              if (Notification.permission === 'default') {
+                                const p = await Notification.requestPermission();
+                                setReservationNotificationPermission(p);
+                              } else {
+                                setReservationNotificationPermission(Notification.permission);
+                              }
+                            } catch {
+                              // ignore
+                            }
+
+                            if (Notification.permission !== 'granted') return;
+                            try {
+                              new Notification('テスト通知', { body: 'アラート通知のテストです', silent: false });
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          disabled={busy || reservationNotificationPermission === 'unsupported'}
+                        >
+                          <span className="material-icons">notifications</span>
                         </button>
                         <button
                           className="btn-primary"
