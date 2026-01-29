@@ -37,6 +37,17 @@ function dayNumberLabel(ymd: string) {
   return String(Number(m[1]));
 }
 
+function weekdayLabel(ymd: string) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return '';
+  const dt = new Date(Date.UTC(y, mo, d));
+  return new Intl.DateTimeFormat('ja-JP', { weekday: 'narrow', timeZone: 'UTC' }).format(dt);
+}
+
 export default function GanttBoard(props: {
   tasks: GanttTask[];
   todayYmd: string; // YYYY-MM-DD in selected time zone
@@ -555,6 +566,7 @@ export default function GanttBoard(props: {
             {visibleDays.map((ymd) => {
               const m = String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
               const label = m ? `${Number(m[2])}/${Number(m[3])}` : ymd;
+              const wd = weekdayLabel(ymd);
               return (
                 <div
                   key={ymd}
@@ -567,7 +579,10 @@ export default function GanttBoard(props: {
                     props.onHeaderDayContextMenu?.(ymd);
                   }}
                 >
-                  {label}
+                  <div className="gantt-day-date">{label}</div>
+                  <div className="gantt-day-weekday" aria-hidden="true">
+                    {wd}
+                  </div>
                 </div>
               );
             })}

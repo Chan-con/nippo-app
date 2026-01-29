@@ -1192,12 +1192,25 @@ input[type='number']::-webkit-inner-spin-button {
   flex: 0 0 auto;
   height: 36px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   font-size: 11px;
   color: var(--text-muted);
   border-left: 1px solid rgba(108, 112, 134, 0.22);
   user-select: none;
+}
+
+.gantt-day-date {
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.gantt-day-weekday {
+  font-size: 10px;
+  line-height: 1.1;
+  opacity: 0.9;
 }
 
 .gantt-day.is-today {
