@@ -30,3 +30,27 @@ export function addDaysYmd(ymd: string, deltaDays: number): string {
   if (day == null) return ymd;
   return utcDayNumberToYmd(day + Math.trunc(deltaDays || 0));
 }
+
+export function getJstYmdFromDate(d: Date): string {
+  const date = d instanceof Date ? d : new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const map = new Map<string, string>();
+  for (const p of parts) {
+    if (p.type !== 'literal') map.set(p.type, p.value);
+  }
+
+  const y = map.get('year') || '1970';
+  const m = map.get('month') || '01';
+  const dd = map.get('day') || '01';
+  return `${y}-${m}-${dd}`;
+}
+
+export function getTodayYmdJst(): string {
+  return getJstYmdFromDate(new Date());
+}

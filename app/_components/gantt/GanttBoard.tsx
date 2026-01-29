@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { GanttTask } from './types';
-import { addDaysYmd, utcDayNumberToYmd, ymdToUtcDayNumber } from './date';
+import { addDaysYmd, getTodayYmdJst, utcDayNumberToYmd, ymdToUtcDayNumber } from './date';
 
 type DragMode = 'move' | 'resize-left' | 'resize-right';
 
@@ -144,8 +144,10 @@ export default function GanttBoard(props: {
     setDraftTasks(Array.isArray(props.tasks) ? props.tasks : []);
   }, [props.tasks]);
 
-  const todayDay = Math.floor(Date.now() / 86400000);
-  const todayYmd = utcDayNumberToYmd(todayDay);
+  // IMPORTANT: Use JST date boundaries for "today" so the highlight switches at 00:00 JST.
+  // (Using Date.now()/86400000 would switch at 00:00 UTC, i.e. 09:00 JST.)
+  const todayYmd = getTodayYmdJst();
+  const todayDay = ymdToUtcDayNumber(todayYmd) ?? Math.floor(Date.now() / 86400000);
   const rangeStartDay = ymdToUtcDayNumber(viewStart) ?? ymdToUtcDayNumber(todayYmd) ?? 0;
   const rangeEndDay = rangeStartDay + Math.max(1, Math.trunc(viewDays || 1)) - 1;
   const todayIndex = todayDay - rangeStartDay;
