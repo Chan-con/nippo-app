@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { GanttTask } from './types';
-import { addDaysYmd, getTodayYmdJst, utcDayNumberToYmd, ymdToUtcDayNumber } from './date';
+import { addDaysYmd, utcDayNumberToYmd, ymdToUtcDayNumber } from './date';
 
 type DragMode = 'move' | 'resize-left' | 'resize-right';
 
@@ -39,6 +39,8 @@ function dayNumberLabel(ymd: string) {
 
 export default function GanttBoard(props: {
   tasks: GanttTask[];
+  todayYmd: string; // YYYY-MM-DD in selected time zone
+  nowMs: number; // epoch ms from shared clock
   rangeStart: string; // YYYY-MM-DD
   rangeDays: number;
   dayWidth: number;
@@ -144,11 +146,11 @@ export default function GanttBoard(props: {
     setDraftTasks(Array.isArray(props.tasks) ? props.tasks : []);
   }, [props.tasks]);
 
-  // IMPORTANT: Use JST date boundaries for "today" so the highlight switches at 00:00 JST.
-  // (Using Date.now()/86400000 would switch at 00:00 UTC, i.e. 09:00 JST.)
-  const todayYmd = getTodayYmdJst();
-  const todayDay = ymdToUtcDayNumber(todayYmd) ?? Math.floor(Date.now() / 86400000);
-  const rangeStartDay = ymdToUtcDayNumber(viewStart) ?? ymdToUtcDayNumber(todayYmd) ?? 0;
+  // IMPORTANT: Use the selected time zone date boundaries for "today".
+  const todayYmd = String(props.todayYmd || '');
+  const fallbackDay = Math.floor(Math.max(0, Number(props.nowMs) || 0) / 86400000);
+  const todayDay = ymdToUtcDayNumber(todayYmd) ?? fallbackDay;
+  const rangeStartDay = ymdToUtcDayNumber(viewStart) ?? ymdToUtcDayNumber(todayYmd) ?? fallbackDay;
   const rangeEndDay = rangeStartDay + Math.max(1, Math.trunc(viewDays || 1)) - 1;
   const todayIndex = todayDay - rangeStartDay;
   const isTodayInView = todayIndex >= 0 && todayIndex < Math.max(1, Math.trunc(viewDays || 1));

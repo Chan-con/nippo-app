@@ -6,6 +6,18 @@ import GanttBoard from './_components/gantt/GanttBoard';
 import GanttDrawer from './_components/gantt/GanttDrawer';
 import { addDaysYmd } from './_components/gantt/date';
 import type { GanttLane, GanttTask } from './_components/gantt/types';
+import { useClockNowMs } from './_lib/useClockNowMs';
+import {
+  DEFAULT_TIME_ZONE,
+  formatIsoToZonedYmdHm,
+  getCommonTimeZones,
+  getZonedPartsFromMs,
+  getZonedYmdFromMs,
+  isoToZonedDatetimeLocalValue,
+  normalizeTimeZone,
+  zonedDatetimeLocalValueToIso,
+  zonedLocalDateTimeToUtcMs,
+} from './_lib/time';
 
 type Task = {
   id: string;
@@ -63,42 +75,6 @@ type NoticeData = {
   tone: NoticeTone;
 };
 
-function getNowJstDate() {
-  const now = new Date();
-  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
-}
-
-function isoToJstDate(iso: string) {
-  const ms = Date.parse(String(iso || ''));
-  if (!Number.isFinite(ms)) return null;
-  const d = new Date(ms);
-  try {
-    return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
-  } catch {
-    return null;
-  }
-}
-
-function getJstYmdParts(date: Date) {
-  const d = date instanceof Date ? date : new Date();
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(d);
-
-  const map = new Map<string, string>();
-  for (const p of parts) {
-    if (p.type !== 'literal') map.set(p.type, p.value);
-  }
-
-  const year = parseInt(map.get('year') || '1970', 10);
-  const month = parseInt(map.get('month') || '1', 10);
-  const day = parseInt(map.get('day') || '1', 10);
-  return { year, month0: month - 1, day };
-}
-
 function parseHHMMToParts(v: unknown) {
   const m = String(v ?? '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!m) return null;
@@ -111,66 +87,12 @@ function clampInt(v: unknown, min: number, max: number, fallback: number | null)
   return Math.max(min, Math.min(max, n));
 }
 
-function formatIsoToJstYmdHm(iso: string) {
-  const ms = Date.parse(String(iso || ''));
-  if (!Number.isFinite(ms)) return '';
-  const d = new Date(ms);
-  // JST表示
-  try {
-    return d
-      .toLocaleString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        timeZone: 'Asia/Tokyo',
-      })
-      .replace(/\//g, '/');
-  } catch {
-    return d.toISOString();
-  }
-}
-
-function isoToJstDatetimeLocalValue(iso: string) {
-  const ms = Date.parse(String(iso || ''));
-  if (!Number.isFinite(ms)) return '';
-  const d = new Date(ms);
-  try {
-    // sv-SE: YYYY-MM-DD HH:mm:ss
-    const s = d.toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo', hour12: false });
-    const v = s.replace(' ', 'T');
-    return v.slice(0, 16);
-  } catch {
-    return '';
-  }
-}
-
-function jstDatetimeLocalValueToIso(v: string) {
-  const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-  if (!m) return '';
-  const y = parseInt(m[1], 10);
-  const mo = parseInt(m[2], 10);
-  const d = parseInt(m[3], 10);
-  const hh = parseInt(m[4], 10);
-  const mm = parseInt(m[5], 10);
-  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d) || !Number.isFinite(hh) || !Number.isFinite(mm)) return '';
-  // JST(UTC+9) のローカル指定を UTC に変換
-  const utc = Date.UTC(y, mo - 1, d, hh - 9, mm, 0, 0);
-  return new Date(utc).toISOString();
-}
-
-function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
-  // Store times as ISO(UTC) but *compute schedule* using JST calendar/time.
+function computeNextFireAt(alert: AlertItem, fromDate: Date, timeZone: string) {
+  // Store times as ISO(UTC) but *compute schedule* using the selected IANA time zone.
   // Avoid relying on the host OS timezone (Date getters are always local-time based).
-  const base = fromJstDate instanceof Date ? fromJstDate : new Date();
-  const baseMs = base.getTime();
-  const baseYmd = getJstYmdParts(base);
-  const baseY = baseYmd.year;
-  const baseM0 = baseYmd.month0;
-  const baseD = baseYmd.day;
-  if (!Number.isFinite(baseY) || !Number.isFinite(baseM0) || !Number.isFinite(baseD)) return '';
+  const tz = normalizeTimeZone(timeZone);
+  const baseMs = fromDate.getTime();
+  const baseParts = getZonedPartsFromMs(baseMs, tz);
 
   if (alert.kind === 'once') {
     const ms = Date.parse(String(alert.onceAt || ''));
@@ -186,12 +108,23 @@ function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
     if (days.length === 0) return '';
 
     for (let delta = 0; delta <= 14; delta += 1) {
-      const candMs = Date.UTC(baseY, baseM0, baseD + delta, parts.hh - 9, parts.mm, 0, 0);
-      if (!Number.isFinite(candMs)) continue;
-      const dowJst = new Date(candMs + 9 * 60 * 60 * 1000).getUTCDay(); // 0=Sun..6=Sat in JST
-      if (!days.includes(dowJst)) continue;
-      if (candMs <= baseMs) continue;
-      return new Date(candMs).toISOString();
+      const candUtcMs = zonedLocalDateTimeToUtcMs(
+        {
+          year: baseParts.year,
+          month0: baseParts.month0,
+          day: baseParts.day + delta,
+          hour: parts.hh,
+          minute: parts.mm,
+          second: 0,
+        },
+        tz
+      );
+
+      if (!Number.isFinite(candUtcMs)) continue;
+      const candParts = getZonedPartsFromMs(candUtcMs, tz);
+      if (!days.includes(candParts.weekday0)) continue;
+      if (candUtcMs <= baseMs) continue;
+      return new Date(candUtcMs).toISOString();
     }
     return '';
   }
@@ -203,15 +136,15 @@ function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
     if (day == null) return '';
 
     for (let addMonths = 0; addMonths <= 24; addMonths += 1) {
-      const m0 = baseM0 + addMonths;
-      const y2 = baseY + Math.floor(m0 / 12);
+      const m0 = baseParts.month0 + addMonths;
+      const y2 = baseParts.year + Math.floor(m0 / 12);
       const m2 = ((m0 % 12) + 12) % 12;
       const lastDay = new Date(Date.UTC(y2, m2 + 1, 0, 0, 0, 0, 0)).getUTCDate();
       const d = Math.min(day, lastDay);
-      const candMs = Date.UTC(y2, m2, d, parts.hh - 9, parts.mm, 0, 0);
-      if (!Number.isFinite(candMs)) continue;
-      if (candMs <= baseMs) continue;
-      return new Date(candMs).toISOString();
+      const candUtcMs = zonedLocalDateTimeToUtcMs({ year: y2, month0: m2, day: d, hour: parts.hh, minute: parts.mm, second: 0 }, tz);
+      if (!Number.isFinite(candUtcMs)) continue;
+      if (candUtcMs <= baseMs) continue;
+      return new Date(candUtcMs).toISOString();
     }
     return '';
   }
@@ -234,7 +167,7 @@ function getAlertComputeBase(alert: AlertItem, nowJst: Date) {
   return new Date(ms);
 }
 
-function normalizeAlertItem(input: any, fallbackId: string) {
+function normalizeAlertItem(input: any, fallbackId: string, timeZone: string, nowMs: number) {
   const id = typeof input?.id === 'string' ? String(input.id) : fallbackId;
   const titleRaw = typeof input?.title === 'string' ? String(input.title) : '';
   const kindRaw = input?.kind;
@@ -261,23 +194,22 @@ function normalizeAlertItem(input: any, fallbackId: string) {
 
   // skipUntil が過去ならクリア
   if (base.skipUntil) {
-    const nowMs = Date.now();
     const suMs = Date.parse(String(base.skipUntil || ''));
     if (!Number.isFinite(suMs) || suMs <= nowMs) base.skipUntil = '';
   }
 
-  const nowJst = new Date();
-  base.nextFireAt = computeNextFireAt(base, getAlertComputeBase(base, nowJst));
+  const now = new Date(nowMs);
+  base.nextFireAt = computeNextFireAt(base, getAlertComputeBase(base, now), timeZone);
   return base;
 }
 
-function normalizeAlerts(input: unknown): AlertItem[] {
+function normalizeAlerts(input: unknown, timeZone: string = DEFAULT_TIME_ZONE, nowMs: number): AlertItem[] {
   const list = Array.isArray(input) ? input : [];
   const out: AlertItem[] = [];
   for (let i = 0; i < list.length; i += 1) {
     const item = (list as any[])[i];
     const fallbackId = `alert-${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
-    const a = normalizeAlertItem(item, fallbackId);
+    const a = normalizeAlertItem(item, fallbackId, timeZone, nowMs);
     if (!a.id) continue;
     out.push(a);
   }
@@ -340,16 +272,19 @@ function ymdKeyFromParts(year: number, month0: number, day: number) {
   return `${y}-${m}-${d}`;
 }
 
-function ymdKeyFromDate(date: Date) {
-  return ymdKeyFromParts(date.getFullYear(), date.getMonth(), date.getDate());
+function getUtcWeekday0(year: number, month0: number, day: number) {
+  return new Date(Date.UTC(year, month0, day, 0, 0, 0, 0)).getUTCDay();
 }
 
-function nthWeekdayOfMonth(year: number, month0: number, weekday0: number, nth: number) {
-  const first = new Date(year, month0, 1);
-  const firstDow = first.getDay();
+function getUtcYmdFromDateArgs(args: { year: number; month0: number; day: number }) {
+  const dt = new Date(Date.UTC(args.year, args.month0, args.day, 0, 0, 0, 0));
+  return { year: dt.getUTCFullYear(), month0: dt.getUTCMonth(), day: dt.getUTCDate() };
+}
+
+function nthWeekdayDayOfMonth(year: number, month0: number, weekday0: number, nth: number) {
+  const firstDow = getUtcWeekday0(year, month0, 1);
   const delta = (weekday0 - firstDow + 7) % 7;
-  const day = 1 + delta + (nth - 1) * 7;
-  return new Date(year, month0, day);
+  return 1 + delta + (nth - 1) * 7;
 }
 
 function vernalEquinoxDay(year: number) {
@@ -367,63 +302,62 @@ function getJpPublicHolidayKeysForYear(year: number) {
   if (cached) return cached;
 
   const holidays = new Set<string>();
-  const key = (y: number, m0: number, d: number) => `${y}-${String(m0 + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
-  const add = (date: Date) => {
-    holidays.add(key(date.getFullYear(), date.getMonth(), date.getDate()));
+  const key = (y: number, m0: number, d: number) => ymdKeyFromParts(y, m0, d);
+  const add = (y: number, m0: number, d: number) => {
+    holidays.add(key(y, m0, d));
   };
 
   // Fixed-date holidays
-  add(new Date(year, 0, 1)); // 元日
-  add(new Date(year, 1, 11)); // 建国記念の日
-  if (year >= 2020) add(new Date(year, 1, 23)); // 天皇誕生日
-  add(new Date(year, 3, 29)); // 昭和の日
-  add(new Date(year, 4, 3)); // 憲法記念日
-  add(new Date(year, 4, 4)); // みどりの日
-  add(new Date(year, 4, 5)); // こどもの日
-  add(new Date(year, 10, 3)); // 文化の日
-  add(new Date(year, 10, 23)); // 勤労感謝の日
+  add(year, 0, 1); // 元日
+  add(year, 1, 11); // 建国記念の日
+  if (year >= 2020) add(year, 1, 23); // 天皇誕生日
+  add(year, 3, 29); // 昭和の日
+  add(year, 4, 3); // 憲法記念日
+  add(year, 4, 4); // みどりの日
+  add(year, 4, 5); // こどもの日
+  add(year, 10, 3); // 文化の日
+  add(year, 10, 23); // 勤労感謝の日
 
   // Movable holidays (Happy Monday system)
   // 成人の日: 2000+ 1月第2月曜
-  add(nthWeekdayOfMonth(year, 0, 1, 2));
+  add(year, 0, nthWeekdayDayOfMonth(year, 0, 1, 2));
   // 海の日: 2003+ 7月第3月曜 (Olympics special cases below)
-  add(nthWeekdayOfMonth(year, 6, 1, 3));
+  add(year, 6, nthWeekdayDayOfMonth(year, 6, 1, 3));
   // 敬老の日: 2003+ 9月第3月曜
-  add(nthWeekdayOfMonth(year, 8, 1, 3));
+  add(year, 8, nthWeekdayDayOfMonth(year, 8, 1, 3));
   // スポーツの日（体育の日）: 2000+ 10月第2月曜 (Olympics special cases below)
-  add(nthWeekdayOfMonth(year, 9, 1, 2));
+  add(year, 9, nthWeekdayDayOfMonth(year, 9, 1, 2));
 
   // Equinoxes
-  add(new Date(year, 2, vernalEquinoxDay(year)));
-  add(new Date(year, 8, autumnalEquinoxDay(year)));
+  add(year, 2, vernalEquinoxDay(year));
+  add(year, 8, autumnalEquinoxDay(year));
 
   // 山の日: 2016+
-  if (year >= 2016) add(new Date(year, 7, 11));
+  if (year >= 2016) add(year, 7, 11);
 
   // Special one-off holidays
   if (year === 2019) {
-    add(new Date(2019, 4, 1)); // 即位の日
-    add(new Date(2019, 9, 22)); // 即位礼正殿の儀
+    add(2019, 4, 1); // 即位の日
+    add(2019, 9, 22); // 即位礼正殿の儀
   }
 
   // Olympics move (2020/2021)
   if (year === 2020) {
     // Override 海の日/スポーツの日/山の日
-    holidays.delete(key(2020, 6, nthWeekdayOfMonth(2020, 6, 1, 3).getDate()));
-    holidays.delete(key(2020, 9, nthWeekdayOfMonth(2020, 9, 1, 2).getDate()));
+    holidays.delete(key(2020, 6, nthWeekdayDayOfMonth(2020, 6, 1, 3)));
+    holidays.delete(key(2020, 9, nthWeekdayDayOfMonth(2020, 9, 1, 2)));
     holidays.delete(key(2020, 7, 11));
-    add(new Date(2020, 6, 23));
-    add(new Date(2020, 6, 24));
-    add(new Date(2020, 7, 10));
+    add(2020, 6, 23);
+    add(2020, 6, 24);
+    add(2020, 7, 10);
   }
   if (year === 2021) {
-    holidays.delete(key(2021, 6, nthWeekdayOfMonth(2021, 6, 1, 3).getDate()));
-    holidays.delete(key(2021, 9, nthWeekdayOfMonth(2021, 9, 1, 2).getDate()));
+    holidays.delete(key(2021, 6, nthWeekdayDayOfMonth(2021, 6, 1, 3)));
+    holidays.delete(key(2021, 9, nthWeekdayDayOfMonth(2021, 9, 1, 2)));
     holidays.delete(key(2021, 7, 11));
-    add(new Date(2021, 6, 22));
-    add(new Date(2021, 6, 23));
-    add(new Date(2021, 7, 8));
+    add(2021, 6, 22);
+    add(2021, 6, 23);
+    add(2021, 7, 8);
   }
 
   // Substitute holidays (振替休日): if holiday falls on Sunday, next weekday becomes holiday
@@ -433,12 +367,11 @@ function getJpPublicHolidayKeysForYear(year: number) {
     const y = parseInt(m[1], 10);
     const m0 = parseInt(m[2], 10) - 1;
     const d = parseInt(m[3], 10);
-    const dt = new Date(y, m0, d);
-    if (dt.getDay() !== 0) continue;
+    if (getUtcWeekday0(y, m0, d) !== 0) continue;
     // next day that is not already a holiday
     for (let i = 1; i <= 7; i++) {
-      const nd = new Date(y, m0, d + i);
-      const nk = key(nd.getFullYear(), nd.getMonth(), nd.getDate());
+      const nd = getUtcYmdFromDateArgs({ year: y, month0: m0, day: d + i });
+      const nk = key(nd.year, nd.month0, nd.day);
       if (!holidays.has(nk)) {
         holidays.add(nk);
         break;
@@ -448,17 +381,16 @@ function getJpPublicHolidayKeysForYear(year: number) {
 
   // Citizen's holiday (国民の休日): a weekday between two holidays becomes a holiday
   for (let m0 = 0; m0 < 12; m0++) {
-    const days = new Date(year, m0 + 1, 0).getDate();
+    const days = new Date(Date.UTC(year, m0 + 1, 0, 0, 0, 0, 0)).getUTCDate();
     for (let d = 1; d <= days; d++) {
-      const dt = new Date(year, m0, d);
-      const dow = dt.getDay();
+      const dow = getUtcWeekday0(year, m0, d);
       if (dow === 0 || dow === 6) continue;
       const k0 = key(year, m0, d);
       if (holidays.has(k0)) continue;
-      const prev = new Date(year, m0, d - 1);
-      const next = new Date(year, m0, d + 1);
-      const pk = key(prev.getFullYear(), prev.getMonth(), prev.getDate());
-      const nk = key(next.getFullYear(), next.getMonth(), next.getDate());
+      const prev = getUtcYmdFromDateArgs({ year, month0: m0, day: d - 1 });
+      const next = getUtcYmdFromDateArgs({ year, month0: m0, day: d + 1 });
+      const pk = key(prev.year, prev.month0, prev.day);
+      const nk = key(next.year, next.month0, next.day);
       if (holidays.has(pk) && holidays.has(nk)) holidays.add(k0);
     }
   }
@@ -467,10 +399,13 @@ function getJpPublicHolidayKeysForYear(year: number) {
   return holidays;
 }
 
-function isJpPublicHoliday(date: Date) {
-  const set = getJpPublicHolidayKeysForYear(date.getFullYear());
-  const k = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  return set.has(k);
+function isJpPublicHolidayYmd(ymd: string) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const y = parseInt(m[1], 10);
+  if (!Number.isFinite(y)) return false;
+  const set = getJpPublicHolidayKeysForYear(y);
+  return set.has(`${m[1]}-${m[2]}-${m[3]}`);
 }
 
 function parseTimeToMinutesFlexible(input?: string) {
@@ -726,9 +661,93 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsReservationNotifyMinutesBefore, setSettingsReservationNotifyMinutesBefore] = useState<number[]>([]);
   const [settingsReservationNotifyMinutesInput, setSettingsReservationNotifyMinutesInput] = useState('');
   const [settingsAutoShowTimelineOnIdle, setSettingsAutoShowTimelineOnIdle] = useState(false);
+
+  const [settingsTimeZone, setSettingsTimeZone] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_TIME_ZONE;
+    try {
+      const raw = window.localStorage.getItem('nippoTimeZone');
+      return normalizeTimeZone(raw || DEFAULT_TIME_ZONE);
+    } catch {
+      return DEFAULT_TIME_ZONE;
+    }
+  });
+
+  // Single source of truth for "now": tick every second.
+  const nowMs = useClockNowMs(1000);
+  const now = useMemo(() => new Date(nowMs), [nowMs]);
+  const activeTimeZone = useMemo(() => normalizeTimeZone(settingsTimeZone), [settingsTimeZone]);
+  const nowParts = useMemo(() => getZonedPartsFromMs(nowMs, activeTimeZone), [nowMs, activeTimeZone]);
+  const todayYmd = useMemo(() => `${nowParts.year2}-${nowParts.month2}-${nowParts.day2}`, [nowParts.year2, nowParts.month2, nowParts.day2]);
+
+  // Refs for timer callbacks (avoid stale closures).
+  const nowMsRef = useRef(nowMs);
+  useEffect(() => {
+    nowMsRef.current = nowMs;
+  }, [nowMs]);
+
+  const activeTimeZoneRef = useRef(activeTimeZone);
+  useEffect(() => {
+    activeTimeZoneRef.current = activeTimeZone;
+  }, [activeTimeZone]);
+
+  const tasksRef = useRef<Task[]>(tasks);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  const settingsReservationNotifyEnabledRef = useRef(settingsReservationNotifyEnabled);
+  useEffect(() => {
+    settingsReservationNotifyEnabledRef.current = settingsReservationNotifyEnabled;
+  }, [settingsReservationNotifyEnabled]);
+
+  const settingsReservationNotifyMinutesBeforeRef = useRef<number[]>(settingsReservationNotifyMinutesBefore);
+  useEffect(() => {
+    settingsReservationNotifyMinutesBeforeRef.current = settingsReservationNotifyMinutesBefore;
+  }, [settingsReservationNotifyMinutesBefore]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('nippoTimeZone', activeTimeZone);
+    } catch {
+      // ignore
+    }
+  }, [activeTimeZone]);
+
+  // Day-boundary refresh (00:00 in selected TZ).
+  // Some backend queries are day-scoped; ensure UI updates without a full reload.
+  const lastTodayYmdRef = useRef(todayYmd);
+  useEffect(() => {
+    const prev = lastTodayYmdRef.current;
+    if (prev === todayYmd) return;
+    lastTodayYmdRef.current = todayYmd;
+
+    if (!accessToken) return;
+    // Refresh today tasks and history date list immediately.
+    void reloadTasksSilent();
+    void loadHistoryDates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayYmd, accessToken]);
+
+  const todayTaskLineLane = useMemo<TaskLineLane | null>(() => {
+    const dow = nowParts.weekday0; // 0=Sun
+    if (dow === 1) return 'mon';
+    if (dow === 2) return 'tue';
+    if (dow === 3) return 'wed';
+    if (dow === 4) return 'thu';
+    if (dow === 5) return 'fri';
+    if (dow === 6) return 'sat';
+    if (dow === 0) return 'sun';
+    return null;
+  }, [nowParts.weekday0]);
+
   const [reservationNotificationPermission, setReservationNotificationPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>(
     'default'
   );
+  const reservationNotificationPermissionRef = useRef(reservationNotificationPermission);
+  useEffect(() => {
+    reservationNotificationPermissionRef.current = reservationNotificationPermission;
+  }, [reservationNotificationPermission]);
   const reservationNotifyTimeoutsRef = useRef<Map<string, number>>(new Map());
   const reservationNotifyFiredRef = useRef<Set<string>>(new Set());
   const reservationNotifyIntervalRef = useRef<number | null>(null);
@@ -784,8 +803,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }, []);
 
   // tag work report (range)
-  const [tagWorkReportRangeStart, setTagWorkReportRangeStart] = useState(() => ymdKeyFromDate(new Date()));
-  const [tagWorkReportRangeEnd, setTagWorkReportRangeEnd] = useState(() => ymdKeyFromDate(new Date()));
+  const [tagWorkReportRangeStart, setTagWorkReportRangeStart] = useState(() => todayYmd);
+  const [tagWorkReportRangeEnd, setTagWorkReportRangeEnd] = useState(() => todayYmd);
   const [tagWorkReportSummary, setTagWorkReportSummary] = useState<TagWorkSummary[]>([]);
   const [tagWorkReportActiveTag, setTagWorkReportActiveTag] = useState<string>('');
   const [tagWorkReportLoading, setTagWorkReportLoading] = useState(false);
@@ -794,8 +813,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   // holiday calendar
   const [holidayCalendarOpen, setHolidayCalendarOpen] = useState(false);
   const [holidayCalendarMonth, setHolidayCalendarMonth] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    const m = String(todayYmd || '').match(/^(\d{4})-(\d{2})-\d{2}$/);
+    if (m) {
+      const y = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10);
+      if (Number.isFinite(y) && Number.isFinite(mo)) return new Date(y, mo - 1, 1);
+    }
+    return new Date(nowParts.year, nowParts.month0, 1);
   });
   const [holidayCalendarHolidays, setHolidayCalendarHolidays] = useState<Set<string>>(() => new Set());
   const [holidayCalendarLoaded, setHolidayCalendarLoaded] = useState(false);
@@ -836,22 +860,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
   }
 
-  const [gptReportRangeStart, setGptReportRangeStart] = useState(() => ymdKeyFromDate(new Date()));
-  const [gptReportRangeEnd, setGptReportRangeEnd] = useState(() => ymdKeyFromDate(new Date()));
+  const [gptReportRangeStart, setGptReportRangeStart] = useState(() => todayYmd);
+  const [gptReportRangeEnd, setGptReportRangeEnd] = useState(() => todayYmd);
 
   useEffect(() => {
     if (!reportOpen) return;
-    const today = ymdKeyFromDate(new Date());
-    setGptReportRangeStart(today);
-    setGptReportRangeEnd(today);
-  }, [reportOpen]);
+    setGptReportRangeStart(todayYmd);
+    setGptReportRangeEnd(todayYmd);
+  }, [reportOpen, todayYmd]);
 
   useEffect(() => {
     if (!tagWorkReportOpen) return;
-    const today = ymdKeyFromDate(new Date());
-    setTagWorkReportRangeStart(today);
-    setTagWorkReportRangeEnd(today);
-  }, [tagWorkReportOpen]);
+    setTagWorkReportRangeStart(todayYmd);
+    setTagWorkReportRangeEnd(todayYmd);
+  }, [tagWorkReportOpen, todayYmd]);
 
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
@@ -890,19 +912,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [activeReportTabId, setActiveReportTabId] = useState<string | null>(null);
   const [reportSingleContent, setReportSingleContent] = useState('');
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
-  const [now, setNow] = useState(() => new Date());
-
-  const todayTaskLineLane = useMemo<TaskLineLane | null>(() => {
-    const dow = now.getDay(); // 0=Sun
-    if (dow === 1) return 'mon';
-    if (dow === 2) return 'tue';
-    if (dow === 3) return 'wed';
-    if (dow === 4) return 'thu';
-    if (dow === 5) return 'fri';
-    if (dow === 6) return 'sat';
-    if (dow === 0) return 'sun';
-    return null;
-  }, [now]);
 
   const timelineOpenUrlTimerRef = useRef<number | null>(null);
 
@@ -1312,7 +1321,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         url: finalUrl || normalized,
         title: (title || fallbackTitle || normalized).slice(0, 200),
         iconUrl: iconUrl || fallbackIcon,
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
       };
 
       setShortcuts((prev) => [...(Array.isArray(prev) ? prev : []), item]);
@@ -1680,7 +1689,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const res = await apiFetch('/api/alerts', { cache: 'no-store' });
       const body = await res.json().catch(() => null as any);
       if (!res.ok || !body?.success) throw new Error(body?.error || 'アラートの取得に失敗しました');
-      const remote = normalizeAlerts(body?.alerts?.alerts);
+      const remote = normalizeAlerts(body?.alerts?.alerts, activeTimeZone, nowMs);
       setAlerts(remote);
       alertsLastSavedSnapshotRef.current = alertsSnapshot(remote);
       setAlertsDirty(false);
@@ -1775,7 +1784,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       id,
       title: '',
       kind: 'once',
-      onceAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      onceAt: new Date(nowMs + 5 * 60 * 1000).toISOString(),
       weeklyDays: [1, 2, 3, 4, 5],
       time: '09:00',
       monthlyDay: 1,
@@ -1783,7 +1792,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       skipUntil: '',
       nextFireAt: '',
     };
-    const next = normalizeAlertItem(base as any, id);
+    const next = normalizeAlertItem(base as any, id, activeTimeZone, nowMs);
     // タイトルは空欄がデフォルト（保存時にデフォルト名へ補完）
     next.title = '';
     setAlertEditingId(null);
@@ -1808,9 +1817,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function upsertAlertFromDraft(draft: AlertItem) {
     const effectiveTitle = String(draft.title || '').trim() ? String(draft.title) : getAlertDefaultTitle(draft.kind);
-    const normalized = normalizeAlertItem({ ...(draft as any), title: effectiveTitle } as any, draft.id || safeRandomId('alert'));
-    const nowJst = new Date();
-    normalized.nextFireAt = computeNextFireAt(normalized, getAlertComputeBase(normalized, nowJst));
+    const normalized = normalizeAlertItem(
+      { ...(draft as any), title: effectiveTitle } as any,
+      draft.id || safeRandomId('alert'),
+      activeTimeZone,
+      nowMs
+    );
+    normalized.nextFireAt = computeNextFireAt(normalized, getAlertComputeBase(normalized, now), activeTimeZone);
 
     setAlerts((prev) => {
       const list = Array.isArray(prev) ? prev.slice() : [];
@@ -1856,9 +1869,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const scheduleNext = () => {
       clearTimer();
 
-      const nowJst = new Date();
-      const list = normalizeAlerts(alertsRef.current)
-        .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowJst)) || a.nextFireAt || '' }))
+      const now = new Date(nowMsRef.current);
+      const tz = activeTimeZoneRef.current;
+      const list = normalizeAlerts(alertsRef.current, tz, nowMsRef.current)
+        .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, now), tz) || a.nextFireAt || '' }))
         .filter((a) => !!a);
 
       const candidates = list
@@ -1869,16 +1883,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (candidates.length === 0) return;
 
       const head = candidates[0];
-      const delay = Math.max(0, head.ms - nowJst.getTime());
+      const delay = Math.max(0, head.ms - now.getTime());
       alertsExecutorTimerRef.current = window.setTimeout(fire, Math.min(delay, 2_147_000_000));
     };
 
     const fire = async () => {
-      const now = new Date();
-      const current = normalizeAlerts(alertsRef.current);
+      const now = new Date(nowMsRef.current);
+      const tz = activeTimeZoneRef.current;
+      const current = normalizeAlerts(alertsRef.current, tz, nowMsRef.current);
       const due = current
         .filter((a) => {
-          const ms = Date.parse(String(a.nextFireAt || computeNextFireAt(a, getAlertComputeBase(a, now)) || ''));
+          const ms = Date.parse(String(a.nextFireAt || computeNextFireAt(a, getAlertComputeBase(a, now), tz) || ''));
           return Number.isFinite(ms) && ms <= now.getTime();
         })
         .sort((x, y) => {
@@ -1927,7 +1942,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           if (a.kind === 'once') return null;
 
           const next: AlertItem = { ...a, lastFiredAt: now.toISOString(), skipUntil: '' };
-          next.nextFireAt = computeNextFireAt(next, bumpedBase);
+          next.nextFireAt = computeNextFireAt(next, bumpedBase, activeTimeZone);
           return next;
         })
         .filter((x): x is AlertItem => !!x);
@@ -1946,7 +1961,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       clearTimer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, alerts, alertsAvailable]);
+  }, [accessToken, alerts, alertsAvailable, activeTimeZone]);
 
   const [ganttDrawerOpen, setGanttDrawerOpen] = useState(false);
   const [ganttSelectedTaskId, setGanttSelectedTaskId] = useState<string | null>(null);
@@ -2274,7 +2289,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function getJstDateTimeParts(d: Date) {
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Tokyo',
+      timeZone: activeTimeZone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -2300,12 +2315,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function nowHHMM() {
-    return formatTimeHHMM(new Date());
+    return `${nowParts.hour2}:${nowParts.minute2}`;
   }
 
   function formatDateISO(d: Date) {
-    const p = getJstDateTimeParts(d);
-    return `${p.year}-${p.month2}-${p.day2}`;
+    return getZonedYmdFromMs(d.getTime(), activeTimeZone);
   }
 
   const taskLineDateKey = TASK_LINE_GLOBAL_KEY;
@@ -2314,9 +2328,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const ganttDayWidth = 24;
   const ganttRangeStart = useMemo(() => {
     // show a bit of context before today
-    return addDaysYmd(formatDateISO(new Date()), -7);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now]);
+    return addDaysYmd(todayYmd, -7);
+  }, [todayYmd]);
 
   function normalizeTaskLineCards(input: unknown): TaskLineCard[] {
     const list = Array.isArray(input) ? input : [];
@@ -2640,10 +2653,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const isGlobalTaskLine = dateKey === TASK_LINE_GLOBAL_KEY;
 
       // One-time migration (localStorage -> server). For global taskline, also look at today's/yesterday's drafts.
-      const todayKey = formatDateISO(new Date());
-      const yday = new Date();
-      yday.setDate(yday.getDate() - 1);
-      const yesterdayKey = formatDateISO(yday);
+      const todayKey = todayYmd;
+      const yesterdayKey = addDaysYmd(todayYmd, -1);
       const draftCandidates = isGlobalTaskLine ? [TASK_LINE_GLOBAL_KEY, todayKey, yesterdayKey] : [dateKey];
 
       // If remote empty, but local has data, push it to server.
@@ -2933,7 +2944,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function createNoteFromBody(rawBody: string) {
     const body = String(rawBody || '').trim();
     if (!body) return;
-    const nowIso = new Date().toISOString();
+    const nowIso = now.toISOString();
     const id = `note-${newId()}`;
     const note: NoteItem = { id, body, createdAt: nowIso, updatedAt: nowIso };
     setNotes((prev) => [note, ...normalizeNotes(prev)]);
@@ -3035,7 +3046,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         // delete when body cleared
         return normalized.filter((n) => n.id !== id);
       }
-      const nowIso = new Date().toISOString();
+      const nowIso = now.toISOString();
       const cur = normalized[idx];
       const updated: NoteItem = { ...cur, body: trimmed, updatedAt: nowIso };
       const next = normalized.slice();
@@ -3304,24 +3315,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   useEffect(() => {
-    // Keep UI clock synced to real time (JST formatting is applied at render time).
-    // Align the first tick to the next second boundary.
-    const update = () => setNow(new Date());
-    update();
-    const nowMs = Date.now();
-    const delay = 1000 - (nowMs % 1000);
-    let intervalId: number | null = null;
-    const timeoutId = window.setTimeout(() => {
-      update();
-      intervalId = window.setInterval(update, 1000);
-    }, delay);
-    return () => {
-      window.clearTimeout(timeoutId);
-      if (intervalId != null) window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
     document.body.classList.toggle('sidebar-open', sidebarOpen);
     return () => {
       document.body.classList.remove('sidebar-open');
@@ -3583,6 +3576,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsReservationNotifyMinutesBefore([]);
       setSettingsReservationNotifyMinutesInput('');
       setSettingsAutoShowTimelineOnIdle(false);
+      setSettingsTimeZone(DEFAULT_TIME_ZONE);
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
 
@@ -3861,6 +3855,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
       const ui = s?.ui || {};
       setSettingsAutoShowTimelineOnIdle(!!ui?.autoShowTimelineOnIdle);
+      setSettingsTimeZone(normalizeTimeZone(ui?.timeZone || DEFAULT_TIME_ZONE));
 
       setSettingsDirty(false);
       setSettingsRemoteUpdatePending(false);
@@ -3922,6 +3917,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             },
             ui: {
               autoShowTimelineOnIdle: !!settingsAutoShowTimelineOnIdle,
+              timeZone: activeTimeZone,
             },
           },
         }),
@@ -3999,11 +3995,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         return out;
       };
 
-      const todayYmd = ymdKeyFromDate(new Date());
+      const todayKey = todayYmd;
       let startYmd = String(gptReportRangeStart || '').trim();
       let endYmd = String(gptReportRangeEnd || '').trim();
-      if (!startYmd) startYmd = todayYmd;
-      if (!endYmd) endYmd = todayYmd;
+      if (!startYmd) startYmd = todayKey;
+      if (!endYmd) endYmd = todayKey;
       startYmd = normalizeYmd(startYmd);
       endYmd = normalizeYmd(endYmd);
       if (startYmd > endYmd) {
@@ -4019,7 +4015,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const payloadTasks: Array<{ dateString: string; name: string; memo: string }> = [];
       for (const dateString of dateList) {
         let dayTasks: any[] = [];
-        if (dateString === todayYmd && effectiveViewMode === 'today') {
+        if (dateString === todayKey && effectiveViewMode === 'today') {
           dayTasks = Array.isArray(tasks) ? tasks : [];
         } else {
           const resTasks = await apiFetch(`/api/tasks?dateString=${encodeURIComponent(dateString)}`);
@@ -4375,7 +4371,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
     if (typeof window === 'undefined') return;
     if (!('Notification' in window)) return;
-    if (reservationNotificationPermission !== 'granted') return;
+    if (reservationNotificationPermissionRef.current !== 'granted') return;
     try {
       // tag を付けて同一キーの多重表示を抑制
       const tag = `nippo:reserved:${opts.task.id}:${opts.task.startTime ?? ''}:${opts.minutesBefore}`;
@@ -4420,22 +4416,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function fireDueReservationNotifications() {
-    if (!settingsReservationNotifyEnabled) return;
+    if (!settingsReservationNotifyEnabledRef.current) return;
     if (effectiveViewMode === 'history') return;
 
-    const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBefore);
+    const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBeforeRef.current);
     if (minutesBeforeList.length === 0) return;
 
-    const nowMs = Date.now();
-    const today = new Date();
-    const y = today.getFullYear();
-    const mo = today.getMonth();
-    const d = today.getDate();
+    const nowMs = nowMsRef.current;
+    const tz = activeTimeZoneRef.current;
+    const parts = getZonedPartsFromMs(nowMs, tz);
+    const y = parts.year;
+    const mo0 = parts.month0;
+    const d = parts.day;
 
     // スリープ復帰などを考慮して、通知時刻を過ぎていても一定時間は拾う
     const lateWindowMs = 10 * 60 * 1000;
 
-    for (const task of tasks) {
+    for (const task of tasksRef.current) {
       if (!task || task.status !== 'reserved') continue;
       const startMinutes = parseTimeToMinutesFlexible(task.startTime);
       if (startMinutes == null) continue;
@@ -4446,7 +4443,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
         const fireMinutes = startMinutes - minutesBefore;
         if (fireMinutes < 0) continue;
-        const fireAt = new Date(y, mo, d, Math.floor(fireMinutes / 60), fireMinutes % 60, 0, 0).getTime();
+        const fireAt = zonedLocalDateTimeToUtcMs(
+          { year: y, month0: mo0, day: d, hour: Math.floor(fireMinutes / 60), minute: fireMinutes % 60, second: 0 },
+          tz
+        );
 
         if (nowMs < fireAt) continue;
         if (nowMs > fireAt + lateWindowMs) continue;
@@ -4459,19 +4459,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function syncReservationNotificationSchedule() {
     clearReservationNotificationSchedule();
-    if (!settingsReservationNotifyEnabled) return;
+    if (!settingsReservationNotifyEnabledRef.current) return;
     if (effectiveViewMode === 'history') return;
 
-    const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBefore);
+    const minutesBeforeList = normalizeNotifyMinutesBeforeList(settingsReservationNotifyMinutesBeforeRef.current);
     if (minutesBeforeList.length === 0) return;
 
-    const nowMs = Date.now();
-    const today = new Date();
-    const y = today.getFullYear();
-    const mo = today.getMonth();
-    const d = today.getDate();
+    const nowMs = nowMsRef.current;
+    const tz = activeTimeZoneRef.current;
+    const parts = getZonedPartsFromMs(nowMs, tz);
+    const y = parts.year;
+    const mo0 = parts.month0;
+    const d = parts.day;
 
-    for (const task of tasks) {
+    for (const task of tasksRef.current) {
       if (!task || task.status !== 'reserved') continue;
       const startMinutes = parseTimeToMinutesFlexible(task.startTime);
       if (startMinutes == null) continue;
@@ -4482,7 +4483,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
         const fireMinutes = startMinutes - minutesBefore;
         if (fireMinutes < 0) continue;
-        const fireAtMs = new Date(y, mo, d, Math.floor(fireMinutes / 60), fireMinutes % 60, 0, 0).getTime();
+        const fireAtMs = zonedLocalDateTimeToUtcMs(
+          { year: y, month0: mo0, day: d, hour: Math.floor(fireMinutes / 60), minute: fireMinutes % 60, second: 0 },
+          tz
+        );
         const delay = fireAtMs - nowMs;
         if (delay <= 0) continue;
 
@@ -4501,7 +4505,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (effectiveViewMode === 'history') return;
     syncReservationNotificationSchedule();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, effectiveViewMode, tasks, settingsReservationNotifyEnabled, settingsReservationNotifyMinutesBefore]);
+  }, [accessToken, effectiveViewMode, tasks, settingsReservationNotifyEnabled, settingsReservationNotifyMinutesBefore, activeTimeZone, todayYmd]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -5479,7 +5483,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const carryMemo = String(newTaskCarryMemo || '').trim();
     const carryUrl = String(newTaskCarryUrl || '').trim();
 
-    const todayIso = formatDateISO(new Date());
+    const todayIso = todayYmd;
     const isHistoryTarget = effectiveViewMode === 'history' && !!historyDate;
     const isReserve = addMode === 'reserve';
     const isPastReservationInCalendar = isHistoryTarget && isReserve && historyDate < todayIso;
@@ -5695,8 +5699,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   function formatDateISOToJaShort(date: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-    const todayIso = formatDateISO(new Date());
-    if (date === todayIso) return '今日';
+    if (date === todayYmd) return '今日';
     return date;
   }
 
@@ -5764,7 +5767,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         }
       };
 
-      const todayIso = formatDateISO(new Date());
+      const todayIso = todayYmd;
       if (isYmdInRange(todayIso, startYmd, endYmd)) {
         const resToday = await apiFetch('/api/tasks', { method: 'GET' });
         const bodyToday = await resToday.json().catch(() => null as any);
@@ -5915,47 +5918,93 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  function holidayKey(d: Date) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+  type HolidayCalendarCell = {
+    year: number;
+    month0: number;
+    day: number;
+    ymd: string;
+    inMonth: boolean;
+    weekday0: number; // 0=Sun..6=Sat
+  };
+
+  function getWeekday0InTimeZone(args: { year: number; month0: number; day: number }, timeZone: string) {
+    const tz = normalizeTimeZone(timeZone);
+    const utcMs = zonedLocalDateTimeToUtcMs({ year: args.year, month0: args.month0, day: args.day, hour: 0, minute: 0, second: 0 }, tz);
+    return getZonedPartsFromMs(utcMs, tz).weekday0;
   }
 
-  function getHolidayCalendarCells(monthDate: Date) {
+  function getMonthEdgesInTimeZone(monthDate: Date, timeZone: string) {
+    const tz = normalizeTimeZone(timeZone);
     const year = monthDate.getFullYear();
-    const month = monthDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const firstDow = firstDay.getDay(); // 0=Sun
-    const adjustedFirst = (firstDow + 6) % 7; // Mon=0
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const daysInPrevMonth = new Date(year, month, 0).getDate();
+    const month0 = monthDate.getMonth();
 
-    const cells: Array<{ date: Date; inMonth: boolean }> = [];
+    const curStartUtcMs = zonedLocalDateTimeToUtcMs({ year, month0, day: 1, hour: 0, minute: 0, second: 0 }, tz);
+    const nextStartUtcMs = zonedLocalDateTimeToUtcMs({ year, month0: month0 + 1, day: 1, hour: 0, minute: 0, second: 0 }, tz);
+
+    const curStartParts = getZonedPartsFromMs(curStartUtcMs, tz);
+    const prevLastParts = getZonedPartsFromMs(curStartUtcMs - 1, tz);
+    const curLastParts = getZonedPartsFromMs(nextStartUtcMs - 1, tz);
+    const nextStartParts = getZonedPartsFromMs(nextStartUtcMs, tz);
+
+    return {
+      year,
+      month0,
+      firstWeekday0: curStartParts.weekday0,
+      daysInMonth: curLastParts.day,
+      prev: { year: prevLastParts.year, month0: prevLastParts.month0, daysInMonth: prevLastParts.day },
+      next: { year: nextStartParts.year, month0: nextStartParts.month0 },
+    };
+  }
+
+  function getHolidayCalendarCells(monthDate: Date, timeZone: string): HolidayCalendarCell[] {
+    const tz = normalizeTimeZone(timeZone);
+    const edges = getMonthEdgesInTimeZone(monthDate, tz);
+
+    // UI is Monday-first.
+    const adjustedFirst = (edges.firstWeekday0 + 6) % 7; // Mon=0
+
+    const cells: HolidayCalendarCell[] = [];
+
+    // Previous month tail
     for (let i = adjustedFirst - 1; i >= 0; i--) {
-      cells.push({ date: new Date(year, month - 1, daysInPrevMonth - i), inMonth: false });
+      const day = edges.prev.daysInMonth - i;
+      const year = edges.prev.year;
+      const month0 = edges.prev.month0;
+      const weekday0 = getWeekday0InTimeZone({ year, month0, day }, tz);
+      cells.push({ year, month0, day, ymd: ymdKeyFromParts(year, month0, day), inMonth: false, weekday0 });
     }
-    for (let d = 1; d <= daysInMonth; d++) {
-      cells.push({ date: new Date(year, month, d), inMonth: true });
+
+    // Current month
+    for (let day = 1; day <= edges.daysInMonth; day++) {
+      const year = edges.year;
+      const month0 = edges.month0;
+      const weekday0 = getWeekday0InTimeZone({ year, month0, day }, tz);
+      cells.push({ year, month0, day, ymd: ymdKeyFromParts(year, month0, day), inMonth: true, weekday0 });
     }
+
+    // Next month head (fill to 6 weeks)
     const remaining = 42 - cells.length;
-    for (let d = 1; d <= remaining; d++) {
-      cells.push({ date: new Date(year, month + 1, d), inMonth: false });
+    for (let day = 1; day <= remaining; day++) {
+      const year = edges.next.year;
+      const month0 = edges.next.month0;
+      const weekday0 = getWeekday0InTimeZone({ year, month0, day }, tz);
+      cells.push({ year, month0, day, ymd: ymdKeyFromParts(year, month0, day), inMonth: false, weekday0 });
     }
     return cells;
   }
 
-  function getHolidayCalendarCounts(monthDate: Date, holidays: Set<string>) {
-    const year = monthDate.getFullYear();
-    const month = monthDate.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
+  function getHolidayCalendarCounts(monthDate: Date, holidays: Set<string>, timeZone: string) {
+    const tz = normalizeTimeZone(timeZone);
+    const edges = getMonthEdgesInTimeZone(monthDate, tz);
+    const year = edges.year;
+    const month0 = edges.month0;
+    const daysInMonth = edges.daysInMonth;
     let holidayCount = 0;
     let jobdayCount = 0;
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(year, month, d);
-      const key = holidayKey(date);
-      const dow = date.getDay();
-      if (holidays.has(key)) {
+    for (let day = 1; day <= daysInMonth; day++) {
+      const ymd = ymdKeyFromParts(year, month0, day);
+      const dow = getWeekday0InTimeZone({ year, month0, day }, tz);
+      if (holidays.has(ymd)) {
         holidayCount++;
       } else if (dow !== 0 && dow !== 6) {
         jobdayCount++;
@@ -5964,8 +6013,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return { holidayCount, jobdayCount };
   }
 
-  function toggleHolidayCalendarDay(date: Date) {
-    const key = holidayKey(date);
+  function toggleHolidayCalendarDay(ymd: string) {
+    const key = String(ymd || '').trim();
+    if (!key) return;
     setHolidayCalendarHolidays((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -6067,7 +6117,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       }
       ctx.stroke();
 
-      const cells = getHolidayCalendarCells(holidayCalendarMonth);
+      const cells = getHolidayCalendarCells(holidayCalendarMonth, activeTimeZone);
 
       // Day numbers + holidays
       ctx.textAlign = 'center';
@@ -6075,9 +6125,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       ctx.font = `700 58px ${fontFamily}`;
       for (let idx = 0; idx < cells.length; idx++) {
         const c = cells[idx];
-        const d = c.date;
-        const key = holidayKey(d);
-        const isHoliday = c.inMonth && holidayCalendarHolidays.has(key);
+        const isHoliday = c.inMonth && holidayCalendarHolidays.has(c.ymd);
         const col = idx % 7;
         const row = Math.floor(idx / 7);
         const x0 = calX + colW * col;
@@ -6090,7 +6138,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         else if (isHoliday) ctx.fillStyle = red;
         else ctx.fillStyle = accent;
 
-        ctx.fillText(String(d.getDate()), cx, cy);
+        ctx.fillText(String(c.day), cx, cy);
 
         if (isHoliday) {
           ctx.save();
@@ -6293,7 +6341,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   aria-label="開始時刻"
                   value={reserveStartTime}
                   onChange={(e) => setReserveStartTime(e.target.value)}
-                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < formatDateISO(new Date())))}
+                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < todayYmd))}
                 />
               </div>
 
@@ -6453,19 +6501,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   id="add-task-btn"
                   className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
                   type="button"
-                  title={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
-                  aria-label={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? '過去には予約できません' : '追加'}
+                  title={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
+                  aria-label={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
                   onClick={addTask}
                   disabled={
                     !accessToken ||
                     busy ||
                     !String(newTaskName || '').trim() ||
                     (effectiveViewMode === 'history' && !historyDate) ||
-                    (effectiveViewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < formatDateISO(new Date()))
+                    (effectiveViewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < todayYmd)
                   }
                 >
                   <span className="material-icons">
-                    {effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < formatDateISO(new Date()) ? 'remove' : 'add'}
+                    {effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
                   </span>
                 </button>
 
@@ -6855,7 +6903,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       setTodayMainTab('timeline');
                       setViewMode('history');
                       if (!historyDate) {
-                        const todayIso = formatDateISO(new Date());
+                        const todayIso = todayYmd;
                         const defaultDate = historyDates.includes(todayIso) ? todayIso : (historyDates[0] ?? todayIso);
                         setHistoryDate(defaultDate);
                         if (defaultDate) void loadHistory(defaultDate);
@@ -7110,6 +7158,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                 <GanttBoard
                   tasks={normalizeGanttTasks(ganttTasks)}
+                  todayYmd={todayYmd}
+                  nowMs={nowMs}
                   rangeStart={ganttRangeStart}
                   rangeDays={ganttRangeDays}
                   dayWidth={ganttDayWidth}
@@ -7253,8 +7303,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                 <div className="alerts-list">
                   {(() => {
-                    const now = new Date();
-                    const list = normalizeAlerts(alerts).map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, now)) || a.nextFireAt || '' }));
+                    const nowDate = new Date(nowMs);
+                    const list = normalizeAlerts(alerts, activeTimeZone, nowMs).map((a) => ({
+                      ...a,
+                      nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowDate), activeTimeZone) || a.nextFireAt || '',
+                    }));
                     if (list.length === 0) return <div className="alerts-empty">アラートがありません</div>;
 
                     const sorted = list
@@ -7273,9 +7326,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     const weekdayLabel = (d: number) => (d === 0 ? '日' : d === 1 ? '月' : d === 2 ? '火' : d === 3 ? '水' : d === 4 ? '木' : d === 5 ? '金' : d === 6 ? '土' : '');
 
                     return sorted.map((a) => {
-                      const nextText = a.nextFireAt ? formatIsoToJstYmdHm(a.nextFireAt) : '';
+                      const nextText = a.nextFireAt ? formatIsoToZonedYmdHm(a.nextFireAt, activeTimeZone) : '';
                       const nextMs = Date.parse(String(a.nextFireAt || ''));
-                      const overdue = Number.isFinite(nextMs) && nextMs <= now.getTime();
+                      const overdue = Number.isFinite(nextMs) && nextMs <= nowDate.getTime();
 
                       const ruleText =
                         a.kind === 'once'
@@ -7314,15 +7367,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 const curNext = String(a.nextFireAt || '').trim();
                                 if (!curNext) return;
 
-                                const base = isoToJstDate(curNext);
-                                if (!base) return;
+                                const baseMs = Date.parse(curNext);
+                                if (!Number.isFinite(baseMs)) return;
+                                const base = new Date(baseMs);
 
                                 setAlerts((prev) =>
                                   (Array.isArray(prev) ? prev : []).map((x) => {
                                     if (x.id !== a.id) return x;
                                     if (x.kind === 'once') return x;
                                     const next: AlertItem = { ...x, skipUntil: curNext };
-                                    next.nextFireAt = computeNextFireAt(next, base);
+                                    next.nextFireAt = computeNextFireAt(next, base, activeTimeZone);
                                     return next;
                                   })
                                 );
@@ -7378,7 +7432,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               const kind = (e.target.value === 'weekly' || e.target.value === 'monthly' || e.target.value === 'once' ? e.target.value : 'once') as AlertKind;
                               const next: AlertItem = { ...alertDraft, kind };
                               if (kind === 'once') {
-                                next.onceAt = next.onceAt || new Date(Date.now() + 5 * 60 * 1000).toISOString();
+                                next.onceAt = next.onceAt || new Date(nowMs + 5 * 60 * 1000).toISOString();
                               }
                               if (kind === 'weekly') {
                                 next.time = next.time || '09:00';
@@ -7400,13 +7454,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                         {alertDraft.kind === 'once' ? (
                           <div className="edit-field">
-                            <label>日時（JST）</label>
+                            <label>日時（{activeTimeZone}）</label>
                             <input
                               type="datetime-local"
                               className="edit-input"
-                              value={isoToJstDatetimeLocalValue(String(alertDraft.onceAt || ''))}
+                              value={isoToZonedDatetimeLocalValue(String(alertDraft.onceAt || ''), activeTimeZone)}
                               onChange={(e) => {
-                                const iso = jstDatetimeLocalValueToIso(e.target.value);
+                                const iso = zonedDatetimeLocalValueToIso(e.target.value, activeTimeZone);
                                 setAlertDraft({ ...alertDraft, onceAt: iso });
                               }}
                               disabled={busy}
@@ -8832,6 +8886,37 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
 
             <div className="settings-section">
+              <h4>🌐 タイムゾーン</h4>
+              <p className="settings-hint">表示・日付の切り替わり・アラート計算に使用します。</p>
+              <div className="settings-grid-2col">
+                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="ui-timezone" className="settings-label">
+                    タイムゾーン
+                  </label>
+                  <select
+                    id="ui-timezone"
+                    className="edit-input"
+                    value={activeTimeZone}
+                    onChange={(e) => {
+                      setSettingsTimeZone(normalizeTimeZone(e.target.value || DEFAULT_TIME_ZONE));
+                      setSettingsDirty(true);
+                    }}
+                    disabled={!accessToken || busy}
+                  >
+                    {Array.from(new Set([activeTimeZone, ...getCommonTimeZones()])).map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="settings-hint" style={{ margin: 0 }}>
+                    現在: {activeTimeZone} / 今日: {todayYmd.replace(/-/g, '/')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
               <h4>🔗 報告先URL</h4>
               <div className="url-list">
                 {reportUrls.length === 0 ? (
@@ -9627,7 +9712,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
 
             {(() => {
-              const counts = getHolidayCalendarCounts(holidayCalendarMonth, holidayCalendarHolidays);
+              const counts = getHolidayCalendarCounts(holidayCalendarMonth, holidayCalendarHolidays, activeTimeZone);
               return (
                 <div className="holiday-cal-counters" aria-label="集計">
                   <div className="holiday-cal-counter">
@@ -9651,19 +9736,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 ))}
               </div>
               <div className="holiday-cal-grid" role="grid" aria-label="日付">
-                {getHolidayCalendarCells(holidayCalendarMonth).map((c, idx) => {
-                  const d = c.date;
-                  const key = holidayKey(d);
-                  const dow = d.getDay();
-                  const isToday =
-                    c.inMonth &&
-                    d.getFullYear() === new Date().getFullYear() &&
-                    d.getMonth() === new Date().getMonth() &&
-                    d.getDate() === new Date().getDate();
-                  const isHoliday = c.inMonth && holidayCalendarHolidays.has(key);
-                  const isJpHoliday = c.inMonth && isJpPublicHoliday(d);
-                  const isSat = dow === 6;
-                  const isSun = dow === 0;
+                {getHolidayCalendarCells(holidayCalendarMonth, activeTimeZone).map((c, idx) => {
+                  const isToday = c.inMonth && c.ymd === todayYmd;
+                  const isHoliday = c.inMonth && holidayCalendarHolidays.has(c.ymd);
+                  const isJpHoliday = c.inMonth && isJpPublicHolidayYmd(c.ymd);
+                  const isSat = c.weekday0 === 6;
+                  const isSun = c.weekday0 === 0;
 
                   const cls = [
                     'holiday-cal-day',
@@ -9679,17 +9757,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                   return (
                     <button
-                      key={`${key}:${idx}`}
+                      key={`${c.ymd}:${idx}`}
                       type="button"
                       className={cls}
                       onClick={() => {
                         if (!c.inMonth) return;
-                        toggleHolidayCalendarDay(d);
+                        toggleHolidayCalendarDay(c.ymd);
                       }}
                       disabled={!c.inMonth || holidayCalendarExporting || holidayCalendarSyncing}
-                      aria-label={`${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`}
+                      aria-label={`${c.year}年${c.month0 + 1}月${c.day}日`}
                     >
-                      {d.getDate()}
+                      {c.day}
                     </button>
                   );
                 })}
