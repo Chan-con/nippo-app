@@ -79,6 +79,26 @@ function isoToJstDate(iso: string) {
   }
 }
 
+function getJstYmdParts(date: Date) {
+  const d = date instanceof Date ? date : new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+
+  const map = new Map<string, string>();
+  for (const p of parts) {
+    if (p.type !== 'literal') map.set(p.type, p.value);
+  }
+
+  const year = parseInt(map.get('year') || '1970', 10);
+  const month = parseInt(map.get('month') || '1', 10);
+  const day = parseInt(map.get('day') || '1', 10);
+  return { year, month0: month - 1, day };
+}
+
 function parseHHMMToParts(v: unknown) {
   const m = String(v ?? '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!m) return null;
@@ -142,7 +162,15 @@ function jstDatetimeLocalValueToIso(v: string) {
 }
 
 function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
-  const base = fromJstDate instanceof Date ? fromJstDate : getNowJstDate();
+  // Store times as ISO(UTC) but *compute schedule* using JST calendar/time.
+  // Avoid relying on the host OS timezone (Date getters are always local-time based).
+  const base = fromJstDate instanceof Date ? fromJstDate : new Date();
+  const baseMs = base.getTime();
+  const baseYmd = getJstYmdParts(base);
+  const baseY = baseYmd.year;
+  const baseM0 = baseYmd.month0;
+  const baseD = baseYmd.day;
+  if (!Number.isFinite(baseY) || !Number.isFinite(baseM0) || !Number.isFinite(baseD)) return '';
 
   if (alert.kind === 'once') {
     const ms = Date.parse(String(alert.onceAt || ''));
@@ -158,10 +186,12 @@ function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
     if (days.length === 0) return '';
 
     for (let delta = 0; delta <= 14; delta += 1) {
-      const cand = new Date(base.getFullYear(), base.getMonth(), base.getDate() + delta, parts.hh, parts.mm, 0, 0);
-      if (!days.includes(cand.getDay())) continue;
-      if (cand.getTime() <= base.getTime()) continue;
-      return cand.toISOString();
+      const candMs = Date.UTC(baseY, baseM0, baseD + delta, parts.hh - 9, parts.mm, 0, 0);
+      if (!Number.isFinite(candMs)) continue;
+      const dowJst = new Date(candMs + 9 * 60 * 60 * 1000).getUTCDay(); // 0=Sun..6=Sat in JST
+      if (!days.includes(dowJst)) continue;
+      if (candMs <= baseMs) continue;
+      return new Date(candMs).toISOString();
     }
     return '';
   }
@@ -173,15 +203,15 @@ function computeNextFireAt(alert: AlertItem, fromJstDate: Date) {
     if (day == null) return '';
 
     for (let addMonths = 0; addMonths <= 24; addMonths += 1) {
-      const y = base.getFullYear();
-      const m0 = base.getMonth() + addMonths;
-      const y2 = y + Math.floor(m0 / 12);
+      const m0 = baseM0 + addMonths;
+      const y2 = baseY + Math.floor(m0 / 12);
       const m2 = ((m0 % 12) + 12) % 12;
-      const lastDay = new Date(y2, m2 + 1, 0).getDate();
+      const lastDay = new Date(Date.UTC(y2, m2 + 1, 0, 0, 0, 0, 0)).getUTCDate();
       const d = Math.min(day, lastDay);
-      const cand = new Date(y2, m2, d, parts.hh, parts.mm, 0, 0);
-      if (cand.getTime() <= base.getTime()) continue;
-      return cand.toISOString();
+      const candMs = Date.UTC(y2, m2, d, parts.hh - 9, parts.mm, 0, 0);
+      if (!Number.isFinite(candMs)) continue;
+      if (candMs <= baseMs) continue;
+      return new Date(candMs).toISOString();
     }
     return '';
   }
@@ -196,11 +226,12 @@ function getAlertDefaultTitle(kind: AlertKind) {
 }
 
 function getAlertComputeBase(alert: AlertItem, nowJst: Date) {
+  // `skipUntil` is stored as ISO; compare by epoch ms to avoid timezone pitfalls.
   if (alert.kind === 'once') return nowJst;
-  const su = isoToJstDate(String(alert.skipUntil || ''));
-  if (!su) return nowJst;
-  if (su.getTime() <= nowJst.getTime()) return nowJst;
-  return su;
+  const ms = Date.parse(String(alert.skipUntil || ''));
+  if (!Number.isFinite(ms)) return nowJst;
+  if (ms <= nowJst.getTime()) return nowJst;
+  return new Date(ms);
 }
 
 function normalizeAlertItem(input: any, fallbackId: string) {
@@ -230,12 +261,12 @@ function normalizeAlertItem(input: any, fallbackId: string) {
 
   // skipUntil が過去ならクリア
   if (base.skipUntil) {
-    const nowJst = getNowJstDate();
-    const su = isoToJstDate(base.skipUntil);
-    if (!su || su.getTime() <= nowJst.getTime()) base.skipUntil = '';
+    const nowMs = Date.now();
+    const suMs = Date.parse(String(base.skipUntil || ''));
+    if (!Number.isFinite(suMs) || suMs <= nowMs) base.skipUntil = '';
   }
 
-  const nowJst = getNowJstDate();
+  const nowJst = new Date();
   base.nextFireAt = computeNextFireAt(base, getAlertComputeBase(base, nowJst));
   return base;
 }
@@ -1778,7 +1809,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function upsertAlertFromDraft(draft: AlertItem) {
     const effectiveTitle = String(draft.title || '').trim() ? String(draft.title) : getAlertDefaultTitle(draft.kind);
     const normalized = normalizeAlertItem({ ...(draft as any), title: effectiveTitle } as any, draft.id || safeRandomId('alert'));
-    const nowJst = getNowJstDate();
+    const nowJst = new Date();
     normalized.nextFireAt = computeNextFireAt(normalized, getAlertComputeBase(normalized, nowJst));
 
     setAlerts((prev) => {
@@ -1825,7 +1856,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const scheduleNext = () => {
       clearTimer();
 
-      const nowJst = getNowJstDate();
+      const nowJst = new Date();
       const list = normalizeAlerts(alertsRef.current)
         .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowJst)) || a.nextFireAt || '' }))
         .filter((a) => !!a);
@@ -1843,7 +1874,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
 
     const fire = async () => {
-      const now = getNowJstDate();
+      const now = new Date();
       const current = normalizeAlerts(alertsRef.current);
       const due = current
         .filter((a) => {
@@ -7222,7 +7253,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                 <div className="alerts-list">
                   {(() => {
-                    const now = getNowJstDate();
+                    const now = new Date();
                     const list = normalizeAlerts(alerts).map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, now)) || a.nextFireAt || '' }));
                     if (list.length === 0) return <div className="alerts-empty">アラートがありません</div>;
 
