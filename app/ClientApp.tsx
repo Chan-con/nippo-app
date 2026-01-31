@@ -1889,12 +1889,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
 
     const fire = async () => {
-      try {
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      } catch {
-        // ignore
-      }
-
       const now = new Date(nowMsRef.current);
       const tz = activeTimeZoneRef.current;
       const current = normalizeAlerts(alertsRef.current, tz, nowMsRef.current);
