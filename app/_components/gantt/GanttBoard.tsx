@@ -284,7 +284,11 @@ export default function GanttBoard(props: {
         const cur = arr[i];
         const next = arr[i + 1];
         if (!next) continue;
-        const available = next.x - (cur.x + TITLE_LEFT) - INNER_GAP;
+        // Only ellipsize when the tail would collide with the *next title*.
+        // (Allow the text to overlap into the next bar's handle/padding area, which has no title text.)
+        const curTitleX = cur.x + TITLE_LEFT;
+        const nextTitleX = next.x + TITLE_LEFT;
+        const available = nextTitleX - curTitleX - INNER_GAP;
         byId.set(cur.id, Math.max(0, Math.trunc(available)));
       }
     }
