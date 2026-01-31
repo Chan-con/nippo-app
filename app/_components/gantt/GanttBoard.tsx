@@ -149,39 +149,42 @@ export default function GanttBoard(props: {
     return () => window.removeEventListener('resize', update);
   }, []);
 
-  function getMemoTooltipPos(clientX: number, clientY: number) {
-    const pad = 12;
+  function getMemoTooltipPosFromRect(rect: DOMRect) {
+    const pad = 10;
     // Match the CSS max size (approx) so we can keep it in the viewport.
     const estW = 420;
     const estH = 280;
     const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
 
-    let x = clientX + pad;
-    let y = clientY + pad;
+    // Prefer showing to the right of the task.
+    let x = rect.right + pad;
+    let y = rect.top - 4;
 
     if (vw) {
+      const rightOverflow = x > vw - estW - 12;
+      if (rightOverflow) {
+        // If there's no room on the right, try left side.
+        x = rect.left - estW - pad;
+      }
       x = Math.max(12, Math.min(x, vw - estW - 12));
     }
+
     if (vh) {
-      // If too low, prefer showing above the cursor.
-      if (y > vh - estH - 12) y = Math.max(12, clientY - estH - 12);
+      // Prefer aligning to the top, but keep inside viewport.
       y = Math.max(12, Math.min(y, vh - estH - 12));
     }
 
     return { x, y };
   }
 
-  function placeMemoTooltipAtClientPoint(clientX: number, clientY: number) {
-    const { x, y } = getMemoTooltipPos(clientX, clientY);
-    setMemoTooltip((prev) => (prev ? { ...prev, x, y } : prev));
-  }
-
   function showMemoTooltip(ev: React.MouseEvent, task: GanttTask) {
     const memo = String(task.memo || '').trim();
     if (!memo) return;
     const title = String(task.title || '（無題）').trim() || '（無題）';
-    const { x, y } = getMemoTooltipPos(ev.clientX, ev.clientY);
+    const el = ev.currentTarget as HTMLElement | null;
+    const rect = el?.getBoundingClientRect?.();
+    const { x, y } = rect ? getMemoTooltipPosFromRect(rect) : { x: ev.clientX + 12, y: ev.clientY + 12 };
     setMemoTooltip({ title, memo, x, y });
   }
 
@@ -668,7 +671,7 @@ export default function GanttBoard(props: {
 
               props.onCreateTaskAt?.({ laneId: 'default', startDate, endDate, y: snapY(y) });
             }}
-            title={props.disabled ? '' : 'ダブルクリックでここにタスク追加'}
+            title={props.disabled || memoTooltip ? '' : 'ダブルクリックでここにタスク追加'}
           >
             <div className="gantt-canvas-grid" style={{ width: timelineWidth, backgroundSize: `${Math.max(6, dayWidth)}px 1px` }} />
             {isTodayInView ? (
@@ -741,12 +744,6 @@ export default function GanttBoard(props: {
                     if (draggingRef.current) return;
                     hideMemoTooltip();
                     showMemoTooltip(ev, t);
-                  }}
-                  onMouseMove={(ev) => {
-                    if (!memoTooltip) return;
-                    if (draggingRef.current) return;
-                    if (!memoTooltip.memo) return;
-                    placeMemoTooltipAtClientPoint(ev.clientX, ev.clientY);
                   }}
                   onMouseLeave={() => {
                     hideMemoTooltip();
