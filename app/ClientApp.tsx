@@ -1867,17 +1867,40 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!accessToken) return;
     if (!alertsAvailable) return;
 
+    const getNextFireAtForExecutor = (a: AlertItem, now: Date, tz: string) => {
+      const stored = String(a.nextFireAt || '').trim();
+      const storedMs = Date.parse(stored);
+      if (stored && Number.isFinite(storedMs)) return { iso: stored, ms: storedMs };
+      const computed = computeNextFireAt(a, getAlertComputeBase(a, now), tz);
+      const computedMs = Date.parse(String(computed || ''));
+      return { iso: computed, ms: computedMs };
+    };
+
+    const getCurrentAlertsForExecutor = (nowMs: number, tz: string) => {
+      const list = Array.isArray(alertsRef.current) ? alertsRef.current : [];
+      return list
+        .map((raw) => {
+          const fallbackId = raw?.id || safeRandomId('alert');
+          const normalized = normalizeAlertItem(raw as any, String(fallbackId), tz, nowMs);
+          // Preserve stored nextFireAt so overdue instances can be detected.
+          const stored = typeof (raw as any)?.nextFireAt === 'string' ? String((raw as any).nextFireAt) : '';
+          if (Number.isFinite(Date.parse(stored))) normalized.nextFireAt = stored;
+          return normalized;
+        })
+        .filter((a) => !!a && !!a.id);
+    };
+
     const scheduleNext = () => {
       clearTimer();
 
-      const now = new Date(nowMsRef.current);
+      // Use real wall-clock time. React-driven `nowMs` can be throttled/suspended in background tabs.
+      const nowMs = Date.now();
+      const now = new Date(nowMs);
       const tz = activeTimeZoneRef.current;
-      const list = normalizeAlerts(alertsRef.current, tz, nowMsRef.current)
-        .map((a) => ({ ...a, nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, now), tz) || a.nextFireAt || '' }))
-        .filter((a) => !!a);
+      const list = getCurrentAlertsForExecutor(nowMs, tz);
 
       const candidates = list
-        .map((a) => ({ a, ms: Date.parse(String(a.nextFireAt || '')) }))
+        .map((a) => ({ a, ...getNextFireAtForExecutor(a, now, tz) }))
         .filter((x) => Number.isFinite(x.ms))
         .sort((x, y) => x.ms - y.ms || String(x.a.id).localeCompare(String(y.a.id)));
 
@@ -1889,13 +1912,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
 
     const fire = async () => {
-      const now = new Date(nowMsRef.current);
+      // Use real wall-clock time. React-driven `nowMs` can be throttled/suspended in background tabs.
+      const nowMs = Date.now();
+      const now = new Date(nowMs);
       const tz = activeTimeZoneRef.current;
-      const current = normalizeAlerts(alertsRef.current, tz, nowMsRef.current);
+      const current = getCurrentAlertsForExecutor(nowMs, tz);
       const due = current
         .filter((a) => {
-          const ms = Date.parse(String(a.nextFireAt || computeNextFireAt(a, getAlertComputeBase(a, now), tz) || ''));
-          return Number.isFinite(ms) && ms <= now.getTime();
+          const { ms } = getNextFireAtForExecutor(a, now, tz);
+          return Number.isFinite(ms) && ms <= nowMs;
         })
         .sort((x, y) => {
           const xm = Date.parse(String(x.nextFireAt || ''));
@@ -1931,7 +1956,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         }
       }
 
-      const bumpedBase = new Date(now.getTime() + 60 * 1000);
+      const bumpedBase = new Date(nowMs + 60 * 1000);
       const dueIds = new Set(due.map((d) => d.id));
       const updated = current
         .map((a) => {
