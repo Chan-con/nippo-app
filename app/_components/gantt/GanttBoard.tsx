@@ -157,21 +157,26 @@ export default function GanttBoard(props: {
     const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
 
-    // Prefer showing to the right of the task.
-    let x = rect.right + pad;
-    let y = rect.top - 4;
+    // Use the *visible* portion in the viewport as the anchor.
+    // (When a bar is clipped by the scroll viewport, rect.left/right can be outside the window.)
+    const visibleLeft = vw ? Math.max(0, Math.min(rect.left, vw)) : rect.left;
+    const visibleRight = vw ? Math.max(0, Math.min(rect.right, vw)) : rect.right;
+    const visibleTop = vh ? Math.max(0, Math.min(rect.top, vh)) : rect.top;
+
+    // Prefer showing to the right of the visible edge.
+    let x = visibleRight + pad;
+    let y = visibleTop - 4;
 
     if (vw) {
       const rightOverflow = x > vw - estW - 12;
       if (rightOverflow) {
-        // If there's no room on the right, try left side.
-        x = rect.left - estW - pad;
+        // If there's no room on the right, try left side of the visible edge.
+        x = visibleLeft - estW - pad;
       }
       x = Math.max(12, Math.min(x, vw - estW - 12));
     }
 
     if (vh) {
-      // Prefer aligning to the top, but keep inside viewport.
       y = Math.max(12, Math.min(y, vh - estH - 12));
     }
 
