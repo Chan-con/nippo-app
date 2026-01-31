@@ -163,14 +163,12 @@ export default function GanttBoard(props: {
     let y = clientY + pad;
 
     if (vw) {
-      // If too close to right edge, place to the left of cursor.
-      if (x > vw - estW - 12) x = clientX - estW - pad;
+      // Keep stable: just clamp inside viewport (no left/right flip).
       x = Math.max(12, Math.min(x, vw - estW - 12));
     }
 
     if (vh) {
-      // If too close to bottom edge, place above cursor.
-      if (y > vh - estH - 12) y = clientY - estH - pad;
+      // Keep stable: just clamp inside viewport (no up/down flip).
       y = Math.max(12, Math.min(y, vh - estH - 12));
     }
 
