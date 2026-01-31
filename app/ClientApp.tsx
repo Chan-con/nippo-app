@@ -1615,6 +1615,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const alertsLastSavedSnapshotRef = useRef<string>('');
   const alertsIsSavingRef = useRef(false);
   const alertsExecutorTimerRef = useRef<number | null>(null);
+  const alertsDueCheckIntervalRef = useRef<number | null>(null);
   const alertsRef = useRef<AlertItem[]>([]);
 
   const [alertModalOpen, setAlertModalOpen] = useState(false);
@@ -1861,8 +1862,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       }
     };
 
-    const dueCheckIntervalRef: { current: number | null } = { current: null };
-
     clearTimer();
 
     if (!accessToken) return;
@@ -1890,6 +1889,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
 
     const fire = async () => {
+      try {
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      } catch {
+        // ignore
+      }
+
       const now = new Date(nowMsRef.current);
       const tz = activeTimeZoneRef.current;
       const current = normalizeAlerts(alertsRef.current, tz, nowMsRef.current);
@@ -1978,8 +1983,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // Some browsers throttle/suspend long timers in background tabs.
     // Polling while visible makes weekly/monthly alerts more reliable.
     try {
-      if (dueCheckIntervalRef.current != null) window.clearInterval(dueCheckIntervalRef.current);
-      dueCheckIntervalRef.current = window.setInterval(() => {
+      if (alertsDueCheckIntervalRef.current != null) window.clearInterval(alertsDueCheckIntervalRef.current);
+      alertsDueCheckIntervalRef.current = window.setInterval(() => {
         try {
           if (document.visibilityState !== 'visible') return;
         } catch {
@@ -1996,13 +2001,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
     return () => {
       clearTimer();
-      if (dueCheckIntervalRef.current != null) {
+      if (alertsDueCheckIntervalRef.current != null) {
         try {
-          window.clearInterval(dueCheckIntervalRef.current);
+          window.clearInterval(alertsDueCheckIntervalRef.current);
         } catch {
           // ignore
         }
-        dueCheckIntervalRef.current = null;
+        alertsDueCheckIntervalRef.current = null;
       }
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
