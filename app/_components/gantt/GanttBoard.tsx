@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type { GanttTask } from './types';
 import { addDaysYmd, utcDayNumberToYmd, ymdToUtcDayNumber } from './date';
 
@@ -159,9 +160,9 @@ export default function GanttBoard(props: {
 
     // Use the *visible* portion in the viewport as the anchor.
     // (When a bar is clipped by the scroll viewport, rect.left/right can be outside the window.)
-    const visibleLeft = vw ? Math.max(0, Math.min(rect.left, vw)) : rect.left;
-    const visibleRight = vw ? Math.max(0, Math.min(rect.right, vw)) : rect.right;
-    const visibleTop = vh ? Math.max(0, Math.min(rect.top, vh)) : rect.top;
+    const visibleLeft = vw ? Math.min(Math.max(rect.left, 0), vw) : rect.left;
+    const visibleRight = vw ? Math.min(Math.max(rect.right, 0), vw) : rect.right;
+    const visibleTop = vh ? Math.min(Math.max(rect.top, 0), vh) : rect.top;
 
     // Prefer showing to the right of the visible edge.
     let x = visibleRight + pad;
@@ -189,7 +190,8 @@ export default function GanttBoard(props: {
     const title = String(task.title || '（無題）').trim() || '（無題）';
     const el = ev.currentTarget as HTMLElement | null;
     const rect = el?.getBoundingClientRect?.();
-    const { x, y } = rect ? getMemoTooltipPosFromRect(rect) : { x: ev.clientX + 12, y: ev.clientY + 12 };
+    const rectOk = !!rect && Number.isFinite(rect.left) && Number.isFinite(rect.top) && rect.width > 0 && rect.height > 0;
+    const { x, y } = rectOk ? getMemoTooltipPosFromRect(rect!) : { x: ev.clientX + 12, y: ev.clientY + 12 };
     setMemoTooltip({ title, memo, x, y });
   }
 
@@ -676,7 +678,6 @@ export default function GanttBoard(props: {
 
               props.onCreateTaskAt?.({ laneId: 'default', startDate, endDate, y: snapY(y) });
             }}
-            title={props.disabled || memoTooltip ? '' : 'ダブルクリックでここにタスク追加'}
           >
             <div className="gantt-canvas-grid" style={{ width: timelineWidth, backgroundSize: `${Math.max(6, dayWidth)}px 1px` }} />
             {isTodayInView ? (
@@ -794,15 +795,19 @@ export default function GanttBoard(props: {
               );
             })}
 
-            {memoTooltip ? (
-              <div className="gantt-memo-tooltip" style={{ left: memoTooltip.x, top: memoTooltip.y }} aria-hidden="true">
-                <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
-                <div className="gantt-memo-tooltip-body">{memoTooltip.memo}</div>
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
+
+      {memoTooltip && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="gantt-memo-tooltip" style={{ left: memoTooltip.x, top: memoTooltip.y }} aria-hidden="true">
+              <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
+              <div className="gantt-memo-tooltip-body">{memoTooltip.memo}</div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
