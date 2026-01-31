@@ -150,48 +150,43 @@ export default function GanttBoard(props: {
     return () => window.removeEventListener('resize', update);
   }, []);
 
-  function getMemoTooltipPosFromRect(rect: DOMRect) {
-    const pad = 10;
+  function getMemoTooltipPosFromPoint(clientX: number, clientY: number) {
+    const pad = 12;
     // Match the CSS max size (approx) so we can keep it in the viewport.
     const estW = 420;
     const estH = 280;
     const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
 
-    // Use the *visible* portion in the viewport as the anchor.
-    // (When a bar is clipped by the scroll viewport, rect.left/right can be outside the window.)
-    const visibleLeft = vw ? Math.min(Math.max(rect.left, 0), vw) : rect.left;
-    const visibleRight = vw ? Math.min(Math.max(rect.right, 0), vw) : rect.right;
-    const visibleTop = vh ? Math.min(Math.max(rect.top, 0), vh) : rect.top;
-
-    // Prefer showing to the right of the visible edge.
-    let x = visibleRight + pad;
-    let y = visibleTop - 4;
+    // Prefer slightly to the bottom-right of the cursor.
+    let x = clientX + pad;
+    let y = clientY + pad;
 
     if (vw) {
-      const rightOverflow = x > vw - estW - 12;
-      if (rightOverflow) {
-        // If there's no room on the right, try left side of the visible edge.
-        x = visibleLeft - estW - pad;
-      }
+      // If too close to right edge, place to the left of cursor.
+      if (x > vw - estW - 12) x = clientX - estW - pad;
       x = Math.max(12, Math.min(x, vw - estW - 12));
     }
 
     if (vh) {
+      // If too close to bottom edge, place above cursor.
+      if (y > vh - estH - 12) y = clientY - estH - pad;
       y = Math.max(12, Math.min(y, vh - estH - 12));
     }
 
     return { x, y };
   }
 
+  function placeMemoTooltipAtPoint(clientX: number, clientY: number) {
+    const { x, y } = getMemoTooltipPosFromPoint(clientX, clientY);
+    setMemoTooltip((prev) => (prev ? { ...prev, x, y } : prev));
+  }
+
   function showMemoTooltip(ev: React.MouseEvent, task: GanttTask) {
     const memo = String(task.memo || '').trim();
     if (!memo) return;
     const title = String(task.title || '（無題）').trim() || '（無題）';
-    const el = ev.currentTarget as HTMLElement | null;
-    const rect = el?.getBoundingClientRect?.();
-    const rectOk = !!rect && Number.isFinite(rect.left) && Number.isFinite(rect.top) && rect.width > 0 && rect.height > 0;
-    const { x, y } = rectOk ? getMemoTooltipPosFromRect(rect!) : { x: ev.clientX + 12, y: ev.clientY + 12 };
+    const { x, y } = getMemoTooltipPosFromPoint(ev.clientX, ev.clientY);
     setMemoTooltip({ title, memo, x, y });
   }
 
@@ -750,6 +745,12 @@ export default function GanttBoard(props: {
                     if (draggingRef.current) return;
                     hideMemoTooltip();
                     showMemoTooltip(ev, t);
+                  }}
+                  onMouseMove={(ev) => {
+                    if (draggingRef.current) return;
+                    if (!memoTooltip) return;
+                    // Only track while showing the same task's tooltip
+                    placeMemoTooltipAtPoint(ev.clientX, ev.clientY);
                   }}
                   onMouseLeave={() => {
                     hideMemoTooltip();
