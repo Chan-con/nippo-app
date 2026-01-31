@@ -1467,6 +1467,48 @@ input[type='number']::-webkit-inner-spin-button {
   opacity: 1;
 }
 
+/* ガント: タスク詳細メモ（カスタムツールチップ） */
+.gantt-memo-tooltip {
+  position: fixed;
+  z-index: 99999;
+  left: 0;
+  top: 0;
+  transform: translate3d(0, 0, 0);
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: min(280px, calc(100vh - 24px));
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(17, 17, 27, 0.92);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.gantt-memo-tooltip-title {
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.25;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-memo-tooltip-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  max-height: 220px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 86%, transparent 100%);
+}
+
 
 .timeline-section h3 {
   font-size: 20px;

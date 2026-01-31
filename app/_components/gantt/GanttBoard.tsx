@@ -68,6 +68,7 @@ export default function GanttBoard(props: {
   const [viewStart, setViewStart] = useState(props.rangeStart);
   const [viewDays, setViewDays] = useState(() => Math.max(180, Math.trunc(props.rangeDays || 1)));
   const [dayWidth, setDayWidth] = useState(() => Math.max(6, Math.trunc(props.dayWidth || 24)));
+  const [memoTooltip, setMemoTooltip] = useState<null | { title: string; memo: string; x: number; y: number }>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollAdjustPxRef = useRef(0);
@@ -147,6 +148,46 @@ export default function GanttBoard(props: {
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, []);
+
+  function getMemoTooltipPos(clientX: number, clientY: number) {
+    const pad = 12;
+    // Match the CSS max size (approx) so we can keep it in the viewport.
+    const estW = 420;
+    const estH = 280;
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+
+    let x = clientX + pad;
+    let y = clientY + pad;
+
+    if (vw) {
+      x = Math.max(12, Math.min(x, vw - estW - 12));
+    }
+    if (vh) {
+      // If too low, prefer showing above the cursor.
+      if (y > vh - estH - 12) y = Math.max(12, clientY - estH - 12);
+      y = Math.max(12, Math.min(y, vh - estH - 12));
+    }
+
+    return { x, y };
+  }
+
+  function placeMemoTooltipAtClientPoint(clientX: number, clientY: number) {
+    const { x, y } = getMemoTooltipPos(clientX, clientY);
+    setMemoTooltip((prev) => (prev ? { ...prev, x, y } : prev));
+  }
+
+  function showMemoTooltip(ev: React.MouseEvent, task: GanttTask) {
+    const memo = String(task.memo || '').trim();
+    if (!memo) return;
+    const title = String(task.title || '（無題）').trim() || '（無題）';
+    const { x, y } = getMemoTooltipPos(ev.clientX, ev.clientY);
+    setMemoTooltip({ title, memo, x, y });
+  }
+
+  function hideMemoTooltip() {
+    setMemoTooltip(null);
+  }
 
   const [draftTasks, setDraftTasks] = useState<GanttTask[]>(Array.isArray(props.tasks) ? props.tasks : []);
   const draggingRef = useRef<DragState | null>(null);
@@ -333,6 +374,7 @@ export default function GanttBoard(props: {
   }
 
   function onTaskPointerDown(ev: React.PointerEvent, task: GanttTask, mode: DragMode) {
+    hideMemoTooltip();
     if (props.disabled) return;
     if (!task?.id) return;
 
@@ -524,6 +566,7 @@ export default function GanttBoard(props: {
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
+    hideMemoTooltip();
     setScrollLeftPx(Math.max(0, Math.trunc(el.scrollLeft || 0)));
     setViewportWidthPx(Math.max(0, Math.trunc(el.clientWidth || 0)));
     const w = Math.max(6, Math.trunc(dayWidth || 24));
@@ -680,6 +723,7 @@ export default function GanttBoard(props: {
               const startDayLabel = dayNumberLabel(t.startDate);
               const endDayLabel = dayNumberLabel(t.endDate);
 
+
               const style = { left: x, top: y, width: w, zIndex: z } as CSSProperties & Record<string, unknown>;
               if (isShort && typeof titleMaxPx === 'number' && Number.isFinite(titleMaxPx)) {
                 style['--gantt-title-max'] = `${Math.max(0, Math.trunc(titleMaxPx))}px`;
@@ -693,6 +737,20 @@ export default function GanttBoard(props: {
                   role="button"
                   tabIndex={0}
                   onPointerDown={(ev) => onTaskPointerDown(ev, t, 'move')}
+                  onMouseEnter={(ev) => {
+                    if (draggingRef.current) return;
+                    hideMemoTooltip();
+                    showMemoTooltip(ev, t);
+                  }}
+                  onMouseMove={(ev) => {
+                    if (!memoTooltip) return;
+                    if (draggingRef.current) return;
+                    if (!memoTooltip.memo) return;
+                    placeMemoTooltipAtClientPoint(ev.clientX, ev.clientY);
+                  }}
+                  onMouseLeave={() => {
+                    hideMemoTooltip();
+                  }}
                   onDoubleClick={(ev) => {
                     if (draggingRef.current) return;
                     ev.preventDefault();
@@ -733,6 +791,13 @@ export default function GanttBoard(props: {
                 </div>
               );
             })}
+
+            {memoTooltip ? (
+              <div className="gantt-memo-tooltip" style={{ left: memoTooltip.x, top: memoTooltip.y }} aria-hidden="true">
+                <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
+                <div className="gantt-memo-tooltip-body">{memoTooltip.memo}</div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
