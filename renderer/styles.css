@@ -1376,29 +1376,24 @@ input[type='number']::-webkit-inner-spin-button {
   align-items: center;
   padding: 0 6px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .gantt-task-title {
   font-size: 12px;
   font-weight: 800;
   color: var(--text-primary);
+  display: inline-block;
+  flex: 0 0 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.gantt-task.is-short .gantt-task-body {
-  overflow: visible;
-}
-
-.gantt-task.is-short .gantt-task-title {
-  display: inline-block;
-  flex: 0 0 auto;
   max-width: var(--gantt-title-max, 9999px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* readability when flying out */
+  pointer-events: none;
+}
+
+/* readability when flying out */
+.gantt-task-title {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 

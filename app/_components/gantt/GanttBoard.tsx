@@ -253,7 +253,7 @@ export default function GanttBoard(props: {
     const INNER_GAP = 4;
     const TITLE_LEFT = HANDLE_W + BODY_PAD_X;
 
-    const rowMap = new Map<number, Array<{ id: string; x: number }>>();
+    const rowMap = new Map<number, Array<{ id: string; x: number; barInnerW: number }>>();
     for (const t of list) {
       const s = ymdToUtcDayNumber(t.startDate);
       const e = ymdToUtcDayNumber(t.endDate);
@@ -263,19 +263,22 @@ export default function GanttBoard(props: {
       if (end < rangeStartDay || start > rangeEndDay) continue;
       const safeEnd = Math.max(start, end);
       const x = (start - rangeStartDay) * w;
+      const barW = (safeEnd - start + 1) * w;
+      const barInnerW = Math.max(0, Math.trunc(barW - HANDLE_W * 2 - BODY_PAD_X * 2));
       const yRaw = (t as any)?.y;
       const y = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
       const row = y;
 
       const arr = rowMap.get(row) ?? [];
-      arr.push({ id: t.id, x });
+      arr.push({ id: t.id, x, barInnerW });
       rowMap.set(row, arr);
 
       // default: allow up to end of timeline, capped
       // NOTE: Title starts after the left handle + left padding.
       // We cap width based on where the title would collide with the next bar (or timeline end).
       const availableToEnd = timelineWidth - (x + TITLE_LEFT) - INNER_GAP;
-      byId.set(t.id, Math.max(0, Math.trunc(availableToEnd)));
+      const maxW = Math.max(barInnerW, Math.max(0, Math.trunc(availableToEnd)));
+      byId.set(t.id, maxW);
     }
 
     for (const [, arr] of rowMap.entries()) {
@@ -289,7 +292,8 @@ export default function GanttBoard(props: {
         const curTitleX = cur.x + TITLE_LEFT;
         const nextTitleX = next.x + TITLE_LEFT;
         const available = nextTitleX - curTitleX - INNER_GAP;
-        byId.set(cur.id, Math.max(0, Math.trunc(available)));
+        const maxW = Math.max(cur.barInnerW, Math.max(0, Math.trunc(available)));
+        byId.set(cur.id, maxW);
       }
     }
 
@@ -734,7 +738,7 @@ export default function GanttBoard(props: {
 
 
               const style = { left: x, top: y, width: w, zIndex: z } as CSSProperties & Record<string, unknown>;
-              if (isShort && typeof titleMaxPx === 'number' && Number.isFinite(titleMaxPx)) {
+              if (typeof titleMaxPx === 'number' && Number.isFinite(titleMaxPx)) {
                 style['--gantt-title-max'] = `${Math.max(0, Math.trunc(titleMaxPx))}px`;
               }
 
