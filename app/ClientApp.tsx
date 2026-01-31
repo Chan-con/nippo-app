@@ -2,6 +2,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import GanttBoard from './_components/gantt/GanttBoard';
 import GanttDrawer from './_components/gantt/GanttDrawer';
 import { addDaysYmd } from './_components/gantt/date';
@@ -1623,6 +1624,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [alertDraft, setAlertDraft] = useState<AlertItem | null>(null);
   const [alertMonthlyDayPickerOpen, setAlertMonthlyDayPickerOpen] = useState(false);
   const alertMonthlyDayPickerRef = useRef<HTMLDivElement | null>(null);
+  const alertMonthlyDayPopoverRef = useRef<HTMLDivElement | null>(null);
+  const [alertMonthlyDayPopoverPos, setAlertMonthlyDayPopoverPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     if (!alertModalOpen) {
@@ -1637,10 +1640,41 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   useEffect(() => {
     if (!alertMonthlyDayPickerOpen) return;
 
-    const onMouseDown = (ev: MouseEvent) => {
+    const updatePos = () => {
       const root = alertMonthlyDayPickerRef.current;
       if (!root) return;
-      if (ev.target instanceof Node && !root.contains(ev.target)) {
+      const anchor = (root.querySelector('.alerts-day-picker-btn') as HTMLElement | null) ?? root;
+      const rect = anchor.getBoundingClientRect();
+
+      const popoverWidth = Math.min(360, Math.max(0, (typeof window !== 'undefined' ? window.innerWidth : 360) - 24));
+      const estimatedHeight = 240; // 5 rows of days + padding
+
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+      const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+
+      let left = rect.left;
+      if (vw) left = Math.max(12, Math.min(left, vw - 12 - popoverWidth));
+
+      let top = rect.bottom + 8;
+      if (vh && top + estimatedHeight > vh - 12) {
+        top = Math.max(12, rect.top - 8 - estimatedHeight);
+      }
+
+      setAlertMonthlyDayPopoverPos({ top, left });
+    };
+
+    updatePos();
+
+    // Keep position in sync when any scrollable container moves.
+    document.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+
+    const onMouseDown = (ev: MouseEvent) => {
+      const root = alertMonthlyDayPickerRef.current;
+      const pop = alertMonthlyDayPopoverRef.current;
+      if (ev.target instanceof Node) {
+        if (root && root.contains(ev.target)) return;
+        if (pop && pop.contains(ev.target)) return;
         setAlertMonthlyDayPickerOpen(false);
       }
     };
@@ -1652,6 +1686,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('keydown', onKeyDown);
     return () => {
+      document.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
       document.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('keydown', onKeyDown);
     };
@@ -7615,33 +7651,45 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                               </div>
 
                               {alertMonthlyDayPickerOpen ? (
-                                <div
-                                  className="alerts-day-popover"
-                                  role="dialog"
-                                  aria-label="日を選択"
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                  <div className="alerts-day-grid">
-                                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
-                                      const active = (alertDraft.monthlyDay ?? 1) === d;
-                                      return (
-                                        <button
-                                          key={`monthly-day-pop-${d}`}
-                                          type="button"
-                                          className={`alerts-day-cell ${active ? 'active' : ''}`}
-                                          aria-pressed={active}
-                                          onClick={() => {
-                                            setAlertDraft({ ...alertDraft, monthlyDay: d });
-                                            setAlertMonthlyDayPickerOpen(false);
-                                          }}
-                                          disabled={busy}
-                                        >
-                                          {d}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
+                                typeof document !== 'undefined' && alertMonthlyDayPopoverPos
+                                  ? createPortal(
+                                      <div
+                                        ref={alertMonthlyDayPopoverRef}
+                                        className="alerts-day-popover"
+                                        role="dialog"
+                                        aria-label="日を選択"
+                                        style={{
+                                          position: 'fixed',
+                                          top: alertMonthlyDayPopoverPos.top,
+                                          left: alertMonthlyDayPopoverPos.left,
+                                          zIndex: 7001,
+                                        }}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="alerts-day-grid">
+                                          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
+                                            const active = (alertDraft.monthlyDay ?? 1) === d;
+                                            return (
+                                              <button
+                                                key={`monthly-day-pop-${d}`}
+                                                type="button"
+                                                className={`alerts-day-cell ${active ? 'active' : ''}`}
+                                                aria-pressed={active}
+                                                onClick={() => {
+                                                  setAlertDraft({ ...alertDraft, monthlyDay: d });
+                                                  setAlertMonthlyDayPickerOpen(false);
+                                                }}
+                                                disabled={busy}
+                                              >
+                                                {d}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>,
+                                      document.body
+                                    )
+                                  : null
                               ) : null}
                             </div>
                             <div className="alerts-help">※ 存在しない日（例: 2月31日）はその月の最終日に繰り上げます。</div>
