@@ -1963,11 +1963,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
 
     const onVisibleOrFocus = () => {
-      try {
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      } catch {
-        // ignore
-      }
       // Catch-up immediately when the app becomes active again.
       void fire();
     };
@@ -1979,11 +1974,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     try {
       if (alertsDueCheckIntervalRef.current != null) window.clearInterval(alertsDueCheckIntervalRef.current);
       alertsDueCheckIntervalRef.current = window.setInterval(() => {
-        try {
-          if (document.visibilityState !== 'visible') return;
-        } catch {
-          // ignore
-        }
         void fire();
       }, 30_000);
     } catch {
