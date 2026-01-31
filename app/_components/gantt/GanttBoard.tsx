@@ -251,6 +251,7 @@ export default function GanttBoard(props: {
     const HANDLE_W = 6;
     const BODY_PAD_X = 6;
     const INNER_GAP = 4;
+    const TITLE_LEFT = HANDLE_W + BODY_PAD_X;
 
     const rowMap = new Map<number, Array<{ id: string; x: number }>>();
     for (const t of list) {
@@ -271,7 +272,9 @@ export default function GanttBoard(props: {
       rowMap.set(row, arr);
 
       // default: allow up to end of timeline, capped
-      const availableToEnd = timelineWidth - x - (HANDLE_W * 2 + BODY_PAD_X * 2 + INNER_GAP);
+      // NOTE: Title starts after the left handle + left padding.
+      // We cap width based on where the title would collide with the next bar (or timeline end).
+      const availableToEnd = timelineWidth - (x + TITLE_LEFT) - INNER_GAP;
       byId.set(t.id, Math.max(0, Math.trunc(availableToEnd)));
     }
 
@@ -281,7 +284,7 @@ export default function GanttBoard(props: {
         const cur = arr[i];
         const next = arr[i + 1];
         if (!next) continue;
-        const available = next.x - cur.x - (HANDLE_W * 2 + BODY_PAD_X * 2 + INNER_GAP);
+        const available = next.x - (cur.x + TITLE_LEFT) - INNER_GAP;
         byId.set(cur.id, Math.max(0, Math.trunc(available)));
       }
     }
