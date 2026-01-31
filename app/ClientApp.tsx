@@ -1861,6 +1861,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       }
     };
 
+    const dueCheckIntervalRef: { current: number | null } = { current: null };
+
     clearTimer();
 
     if (!accessToken) return;
@@ -1947,6 +1949,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         })
         .filter((x): x is AlertItem => !!x);
 
+      // Keep refs in sync so we can schedule immediately without waiting for state effects.
+      alertsRef.current = updated;
       setAlerts(updated);
       setAlertsDirty(true);
       setAlertsRemoteUpdatePending(false);
@@ -1954,11 +1958,54 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       // Save promptly (to sync to other devices)
       const snap = alertsSnapshot(updated);
       void saveAlertsToServer(updated, snap);
+
+      // Ensure we always have a next timer even if the environment throttled/dropped long timeouts.
+      scheduleNext();
+    };
+
+    const onVisibleOrFocus = () => {
+      try {
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      } catch {
+        // ignore
+      }
+      // Catch-up immediately when the app becomes active again.
+      void fire();
     };
 
     scheduleNext();
+
+    // Some browsers throttle/suspend long timers in background tabs.
+    // Polling while visible makes weekly/monthly alerts more reliable.
+    try {
+      if (dueCheckIntervalRef.current != null) window.clearInterval(dueCheckIntervalRef.current);
+      dueCheckIntervalRef.current = window.setInterval(() => {
+        try {
+          if (document.visibilityState !== 'visible') return;
+        } catch {
+          // ignore
+        }
+        void fire();
+      }, 30_000);
+    } catch {
+      // ignore
+    }
+
+    window.addEventListener('focus', onVisibleOrFocus);
+    document.addEventListener('visibilitychange', onVisibleOrFocus);
+
     return () => {
       clearTimer();
+      if (dueCheckIntervalRef.current != null) {
+        try {
+          window.clearInterval(dueCheckIntervalRef.current);
+        } catch {
+          // ignore
+        }
+        dueCheckIntervalRef.current = null;
+      }
+      window.removeEventListener('focus', onVisibleOrFocus);
+      document.removeEventListener('visibilitychange', onVisibleOrFocus);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, alerts, alertsAvailable, activeTimeZone]);
