@@ -473,50 +473,6 @@ export default function CalendarBoard(props: {
 
   return (
     <div className="calendar-root">
-      <div className="calendar-toolbar">
-        <div className="calendar-toolbar-left">
-          <button
-            type="button"
-            className="btn-secondary calendar-nav-btn"
-            aria-label="今日"
-            title="今日"
-            onClick={() => {
-              if (!/^\d{4}-\d{2}-\d{2}$/.test(todayYmd)) return;
-              const m = `${todayYmd.slice(0, 7)}-01`;
-              // keep today month inside the window
-              setActiveMonthFirstYmd(m);
-              setWindowStartMonthFirstYmd(addMonthsYmd(m, -centerIndex));
-              window.setTimeout(() => {
-                scrollToMonth(m);
-              }, 0);
-            }}
-            disabled={disabled}
-          >
-            <span className="material-icons">today</span>
-          </button>
-
-          <div className="calendar-title" aria-label="表示中の月">
-            {monthTitleJa(activeMonthFirstYmd)}
-          </div>
-        </div>
-
-        <div className="calendar-toolbar-right">
-          <div className="calendar-legend">
-            <span className="calendar-legend-item sun">日</span>
-            <span className="calendar-legend-item sat">土</span>
-            <span className="calendar-legend-item holiday">祝</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="calendar-weekdays" aria-hidden="true">
-        {['日', '月', '火', '水', '木', '金', '土'].map((w, idx) => (
-          <div key={w} className={`calendar-weekday ${idx === 0 ? 'is-sun' : idx === 6 ? 'is-sat' : ''}`}> 
-            {w}
-          </div>
-        ))}
-      </div>
-
       <div className="calendar-scroll" ref={scrollRef} onScroll={handleScroll}>
         {months.map((monthFirstYmd) => {
           const gridStartYmd = startOfCalendarGrid(monthFirstYmd);
