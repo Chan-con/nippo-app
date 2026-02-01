@@ -1160,6 +1160,15 @@ input[type='number']::-webkit-inner-spin-button {
   border-radius: var(--radius-medium);
   background: rgba(255, 255, 255, 0.015);
   padding: 8px;
+
+  /* スクロールバー非表示（無限スクロール前提） */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge legacy */
+}
+
+.calendar-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .calendar-month {
