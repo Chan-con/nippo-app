@@ -231,7 +231,6 @@ export default function CalendarBoard(props: {
   const [modalBaseDate, setModalBaseDate] = useState<string>('');
   const [modalEditingId, setModalEditingId] = useState<string | null>(null);
   const [modalTitle, setModalTitle] = useState('');
-  const [modalAllDay, setModalAllDay] = useState(true);
   const [modalStartTime, setModalStartTime] = useState('');
   const [modalMemo, setModalMemo] = useState('');
   const titleRef = useRef<HTMLInputElement | null>(null);
@@ -265,7 +264,6 @@ export default function CalendarBoard(props: {
     setModalEditingId(null);
     setModalBaseDate(String(dateYmd || '').slice(0, 10));
     setModalTitle('');
-    setModalAllDay(true);
     setModalStartTime('');
     setModalMemo('');
     setModalOpen(true);
@@ -278,8 +276,7 @@ export default function CalendarBoard(props: {
     setModalEditingId(id);
     setModalBaseDate(found.date);
     setModalTitle(found.title);
-    setModalAllDay(!!found.allDay);
-    setModalStartTime(found.startTime || '');
+    setModalStartTime(found.allDay ? '' : found.startTime || '');
     setModalMemo(found.memo || '');
     setModalOpen(true);
   }
@@ -300,8 +297,9 @@ export default function CalendarBoard(props: {
     const date = String(modalBaseDate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
     const title = clampTitle(modalTitle);
-    const allDay = !!modalAllDay;
-    const startTime = allDay ? '' : String(modalStartTime || '').trim();
+    const startTimeRaw = String(modalStartTime || '').trim();
+    const allDay = !startTimeRaw;
+    const startTime = allDay ? '' : startTimeRaw;
     if (!allDay && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(startTime)) return;
     const memo = String(modalMemo || '').slice(0, 8000);
 
@@ -742,37 +740,25 @@ export default function CalendarBoard(props: {
 
             <div className="edit-field">
               <label>種類</label>
-              <div className="flex items-center gap-3">
-                <label className="inline-flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={modalAllDay}
-                    onChange={(e) => {
-                      const next = !!e.target.checked;
-                      setModalAllDay(next);
-                      if (next) setModalStartTime('');
-                    }}
-                    disabled={disabled}
-                  />
-                  終日
-                </label>
-                {!modalAllDay ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      開始時刻
-                    </span>
-                    <input
-                      type="time"
-                      className="edit-input"
-                      style={{ width: 140 }}
-                      value={modalStartTime}
-                      onChange={(e) => setModalStartTime(e.target.value)}
-                      disabled={disabled}
-                    />
-                  </div>
+              <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  開始時刻（未設定なら終日）
+                </span>
+                <input
+                  type="time"
+                  className="edit-input"
+                  style={{ width: 160 }}
+                  value={modalStartTime}
+                  onChange={(e) => setModalStartTime(e.target.value)}
+                  disabled={disabled}
+                />
+                {!String(modalStartTime || '').trim() ? (
+                  <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    終日
+                  </span>
                 ) : null}
               </div>
-              {!modalAllDay && modalStartTime && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(modalStartTime || '')) ? (
+              {modalStartTime && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(modalStartTime || '')) ? (
                 <div style={{ marginTop: 6, fontSize: 12, color: 'var(--error)' }}>開始時刻は HH:MM で入力してください</div>
               ) : null}
             </div>
@@ -803,7 +789,7 @@ export default function CalendarBoard(props: {
               onClick={() => {
                 upsertFromModal();
               }}
-              disabled={disabled || !String(modalTitle || '').trim() || (!modalAllDay && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(modalStartTime || '')))}
+              disabled={disabled || !String(modalTitle || '').trim() || (!!String(modalStartTime || '').trim() && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(modalStartTime || '')))}
             >
               <span className="material-icons">done</span>
             </button>
