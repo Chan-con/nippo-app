@@ -160,17 +160,24 @@ export default function CalendarBoard(props: {
   const todayYmd = String(props.todayYmd || '').slice(0, 10);
   const initialMonth = /^\d{4}-\d{2}-\d{2}$/.test(todayYmd) ? `${todayYmd.slice(0, 7)}-01` : '1970-01-01';
 
-  // 縦スクロールで月をまたげるように、複数月を縦に積む。
-  const [baseMonthFirstYmd, setBaseMonthFirstYmd] = useState<string>(addMonthsYmd(initialMonth, -1));
-  const monthsCount = 8;
+  // 無限スクロール: 表示する月の「ウィンドウ」を固定個数だけ描画し、
+  // 端に近づいたらウィンドウ自体を前後にスライドして年数無制限を実現する。
+  const monthsCount = 9;
+  const shiftStep = 3;
+  const edgeThresholdPx = 520;
+  const centerIndex = Math.floor(monthsCount / 2);
+
+  const [windowStartMonthFirstYmd, setWindowStartMonthFirstYmd] = useState<string>(addMonthsYmd(initialMonth, -centerIndex));
+  const [activeMonthFirstYmd, setActiveMonthFirstYmd] = useState<string>(initialMonth);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const monthAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const shiftingRef = useRef(false);
 
   const months = useMemo(() => {
     const out: string[] = [];
-    for (let i = 0; i < monthsCount; i += 1) out.push(addMonthsYmd(baseMonthFirstYmd, i));
+    for (let i = 0; i < monthsCount; i += 1) out.push(addMonthsYmd(windowStartMonthFirstYmd, i));
     return out;
-  }, [baseMonthFirstYmd]);
+  }, [windowStartMonthFirstYmd]);
 
   const normalizedEvents = useMemo(() => normalizeEvents(props.events), [props.events]);
 
@@ -395,23 +402,81 @@ export default function CalendarBoard(props: {
     root.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
   }
 
+  function getAnchorMonthKey(scrollTop: number) {
+    // ビュー上端に近い月をアンカーにする（ウィンドウをスライドしても見た目が飛びにくい）
+    const y = scrollTop + 12;
+    let bestKey: string | null = null;
+    let bestTop = -Infinity;
+    for (const k of months) {
+      const el = monthAnchorRefs.current[k] || null;
+      if (!el) continue;
+      const t = el.offsetTop;
+      if (t <= y && t > bestTop) {
+        bestTop = t;
+        bestKey = k;
+      }
+    }
+    return bestKey ?? months[0] ?? null;
+  }
+
+  function shiftWindow(deltaMonths: number, reason: 'top' | 'bottom' | 'today') {
+    const root = scrollRef.current;
+    if (!root) {
+      setWindowStartMonthFirstYmd((prev) => addMonthsYmd(prev, deltaMonths));
+      return;
+    }
+    const anchorKey = getAnchorMonthKey(root.scrollTop);
+    const anchorEl = anchorKey ? monthAnchorRefs.current[anchorKey] : null;
+    const anchorOffset = anchorEl ? anchorEl.offsetTop - root.scrollTop : 0;
+
+    shiftingRef.current = true;
+    setWindowStartMonthFirstYmd((prev) => addMonthsYmd(prev, deltaMonths));
+
+    window.requestAnimationFrame(() => {
+      const root2 = scrollRef.current;
+      const anchorEl2 = anchorKey ? monthAnchorRefs.current[anchorKey] : null;
+      if (root2 && anchorEl2) {
+        root2.scrollTop = Math.max(0, anchorEl2.offsetTop - anchorOffset);
+      } else if (root2 && reason === 'today') {
+        // today の場合は target を優先
+        scrollToMonth(activeMonthFirstYmd);
+      }
+      shiftingRef.current = false;
+    });
+  }
+
+  function handleScroll() {
+    const root = scrollRef.current;
+    if (!root) return;
+
+    const anchorKey = getAnchorMonthKey(root.scrollTop);
+    if (anchorKey && anchorKey !== activeMonthFirstYmd) setActiveMonthFirstYmd(anchorKey);
+
+    if (shiftingRef.current) return;
+
+    const nearTop = root.scrollTop < edgeThresholdPx;
+    const nearBottom = root.scrollHeight - (root.scrollTop + root.clientHeight) < edgeThresholdPx;
+    if (nearTop) {
+      shiftWindow(-shiftStep, 'top');
+    } else if (nearBottom) {
+      shiftWindow(+shiftStep, 'bottom');
+    }
+  }
+
+  useEffect(() => {
+    // 初回は today 月を見える位置へ
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(initialMonth)) return;
+    window.requestAnimationFrame(() => {
+      scrollToMonth(initialMonth);
+      setActiveMonthFirstYmd(initialMonth);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="calendar-root">
       <div className="calendar-toolbar">
         <div className="calendar-toolbar-left">
-          <button
-            type="button"
-            className="btn-secondary calendar-nav-btn"
-            aria-label="前の月"
-            title="前の月"
-            onClick={() => {
-              setBaseMonthFirstYmd((prev) => addMonthsYmd(prev, -1));
-              window.setTimeout(() => scrollToMonth(addMonthsYmd(baseMonthFirstYmd, -1)), 0);
-            }}
-            disabled={disabled}
-          >
-            <span className="material-icons">chevron_left</span>
-          </button>
           <button
             type="button"
             className="btn-secondary calendar-nav-btn"
@@ -420,30 +485,20 @@ export default function CalendarBoard(props: {
             onClick={() => {
               if (!/^\d{4}-\d{2}-\d{2}$/.test(todayYmd)) return;
               const m = `${todayYmd.slice(0, 7)}-01`;
-              // keep today month inside the range
-              setBaseMonthFirstYmd(addMonthsYmd(m, -1));
-              window.setTimeout(() => scrollToMonth(m), 0);
+              // keep today month inside the window
+              setActiveMonthFirstYmd(m);
+              setWindowStartMonthFirstYmd(addMonthsYmd(m, -centerIndex));
+              window.setTimeout(() => {
+                scrollToMonth(m);
+              }, 0);
             }}
             disabled={disabled}
           >
             <span className="material-icons">today</span>
           </button>
-          <button
-            type="button"
-            className="btn-secondary calendar-nav-btn"
-            aria-label="次の月"
-            title="次の月"
-            onClick={() => {
-              setBaseMonthFirstYmd((prev) => addMonthsYmd(prev, 1));
-              window.setTimeout(() => scrollToMonth(addMonthsYmd(baseMonthFirstYmd, 2)), 0);
-            }}
-            disabled={disabled}
-          >
-            <span className="material-icons">chevron_right</span>
-          </button>
 
           <div className="calendar-title" aria-label="表示中の月">
-            {monthTitleJa(addMonthsYmd(baseMonthFirstYmd, 1))}
+            {monthTitleJa(activeMonthFirstYmd)}
           </div>
         </div>
 
@@ -464,7 +519,7 @@ export default function CalendarBoard(props: {
         ))}
       </div>
 
-      <div className="calendar-scroll" ref={scrollRef}>
+      <div className="calendar-scroll" ref={scrollRef} onScroll={handleScroll}>
         {months.map((monthFirstYmd) => {
           const gridStartYmd = startOfCalendarGrid(monthFirstYmd);
           const monthPrefix = monthFirstYmd.slice(0, 7);
