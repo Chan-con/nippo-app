@@ -958,6 +958,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }, [todayMainTab]);
 
+  // calendar: jump to current month trigger (double click on tab)
+  const [calendarJumpNonce, setCalendarJumpNonce] = useState(0);
+
   // Auto show timeline tab after inactivity.
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -7102,6 +7105,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   role="tab"
                   aria-selected={todayMainTab === 'calendar'}
                   onClick={() => setTodayMainTab('calendar')}
+                  onDoubleClick={() => {
+                    setTodayMainTab('calendar');
+                    setCalendarJumpNonce((n) => n + 1);
+                  }}
                 >
                   🗓️ カレンダー
                 </button>
@@ -7444,6 +7451,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   todayYmd={todayYmd}
                   nowMs={nowMs}
                   events={calendarEvents}
+                  jumpToYmd={todayYmd}
+                  jumpNonce={calendarJumpNonce}
                   onCommitEvents={(nextEvents) => {
                     setCalendarEvents(normalizeCalendarEvents(nextEvents));
                     setCalendarDirty(true);

@@ -156,6 +156,8 @@ export default function CalendarBoard(props: {
   onCommitEvents: (next: CalendarEvent[]) => void;
   onInteractionChange?: (active: boolean, editingId: string | null) => void;
   disabled?: boolean;
+  jumpToYmd?: string;
+  jumpNonce?: number;
 }) {
   const todayYmd = String(props.todayYmd || '').slice(0, 10);
   const initialMonth = /^\d{4}-\d{2}-\d{2}$/.test(todayYmd) ? `${todayYmd.slice(0, 7)}-01` : '1970-01-01';
@@ -163,8 +165,9 @@ export default function CalendarBoard(props: {
   // 無限スクロール: 表示する月の「ウィンドウ」を固定個数だけ描画し、
   // 端に近づいたらウィンドウ自体を前後にスライドして年数無制限を実現する。
   const monthsCount = 9;
-  const shiftStep = 3;
-  const edgeThresholdPx = 520;
+  const shiftStep = 1;
+  const edgeThresholdPx = 180;
+  const shiftCooldownMs = 350;
   const centerIndex = Math.floor(monthsCount / 2);
 
   const [windowStartMonthFirstYmd, setWindowStartMonthFirstYmd] = useState<string>(addMonthsYmd(initialMonth, -centerIndex));
@@ -172,6 +175,8 @@ export default function CalendarBoard(props: {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const monthAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const shiftingRef = useRef(false);
+  const lastShiftAtRef = useRef(0);
+  const ignoreScrollUntilRef = useRef(0);
 
   const months = useMemo(() => {
     const out: string[] = [];
@@ -447,6 +452,7 @@ export default function CalendarBoard(props: {
         // today の場合は target を優先
         scrollToMonth(activeMonthFirstYmd);
       }
+      ignoreScrollUntilRef.current = performance.now() + 180;
       shiftingRef.current = false;
     });
   }
@@ -455,19 +461,42 @@ export default function CalendarBoard(props: {
     const root = scrollRef.current;
     if (!root) return;
 
+    const now = performance.now();
+    if (now < ignoreScrollUntilRef.current) return;
+
     const anchorKey = getAnchorMonthKey(root.scrollTop);
     if (anchorKey && anchorKey !== activeMonthFirstYmd) setActiveMonthFirstYmd(anchorKey);
 
     if (shiftingRef.current) return;
 
+    // 端で暴発しないように、一定間隔以上でしか月ウィンドウを動かさない
+    if (now - lastShiftAtRef.current < shiftCooldownMs) return;
+
     const nearTop = root.scrollTop < edgeThresholdPx;
     const nearBottom = root.scrollHeight - (root.scrollTop + root.clientHeight) < edgeThresholdPx;
     if (nearTop) {
+      lastShiftAtRef.current = now;
       shiftWindow(-shiftStep, 'top');
     } else if (nearBottom) {
+      lastShiftAtRef.current = now;
       shiftWindow(+shiftStep, 'bottom');
     }
   }
+
+  // 外部トリガーで「今月(指定月)へ」
+  useEffect(() => {
+    const ymd = String(props.jumpToYmd || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return;
+    const m = `${ymd.slice(0, 7)}-01`;
+    setActiveMonthFirstYmd(m);
+    setWindowStartMonthFirstYmd(addMonthsYmd(m, -centerIndex));
+    // 描画後に確実にスクロール
+    window.setTimeout(() => {
+      scrollToMonth(m);
+      ignoreScrollUntilRef.current = performance.now() + 250;
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.jumpNonce]);
 
   useEffect(() => {
     // 初回は today 月を見える位置へ
