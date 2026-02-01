@@ -196,6 +196,14 @@ export default function CalendarBoard(props: {
 
   const [memoTooltip, setMemoTooltip] = useState<null | { title: string; memo: string; x: number; y: number }>(null);
 
+  function toSingleLineText(s: string) {
+    return String(s || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function getMemoTooltipPosFromPoint(clientX: number, clientY: number) {
     const pad = 12;
     const estW = 420;
@@ -214,7 +222,7 @@ export default function CalendarBoard(props: {
     if (!memo) return;
     const title = String(e.title || '（無題）').trim() || '（無題）';
     const { x, y } = getMemoTooltipPosFromPoint(ev.clientX, ev.clientY);
-    setMemoTooltip({ title, memo, x, y });
+    setMemoTooltip({ title: toSingleLineText(title), memo: toSingleLineText(memo), x, y });
   }
 
   function placeMemoTooltipAtPoint(clientX: number, clientY: number) {
@@ -663,9 +671,12 @@ export default function CalendarBoard(props: {
 
       {memoTooltip
         ? createPortal(
-            <div className="gantt-memo-tooltip" style={{ transform: `translate3d(${memoTooltip.x}px, ${memoTooltip.y}px, 0)` }} aria-hidden="true">
-              <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
-              <div className="gantt-memo-tooltip-body">{memoTooltip.memo}</div>
+            <div
+              className="gantt-memo-tooltip calendar-memo-tooltip"
+              style={{ transform: `translate3d(${memoTooltip.x}px, ${memoTooltip.y}px, 0)` }}
+              aria-hidden="true"
+            >
+              <div className="calendar-memo-tooltip-line">{`${memoTooltip.title} — ${memoTooltip.memo}`}</div>
             </div>,
             document.body
           )
