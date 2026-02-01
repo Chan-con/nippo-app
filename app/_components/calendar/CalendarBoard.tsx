@@ -410,7 +410,18 @@ export default function CalendarBoard(props: {
     const root = scrollRef.current;
     if (!el || !root) return;
     const top = el.offsetTop;
-    root.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
+    root.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+  }
+
+  function scrollToMonthAfterRender(monthFirstYmd: string) {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        scrollToMonth(monthFirstYmd);
+        const now = performance.now();
+        ignoreScrollUntilRef.current = now + 900;
+        lastShiftAtRef.current = now;
+      });
+    });
   }
 
   function getAnchorMonthKey(scrollTop: number) {
@@ -452,7 +463,9 @@ export default function CalendarBoard(props: {
         // today の場合は target を優先
         scrollToMonth(activeMonthFirstYmd);
       }
-      ignoreScrollUntilRef.current = performance.now() + 180;
+      const now = performance.now();
+      ignoreScrollUntilRef.current = now + 350;
+      lastShiftAtRef.current = now;
       shiftingRef.current = false;
     });
   }
@@ -490,11 +503,8 @@ export default function CalendarBoard(props: {
     const m = `${ymd.slice(0, 7)}-01`;
     setActiveMonthFirstYmd(m);
     setWindowStartMonthFirstYmd(addMonthsYmd(m, -centerIndex));
-    // 描画後に確実にスクロール
-    window.setTimeout(() => {
-      scrollToMonth(m);
-      ignoreScrollUntilRef.current = performance.now() + 250;
-    }, 0);
+    // display:none → 表示に切り替わるケースがあるので、2フレーム待ってから合わせる
+    scrollToMonthAfterRender(m);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.jumpNonce]);
 
