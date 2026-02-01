@@ -7089,7 +7089,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 </div>
               </div>
 
-              <div className="tab-navigation today-panels-tabs" role="tablist" aria-label="今日の表示切り替え">
+              <div
+                className="tab-navigation today-panels-tabs"
+                role="tablist"
+                aria-label="今日の表示切り替え"
+                onWheel={(ev) => {
+                  const el = ev.currentTarget;
+                  if (el.scrollWidth <= el.clientWidth) return;
+                  if (Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
+                  el.scrollLeft += ev.deltaY;
+                  ev.preventDefault();
+                }}
+              >
                 <button
                   type="button"
                   className={`tab-button ${todayMainTab === 'timeline' ? 'active' : ''}`}
@@ -8741,7 +8752,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             <div className="report-section">
               <h4>📝 報告内容</h4>
               <div className="report-tabs">
-                <div className="tab-navigation" id="tab-navigation">
+                <div
+                  className="tab-navigation"
+                  id="tab-navigation"
+                  onWheel={(ev) => {
+                    const el = ev.currentTarget;
+                    if (el.scrollWidth <= el.clientWidth) return;
+                    if (Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
+                    el.scrollLeft += ev.deltaY;
+                    ev.preventDefault();
+                  }}
+                >
                   {reportUrls.map((u) => {
                     const id = String(u.id);
                     const active = (activeReportTabId ?? String(reportUrls[0]?.id ?? '')) === id;
