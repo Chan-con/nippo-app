@@ -3,6 +3,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import CalendarBoard from './_components/calendar/CalendarBoard';
 import GanttBoard from './_components/gantt/GanttBoard';
 import GanttDrawer from './_components/gantt/GanttDrawer';
 import { addDaysYmd } from './_components/gantt/date';
@@ -40,7 +41,7 @@ type TaskLineCard = {
 
 type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'stock';
 
-type TodayMainTab = 'timeline' | 'taskline' | 'gantt' | 'alerts' | 'notes';
+type TodayMainTab = 'timeline' | 'calendar' | 'taskline' | 'gantt' | 'alerts' | 'notes';
 
 type AlertKind = 'once' | 'weekly' | 'monthly';
 
@@ -922,12 +923,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const mainBodyRef = useRef<HTMLDivElement | null>(null);
 
-  // today main panels tab (timeline / taskline / gantt / notes)
+  // today main panels tab (timeline / calendar / taskline / gantt / notes)
   const [todayMainTab, setTodayMainTab] = useState<TodayMainTab>(() => {
     if (typeof window === 'undefined') return 'timeline';
     try {
       const raw = window.localStorage.getItem('nippoTodayMainTab');
-      return raw === 'taskline' || raw === 'gantt' || raw === 'alerts' || raw === 'timeline' || raw === 'notes' ? (raw as TodayMainTab) : 'timeline';
+      return raw === 'calendar' || raw === 'taskline' || raw === 'gantt' || raw === 'alerts' || raw === 'timeline' || raw === 'notes' ? (raw as TodayMainTab) : 'timeline';
     } catch {
       return 'timeline';
     }
@@ -6919,6 +6920,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 </button>
                 <button
                   type="button"
+                  className={`tab-button ${todayMainTab === 'calendar' ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={todayMainTab === 'calendar'}
+                  onClick={() => setTodayMainTab('calendar')}
+                >
+                  🗓️ カレンダー
+                </button>
+                <button
+                  type="button"
                   className={`tab-button ${todayMainTab === 'taskline' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'taskline'}
@@ -7238,6 +7248,22 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   );
                 })}
               </div>
+              </div>
+            ) : null}
+
+            {effectiveViewMode === 'today' && accessToken ? (
+              <div className="calendar-section" style={{ display: todayMainTab === 'calendar' ? undefined : 'none' }}>
+                <CalendarBoard
+                  todayYmd={todayYmd}
+                  tasks={normalizeGanttTasks(ganttTasks)}
+                  selectedTaskId={ganttSelectedTaskId}
+                  onSelectTaskId={(id) => {
+                    setGanttSelectedTaskId(id);
+                  }}
+                  onOpenTaskId={(id) => {
+                    openGanttTask(id);
+                  }}
+                />
               </div>
             ) : null}
 

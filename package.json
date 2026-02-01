@@ -35,13 +35,14 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "next": "^14.2.25",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "html2canvas": "^1.4.1",
+    "@holiday-jp/holiday_jp": "^2.5.1",
+    "@supabase/supabase-js": "^2.49.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.18.0",
-    "@supabase/supabase-js": "^2.49.1"
+    "html2canvas": "^1.4.1",
+    "next": "^14.2.25",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }
