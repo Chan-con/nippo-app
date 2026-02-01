@@ -43,6 +43,16 @@ type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'sto
 
 type TodayMainTab = 'timeline' | 'calendar' | 'taskline' | 'gantt' | 'alerts' | 'notes';
 
+type CalendarEvent = {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD (Asia/Tokyo based)
+  allDay: boolean;
+  startTime: string; // HH:MM (when !allDay)
+  order: number;
+  memo: string;
+};
+
 type AlertKind = 'once' | 'weekly' | 'monthly';
 
 type AlertItem = {
@@ -1605,6 +1615,20 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const ganttIsSavingRef = useRef(false);
   const ganttIsInteractingRef = useRef(false);
 
+  // calendar (events) - all-day + time events (synced via Supabase)
+  const CALENDAR_GLOBAL_KEY = 'global';
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarSaving, setCalendarSaving] = useState(false);
+  const [calendarDirty, setCalendarDirty] = useState(false);
+  const [calendarRemoteUpdatePending, setCalendarRemoteUpdatePending] = useState(false);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const calendarSaveTimerRef = useRef<number | null>(null);
+  const calendarLastSavedSnapshotRef = useRef<string>('');
+  const calendarIsSavingRef = useRef(false);
+  const calendarIsInteractingRef = useRef(false);
+  const calendarEditingIdRef = useRef<string | null>(null);
+
   // alerts (one-shot / weekly / monthly) - synced via Supabase
   const ALERTS_GLOBAL_KEY = 'global';
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -2102,6 +2126,147 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
     return out;
   }
+
+  function normalizeCalendarEvents(input: unknown): CalendarEvent[] {
+    const list = Array.isArray(input) ? input : [];
+    const isYmd = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+    const isHHMM = (s: string) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(s || ''));
+
+    const out: CalendarEvent[] = [];
+    for (let i = 0; i < (list as any[]).length; i += 1) {
+      const item = (list as any[])[i];
+      const id = typeof item?.id === 'string' ? String(item.id) : '';
+      const titleRaw = typeof item?.title === 'string' ? String(item.title) : '';
+      const date = typeof item?.date === 'string' ? String(item.date) : '';
+      const allDay = !!item?.allDay;
+      const startTimeRaw = typeof item?.startTime === 'string' ? String(item.startTime) : '';
+      const memo = typeof item?.memo === 'string' ? String(item.memo) : '';
+      const orderRaw = item?.order;
+      if (!id) continue;
+      if (!isYmd(date)) continue;
+      const title = titleRaw.trim() ? titleRaw.slice(0, 200) : '（無題）';
+      const startTime = allDay ? '' : (isHHMM(startTimeRaw) ? startTimeRaw : '');
+      const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? Math.trunc(orderRaw) : i;
+      out.push({ id: id.slice(0, 80), title, date, allDay: !!allDay, startTime, order, memo: memo.slice(0, 8000) });
+    }
+    return out;
+  }
+
+  function calendarSnapshot(events: CalendarEvent[]) {
+    try {
+      return JSON.stringify(
+        (Array.isArray(events) ? events : []).map((e) => ({
+          id: e.id,
+          title: e.title,
+          date: e.date,
+          allDay: !!e.allDay,
+          startTime: e.startTime || '',
+          order: e.order ?? 0,
+          memo: e.memo || '',
+        }))
+      );
+    } catch {
+      return '';
+    }
+  }
+
+  async function loadCalendarFromServer() {
+    if (!accessToken) return;
+    setCalendarLoading(true);
+    setCalendarError(null);
+    try {
+      const res = await apiFetch('/api/calendar', { cache: 'no-store' });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'カレンダーの取得に失敗しました');
+      const events = normalizeCalendarEvents(body?.calendar?.events);
+      setCalendarEvents(events);
+      calendarLastSavedSnapshotRef.current = calendarSnapshot(events);
+      setCalendarDirty(false);
+      setCalendarRemoteUpdatePending(false);
+    } catch (e: any) {
+      setCalendarError(e?.message || String(e));
+      setCalendarEvents([]);
+      calendarLastSavedSnapshotRef.current = '';
+      setCalendarDirty(false);
+    } finally {
+      setCalendarLoading(false);
+    }
+  }
+
+  async function saveCalendarToServer(events: CalendarEvent[], snapshotOverride?: string) {
+    if (!accessToken) return;
+    if (calendarIsSavingRef.current) return;
+    calendarIsSavingRef.current = true;
+    setCalendarSaving(true);
+    setCalendarError(null);
+    try {
+      const snapshot = snapshotOverride ?? calendarSnapshot(events);
+      const res = await apiFetch('/api/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ events }),
+      });
+      const body = await res.json().catch(() => null as any);
+      if (!res.ok || !body?.success) throw new Error(body?.error || 'カレンダーの保存に失敗しました');
+      calendarLastSavedSnapshotRef.current = snapshot;
+      setCalendarDirty(false);
+      setCalendarRemoteUpdatePending(false);
+    } catch (e: any) {
+      setCalendarError(e?.message || String(e));
+    } finally {
+      setCalendarSaving(false);
+      calendarIsSavingRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!accessToken) {
+      setCalendarEvents([]);
+      setCalendarDirty(false);
+      setCalendarRemoteUpdatePending(false);
+      setCalendarError(null);
+      calendarLastSavedSnapshotRef.current = '';
+      return;
+    }
+    void loadCalendarFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    if (!calendarDirty) return;
+    if (calendarIsSavingRef.current) return;
+    if (calendarIsInteractingRef.current) return;
+    if (calendarEditingIdRef.current) return;
+
+    try {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) return;
+    } catch {
+      // ignore
+    }
+
+    const snapshot = calendarSnapshot(calendarEvents);
+    if (snapshot && snapshot === calendarLastSavedSnapshotRef.current) {
+      setCalendarDirty(false);
+      return;
+    }
+
+    if (calendarSaveTimerRef.current) window.clearTimeout(calendarSaveTimerRef.current);
+    calendarSaveTimerRef.current = window.setTimeout(() => {
+      void saveCalendarToServer(calendarEvents, snapshot);
+    }, 700);
+
+    return () => {
+      if (calendarSaveTimerRef.current) window.clearTimeout(calendarSaveTimerRef.current);
+      calendarSaveTimerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarEvents, calendarDirty, accessToken]);
 
   function commitGanttTasks(nextTasksRaw: GanttTask[]) {
     const nextTasks = normalizeGanttTasks(nextTasksRaw).map((t) => ({ ...t, laneId: 'default' }));
@@ -4304,6 +4469,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             return;
           }
 
+          if (docType === 'calendar' && typeof docKey === 'string' && docKey === CALENDAR_GLOBAL_KEY) {
+            if (effectiveViewMode === 'history') return;
+            if (calendarEditingIdRef.current) return;
+            if (calendarDirty || calendarIsInteractingRef.current) {
+              setCalendarRemoteUpdatePending(true);
+              return;
+            }
+            if (calendarIsSavingRef.current) return;
+            void loadCalendarFromServer();
+            return;
+          }
+
           if (docType === 'tasks' && billingOpen) {
             void fetchBillingSummary();
           }
@@ -4334,6 +4511,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     taskLineDirty,
     ganttEditingId,
     ganttDirty,
+    calendarDirty,
     notesEditingId,
     notesDirty,
     alertModalOpen,
@@ -7253,16 +7431,29 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {effectiveViewMode === 'today' && accessToken ? (
               <div className="calendar-section" style={{ display: todayMainTab === 'calendar' ? undefined : 'none' }}>
+                <div className="calendar-statusbar" aria-hidden="true">
+                  <div className="calendar-status" aria-live="polite">
+                    {calendarLoading ? <span className="calendar-status-item">同期中…</span> : null}
+                    {!calendarLoading && calendarSaving ? <span className="calendar-status-item">保存中…</span> : null}
+                    {!calendarLoading && !calendarSaving && calendarDirty ? <span className="calendar-status-item">未保存</span> : null}
+                    {calendarRemoteUpdatePending ? <span className="calendar-status-item">他端末で更新あり（保存後に反映）</span> : null}
+                    {calendarError ? <span className="calendar-status-item error">{calendarError}</span> : null}
+                  </div>
+                </div>
                 <CalendarBoard
                   todayYmd={todayYmd}
-                  tasks={normalizeGanttTasks(ganttTasks)}
-                  selectedTaskId={ganttSelectedTaskId}
-                  onSelectTaskId={(id) => {
-                    setGanttSelectedTaskId(id);
+                  nowMs={nowMs}
+                  events={calendarEvents}
+                  onCommitEvents={(nextEvents) => {
+                    setCalendarEvents(normalizeCalendarEvents(nextEvents));
+                    setCalendarDirty(true);
+                    setCalendarRemoteUpdatePending(false);
                   }}
-                  onOpenTaskId={(id) => {
-                    openGanttTask(id);
+                  onInteractionChange={(active, editingId) => {
+                    calendarIsInteractingRef.current = !!active;
+                    calendarEditingIdRef.current = editingId ? String(editingId) : null;
                   }}
+                  disabled={busy}
                 />
               </div>
             ) : null}

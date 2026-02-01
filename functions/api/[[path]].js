@@ -174,6 +174,8 @@ const NOTICE_GLOBAL_KEY = 'global';
 
 const ALERTS_GLOBAL_KEY = 'global';
 
+const CALENDAR_GLOBAL_KEY = 'global';
+
 function getNowJstDate() {
   const now = new Date();
   return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
@@ -189,6 +191,40 @@ function clampInt(n, min, max, fallback) {
   const v = typeof n === 'number' && Number.isFinite(n) ? Math.trunc(n) : parseInt(String(n || ''), 10);
   if (!Number.isFinite(v)) return fallback;
   return Math.max(min, Math.min(max, v));
+}
+
+function normalizeCalendarEvents(input) {
+  const list = Array.isArray(input) ? input : [];
+  const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+  const isHHMM = (s) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(s || ''));
+
+  const out = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
+    const id = typeof item?.id === 'string' ? String(item.id) : '';
+    const titleRaw = typeof item?.title === 'string' ? String(item.title) : '';
+    const date = typeof item?.date === 'string' ? String(item.date) : '';
+    const allDay = !!item?.allDay;
+    const startTimeRaw = typeof item?.startTime === 'string' ? String(item.startTime) : '';
+    const memo = typeof item?.memo === 'string' ? String(item.memo) : '';
+    const orderRaw = item?.order;
+
+    if (!id) continue;
+    if (!isYmd(date)) continue;
+    const title = titleRaw.trim() ? titleRaw.slice(0, 200) : '（無題）';
+    const startTime = allDay ? '' : (isHHMM(startTimeRaw) ? startTimeRaw : '');
+    const order = typeof orderRaw === 'number' && Number.isFinite(orderRaw) ? Math.trunc(orderRaw) : i;
+    out.push({
+      id: id.slice(0, 80),
+      title,
+      date,
+      allDay: !!allDay,
+      startTime,
+      order,
+      memo: memo.slice(0, 8000),
+    });
+  }
+  return out;
 }
 
 function jstDateToIso(d) {
@@ -1047,6 +1083,34 @@ export async function onRequest(context) {
         updatedAt: new Date().toISOString(),
       });
 
+      return jsonResponse({ success: true });
+    }
+
+    // calendar (events) - synced via Supabase docs
+    if (parts.length === 1 && parts[0] === 'calendar' && request.method === 'GET') {
+      const doc = await taskManager._getDoc(userId, 'calendar', CALENDAR_GLOBAL_KEY, {
+        key: CALENDAR_GLOBAL_KEY,
+        events: [],
+      });
+
+      const events = normalizeCalendarEvents(doc?.events).slice(0, 4000);
+      return jsonResponse({
+        success: true,
+        calendar: {
+          key: CALENDAR_GLOBAL_KEY,
+          events,
+          updatedAt: typeof doc?.updatedAt === 'string' ? String(doc.updatedAt) : '',
+        },
+      });
+    }
+
+    if (parts.length === 1 && parts[0] === 'calendar' && request.method === 'POST') {
+      const events = normalizeCalendarEvents(body?.events).slice(0, 6000);
+      await taskManager._setDoc(userId, 'calendar', CALENDAR_GLOBAL_KEY, {
+        key: CALENDAR_GLOBAL_KEY,
+        events,
+        updatedAt: new Date().toISOString(),
+      });
       return jsonResponse({ success: true });
     }
 
