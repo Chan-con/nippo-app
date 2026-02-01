@@ -405,22 +405,54 @@ export default function CalendarBoard(props: {
     });
   }
 
-  function scrollToMonth(monthFirstYmd: string) {
+  function getScrollInsetTopPx(root: HTMLElement) {
+    try {
+      const cs = window.getComputedStyle(root);
+      const pad = parseFloat(String(cs.paddingTop || '0'));
+      const border = parseFloat(String(cs.borderTopWidth || '0'));
+      const padV = Number.isFinite(pad) ? pad : 0;
+      const borderV = Number.isFinite(border) ? border : 0;
+      return padV + borderV;
+    } catch {
+      return 0;
+    }
+  }
+
+  function scrollToMonthExact(monthFirstYmd: string) {
     const el = monthAnchorRefs.current[String(monthFirstYmd)] || null;
     const root = scrollRef.current;
-    if (!el || !root) return;
-    const top = el.offsetTop;
-    root.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    if (!el || !root) return false;
+    if (root.clientHeight <= 0) return false;
+
+    const rootRect = root.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const insetTop = getScrollInsetTopPx(root);
+    const desiredTop = rootRect.top + insetTop;
+    const delta = elRect.top - desiredTop;
+    if (!Number.isFinite(delta)) return false;
+
+    root.scrollTop = Math.max(0, Math.round(root.scrollTop + delta));
+    return true;
   }
 
   function scrollToMonthAfterRender(monthFirstYmd: string) {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        scrollToMonth(monthFirstYmd);
+    const maxTries = 12;
+    let tries = 0;
+
+    const tick = () => {
+      tries += 1;
+      const ok = scrollToMonthExact(monthFirstYmd);
+      if (ok || tries >= maxTries) {
         const now = performance.now();
         ignoreScrollUntilRef.current = now + 900;
         lastShiftAtRef.current = now;
-      });
+        return;
+      }
+      window.requestAnimationFrame(tick);
+    };
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tick);
     });
   }
 
@@ -461,7 +493,7 @@ export default function CalendarBoard(props: {
         root2.scrollTop = Math.max(0, anchorEl2.offsetTop - anchorOffset);
       } else if (root2 && reason === 'today') {
         // today の場合は target を優先
-        scrollToMonth(activeMonthFirstYmd);
+        scrollToMonthExact(activeMonthFirstYmd);
       }
       const now = performance.now();
       ignoreScrollUntilRef.current = now + 350;
@@ -512,7 +544,7 @@ export default function CalendarBoard(props: {
     // 初回は today 月を見える位置へ
     if (!/^\d{4}-\d{2}-\d{2}$/.test(initialMonth)) return;
     window.requestAnimationFrame(() => {
-      scrollToMonth(initialMonth);
+      scrollToMonthAfterRender(initialMonth);
       setActiveMonthFirstYmd(initialMonth);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -536,15 +568,14 @@ export default function CalendarBoard(props: {
           });
 
           return (
-            <div key={monthFirstYmd} className="calendar-month">
-              <div
-                className="calendar-month-title"
-                ref={(el) => {
-                  monthAnchorRefs.current[monthFirstYmd] = el;
-                }}
-              >
-                {monthTitleJa(monthFirstYmd)}
-              </div>
+            <div
+              key={monthFirstYmd}
+              className="calendar-month"
+              ref={(el) => {
+                monthAnchorRefs.current[monthFirstYmd] = el;
+              }}
+            >
+              <div className="calendar-month-title">{monthTitleJa(monthFirstYmd)}</div>
 
               <div className="calendar-grid" role="grid" aria-label={`月間カレンダー ${monthTitleJa(monthFirstYmd)}`}>
                 {gridDays.map((cell) => {
