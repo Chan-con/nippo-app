@@ -30,6 +30,8 @@ type Task = {
   memo?: string;
   url?: string;
   status?: string | null;
+  // 就労時間集計に含めるか（タスク単位）。未設定(undefined)なら設定の除外タスク名に従う。
+  isTracked?: boolean;
 };
 
 type TaskLineCard = {
@@ -791,6 +793,32 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return workTimeExcludedNameSet.has(v);
   }
 
+  function getDefaultWorkTimeTrackedByName(name?: string) {
+    return !isWorkTimeExcludedTaskName(name);
+  }
+
+  function isTaskTrackedForWorkTime(task: Task) {
+    const explicit = (task as any)?.isTracked;
+    if (typeof explicit === 'boolean') return explicit;
+    return getDefaultWorkTimeTrackedByName(task?.name);
+  }
+
+  function getWorkTimeTrackIconKind(task: Task): 'excluded' | 'override-untracked' | null {
+    const name = String(task?.name ?? '').trim();
+    const defaultExcluded = isWorkTimeExcludedTaskName(name);
+    const explicit = (task as any)?.isTracked;
+
+    // explicit tracked: for excluded-name tasks, we intentionally show *no* excluded icon.
+    if (typeof explicit === 'boolean') {
+      if (explicit) return null;
+      // explicit untracked
+      return defaultExcluded ? 'excluded' : 'override-untracked';
+    }
+
+    // default behavior
+    return defaultExcluded ? 'excluded' : null;
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const update = () => {
@@ -897,6 +925,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [editEndTime, setEditEndTime] = useState('');
   const [editMemo, setEditMemo] = useState('');
   const [editUrl, setEditUrl] = useState('');
+  const [editTrackedOverride, setEditTrackedOverride] = useState<boolean | null>(null);
 
   const editNameTrimmed = String(editName ?? '').trim();
   const editNameInTaskStock = !!editNameTrimmed && taskStock.includes(editNameTrimmed);
@@ -3890,6 +3919,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setEditTag('');
       setEditStartTime('');
       setEditEndTime('');
+      setEditTrackedOverride(null);
       setSettingsTimeRoundingInterval(0);
       setSettingsTimeRoundingMode('nearest');
       setSettingsExcludeTaskNames([]);
@@ -4956,7 +4986,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const completed = tasks.filter((t) => !!t.endTime).length;
       const totalMinutesRaw = tasks.reduce((sum, t) => {
         if (t.status === 'reserved') return sum;
-        if (isWorkTimeExcludedTaskName(t.name)) return sum;
+        if (!isTaskTrackedForWorkTime(t)) return sum;
         const m = calcDurationMinutes(t.startTime, t.endTime);
         return sum + (m ?? 0);
       }, 0);
@@ -5355,14 +5385,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               >
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-1">
-                    {isWorkTimeExcludedTaskName(t.name) ? (
+                    {getWorkTimeTrackIconKind(t) === 'excluded' ? (
                       <span
                         className="material-icons"
-                        title="就労時間の集計から除外"
-                        aria-label="就労時間の集計から除外"
+                        title="就労時間の集計から除外（設定）"
+                        aria-label="就労時間の集計から除外（設定）"
                         style={{ fontSize: 16, color: 'var(--text-muted)' }}
                       >
                         local_cafe
+                      </span>
+                    ) : getWorkTimeTrackIconKind(t) === 'override-untracked' ? (
+                      <span
+                        className="material-icons"
+                        title="就労時間の集計から除外（このタスクのみ）"
+                        aria-label="就労時間の集計から除外（このタスクのみ）"
+                        style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                      >
+                        timer_off
                       </span>
                     ) : null}
                     <div className="truncate text-sm text-[var(--text-primary)]">{t.name}</div>
@@ -5454,14 +5493,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               >
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-1">
-                    {isWorkTimeExcludedTaskName(t.name) ? (
+                    {getWorkTimeTrackIconKind(t) === 'excluded' ? (
                       <span
                         className="material-icons"
-                        title="就労時間の集計から除外"
-                        aria-label="就労時間の集計から除外"
+                        title="就労時間の集計から除外（設定）"
+                        aria-label="就労時間の集計から除外（設定）"
                         style={{ fontSize: 16, color: 'var(--text-muted)' }}
                       >
                         local_cafe
+                      </span>
+                    ) : getWorkTimeTrackIconKind(t) === 'override-untracked' ? (
+                      <span
+                        className="material-icons"
+                        title="就労時間の集計から除外（このタスクのみ）"
+                        aria-label="就労時間の集計から除外（このタスクのみ）"
+                        style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                      >
+                        timer_off
                       </span>
                     ) : null}
                     <div className="truncate text-sm text-[var(--text-primary)]">{t.name}</div>
@@ -5992,7 +6040,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   const totalMinutesRaw = effectiveTasks.reduce((sum, t) => {
     if (t.status === 'reserved') return sum;
-    if (isWorkTimeExcludedTaskName(t.name)) return sum;
+    if (!isTaskTrackedForWorkTime(t)) return sum;
     const m = calcDurationMinutes(t.startTime, t.endTime);
     return sum + (m ?? 0);
   }, 0);
@@ -6176,6 +6224,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setEditEndTime(formatTimeDisplay(task.endTime) || '');
     setEditMemo(String(task.memo || ''));
     setEditUrl(String((task as any)?.url || ''));
+    setEditTrackedOverride(typeof (task as any)?.isTracked === 'boolean' ? (task as any).isTracked : null);
     setEditOpen(true);
   }
 
@@ -6231,6 +6280,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     endTime: string;
     memo: string;
     url: string;
+    isTracked: boolean | null;
   };
 
   async function saveEditingTaskFromDraft(draft: TaskEditDraft) {
@@ -6243,6 +6293,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const tag = String(draft?.tag || '').trim();
     const memo = String(draft?.memo || '');
     const url = String(draft?.url || '');
+    const isTracked = typeof draft?.isTracked === 'boolean' ? draft.isTracked : null;
 
     if (!name || !startTime) return;
 
@@ -6255,7 +6306,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url }),
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url, isTracked }),
         });
         const body = await res.json().catch(() => null as any);
         if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
@@ -6264,7 +6315,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         const res = await apiFetch(`/api/tasks/${editingTaskId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url }),
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url, isTracked }),
         });
         const body = await res.json().catch(() => null as any);
         if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
@@ -6278,6 +6329,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setEditEndTime(endTime);
       setEditMemo(memo);
       setEditUrl(url);
+      setEditTrackedOverride(isTracked);
 
       setEditOpen(false);
     } catch (e: any) {
@@ -8377,14 +8429,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             }}
                           >
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              {isWorkTimeExcludedTaskName(t.name) ? (
+                              {getWorkTimeTrackIconKind(t) === 'excluded' ? (
                                 <span
                                   className="material-icons"
-                                  title="就労時間の集計から除外"
-                                  aria-label="就労時間の集計から除外"
+                                  title="就労時間の集計から除外（設定）"
+                                  aria-label="就労時間の集計から除外（設定）"
                                   style={{ fontSize: 16, color: 'var(--text-muted)' }}
                                 >
                                   local_cafe
+                                </span>
+                              ) : getWorkTimeTrackIconKind(t) === 'override-untracked' ? (
+                                <span
+                                  className="material-icons"
+                                  title="就労時間の集計から除外（このタスクのみ）"
+                                  aria-label="就労時間の集計から除外（このタスクのみ）"
+                                  style={{ fontSize: 16, color: 'var(--text-muted)' }}
+                                >
+                                  timer_off
                                 </span>
                               ) : null}
                               <span>{renderTextWithLinks(t.name)}</span>
@@ -8482,9 +8543,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         open={editOpen}
         busy={busy}
         accessToken={accessToken}
-        initial={{ name: editName, tag: editTagTrimmed, startTime: editStartTime, endTime: editEndTime, memo: editMemo, url: editUrl }}
+        initial={{ name: editName, tag: editTagTrimmed, startTime: editStartTime, endTime: editEndTime, memo: editMemo, url: editUrl, trackedOverride: editTrackedOverride }}
         taskStock={taskStock}
         tagStock={tagStock}
+        getDefaultIsTracked={(name) => getDefaultWorkTimeTrackedByName(name)}
         onClose={() => setEditOpen(false)}
         onToggleTaskStock={(name) => {
           const trimmed = String(name || '').trim();
@@ -10424,12 +10486,13 @@ function TaskEditDialog(props: {
   open: boolean;
   busy: boolean;
   accessToken: string | null;
-  initial: { name: string; tag: string; startTime: string; endTime: string; memo: string; url: string };
+  initial: { name: string; tag: string; startTime: string; endTime: string; memo: string; url: string; trackedOverride: boolean | null };
   taskStock: string[];
   tagStock: Array<{ id?: string | null; name: string }>;
+  getDefaultIsTracked: (name: string) => boolean;
   onClose: () => void;
   onToggleTaskStock: (name: string) => void;
-  onSave: (draft: { name: string; tag: string; startTime: string; endTime: string; memo: string; url: string }) => void;
+  onSave: (draft: { name: string; tag: string; startTime: string; endTime: string; memo: string; url: string; isTracked: boolean | null }) => void;
   onDelete: () => void;
 }) {
   function hhmmNow() {
@@ -10445,6 +10508,7 @@ function TaskEditDialog(props: {
   const [endTime, setEndTime] = useState(props.initial.endTime);
   const [memo, setMemo] = useState(props.initial.memo);
   const [url, setUrl] = useState(props.initial.url);
+  const [trackedOverride, setTrackedOverride] = useState<boolean | null>(props.initial.trackedOverride);
 
   useEffect(() => {
     if (!props.open) return;
@@ -10454,8 +10518,9 @@ function TaskEditDialog(props: {
     setEndTime(props.initial.endTime);
     setMemo(props.initial.memo);
     setUrl(props.initial.url);
+    setTrackedOverride(props.initial.trackedOverride);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.open, props.initial.name, props.initial.tag, props.initial.startTime, props.initial.endTime, props.initial.memo, props.initial.url]);
+  }, [props.open, props.initial.name, props.initial.tag, props.initial.startTime, props.initial.endTime, props.initial.memo, props.initial.url, props.initial.trackedOverride]);
 
   if (!props.open) {
     return <div className={`edit-dialog ${props.open ? 'show' : ''}`} id="edit-dialog" aria-hidden={!props.open} />;
@@ -10465,6 +10530,8 @@ function TaskEditDialog(props: {
   const trimmedTag = String(tag || '').trim();
   const inStock = !!trimmedName && (Array.isArray(props.taskStock) ? props.taskStock : []).includes(trimmedName);
   const effectiveTagStock = Array.isArray(props.tagStock) ? props.tagStock : [];
+  const defaultIsTracked = props.getDefaultIsTracked(trimmedName);
+  const effectiveIsTracked = typeof trackedOverride === 'boolean' ? trackedOverride : defaultIsTracked;
 
   return (
     <div className={`edit-dialog ${props.open ? 'show' : ''}`} id="edit-dialog" aria-hidden={!props.open}>
@@ -10498,6 +10565,20 @@ function TaskEditDialog(props: {
                 disabled={!props.accessToken || props.busy || !trimmedName}
               >
                 <span className="material-icons">{inStock ? 'bookmark_remove' : 'bookmark_add'}</span>
+              </button>
+              <button
+                id="edit-toggle-track-btn"
+                className="icon-btn"
+                title={effectiveIsTracked ? '就労時間集計に含める（クリックで除外）' : '就労時間集計から除外（クリックで含める）'}
+                aria-label={effectiveIsTracked ? '就労時間集計に含める（クリックで除外）' : '就労時間集計から除外（クリックで含める）'}
+                type="button"
+                onClick={() => {
+                  if (props.busy) return;
+                  setTrackedOverride(!effectiveIsTracked);
+                }}
+                disabled={!props.accessToken || props.busy}
+              >
+                <span className="material-icons">{effectiveIsTracked ? 'timer' : 'timer_off'}</span>
               </button>
             </div>
           </div>
@@ -10604,7 +10685,7 @@ function TaskEditDialog(props: {
             title="保存"
             aria-label="保存"
             type="button"
-            onClick={() => props.onSave({ name, tag: trimmedTag, startTime, endTime, memo, url })}
+            onClick={() => props.onSave({ name, tag: trimmedTag, startTime, endTime, memo, url, isTracked: trackedOverride })}
             disabled={!props.accessToken || props.busy}
           >
             <span className="material-icons">save</span>

@@ -628,7 +628,7 @@ export class SupabaseTaskManagerEdge {
     return { success: true, task: newTask };
   }
 
-  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, url, userId) {
+  async updateHistoryTask(dateString, taskId, taskName, startTime, endTime, tag, memo, url, isTracked, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -644,7 +644,7 @@ export class SupabaseTaskManagerEdge {
     }
 
     const nowIso = new Date().toISOString();
-    tasks[idx] = {
+    const next = {
       ...tasks[idx],
       name: taskName,
       startTime,
@@ -654,6 +654,8 @@ export class SupabaseTaskManagerEdge {
       url: typeof url === 'string' ? url : (tasks[idx]?.url || ''),
       updatedAt: nowIso,
     };
+    if (typeof isTracked === 'boolean') next.isTracked = isTracked;
+    tasks[idx] = next;
 
     const adjusted = adjustConflictingTasksByEditedTask(tasks, taskId);
 
@@ -666,7 +668,7 @@ export class SupabaseTaskManagerEdge {
     return { success: true, task: tasks[idx], adjustments: adjusted.adjustments };
   }
 
-  async updateTask(taskId, taskName, startTime, endTime, tag, memo, url, userId) {
+  async updateTask(taskId, taskName, startTime, endTime, tag, memo, url, isTracked, userId) {
     await this.initialize();
     if (!userId) throw new Error('userId is required');
 
@@ -676,7 +678,7 @@ export class SupabaseTaskManagerEdge {
     if (idx === -1) return null;
 
     const nowIso = new Date().toISOString();
-    tasks[idx] = {
+    const next = {
       ...tasks[idx],
       name: taskName,
       startTime,
@@ -686,6 +688,8 @@ export class SupabaseTaskManagerEdge {
       url: typeof url === 'string' ? url : (tasks[idx]?.url || ''),
       updatedAt: nowIso,
     };
+    if (typeof isTracked === 'boolean') next.isTracked = isTracked;
+    tasks[idx] = next;
 
     const adjusted = adjustConflictingTasksByEditedTask(tasks, taskId);
 
@@ -914,7 +918,12 @@ export class SupabaseTaskManagerEdge {
           if (!t) continue;
           if (t.status === 'reserved') continue;
           const name = String(t.name ?? '').trim();
-          if (name && exclude.has(name)) continue;
+          const explicitTracked = t?.isTracked;
+          if (typeof explicitTracked === 'boolean') {
+            if (!explicitTracked) continue;
+          } else {
+            if (name && exclude.has(name)) continue;
+          }
           const minutes = calcDurationMinutes(t.startTime, t.endTime);
           if (minutes == null || minutes <= 0) continue;
           hasCountable = true;
@@ -953,7 +962,12 @@ export class SupabaseTaskManagerEdge {
         if (!t) continue;
         if (t.status === 'reserved') continue;
         const name = String(t.name ?? '').trim();
-        if (name && exclude.has(name)) continue;
+        const explicitTracked = t?.isTracked;
+        if (typeof explicitTracked === 'boolean') {
+          if (!explicitTracked) continue;
+        } else {
+          if (name && exclude.has(name)) continue;
+        }
         const minutes = calcDurationMinutes(t.startTime, t.endTime);
         if (minutes == null) continue;
         total += minutes;
