@@ -256,7 +256,7 @@ export default function CalendarBoard(props: {
   useEffect(() => {
     if (!props.onInteractionChange) return;
     props.onInteractionChange(modalOpen || !!draggingId, modalOpen ? modalEditingId : null);
-  }, [modalOpen, modalEditingId, draggingId, props]);
+  }, [modalOpen, modalEditingId, draggingId, props.onInteractionChange]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -391,8 +391,6 @@ export default function CalendarBoard(props: {
     };
 
     window.addEventListener('dragend', cleanup, true);
-    window.addEventListener('drop', cleanup, true);
-    window.addEventListener('mouseup', cleanup, true);
     window.addEventListener('blur', cleanup, true);
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -402,8 +400,6 @@ export default function CalendarBoard(props: {
 
     return () => {
       window.removeEventListener('dragend', cleanup, true);
-      window.removeEventListener('drop', cleanup, true);
-      window.removeEventListener('mouseup', cleanup, true);
       window.removeEventListener('blur', cleanup, true);
       window.removeEventListener('keydown', onKeyDown, true);
     };

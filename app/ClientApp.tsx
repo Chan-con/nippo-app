@@ -1631,7 +1631,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const calendarIsSavingRef = useRef(false);
   const calendarIsInteractingRef = useRef(false);
   const calendarEditingIdRef = useRef<string | null>(null);
-  const [calendarInteractionNonce, setCalendarInteractionNonce] = useState(0);
+  const [calendarIsInteracting, setCalendarIsInteracting] = useState(false);
+  const [calendarEditingId, setCalendarEditingId] = useState<string | null>(null);
+  const calendarInteractionLastRef = useRef<{ active: boolean; editingId: string | null }>({ active: false, editingId: null });
 
   // alerts (one-shot / weekly / monthly) - synced via Supabase
   const ALERTS_GLOBAL_KEY = 'global';
@@ -2240,8 +2242,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!accessToken) return;
     if (!calendarDirty) return;
     if (calendarIsSavingRef.current) return;
-    if (calendarIsInteractingRef.current) return;
-    if (calendarEditingIdRef.current) return;
+    if (calendarIsInteractingRef.current || calendarIsInteracting) return;
+    if (calendarEditingIdRef.current || calendarEditingId) return;
 
     try {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
@@ -2270,7 +2272,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       calendarSaveTimerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarEvents, calendarDirty, accessToken, calendarInteractionNonce]);
+  }, [calendarEvents, calendarDirty, accessToken, calendarIsInteracting, calendarEditingId]);
 
   function commitGanttTasks(nextTasksRaw: GanttTask[]) {
     const nextTasks = normalizeGanttTasks(nextTasksRaw).map((t) => ({ ...t, laneId: 'default' }));
@@ -7471,9 +7473,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     setCalendarRemoteUpdatePending(false);
                   }}
                   onInteractionChange={(active, editingId) => {
-                    calendarIsInteractingRef.current = !!active;
-                    calendarEditingIdRef.current = editingId ? String(editingId) : null;
-                    setCalendarInteractionNonce((x) => x + 1);
+                    const nextActive = !!active;
+                    const nextEditingId = editingId ? String(editingId) : null;
+                    calendarIsInteractingRef.current = nextActive;
+                    calendarEditingIdRef.current = nextEditingId;
+
+                    const prev = calendarInteractionLastRef.current;
+                    if (prev.active === nextActive && prev.editingId === nextEditingId) return;
+                    calendarInteractionLastRef.current = { active: nextActive, editingId: nextEditingId };
+                    setCalendarIsInteracting(nextActive);
+                    setCalendarEditingId(nextEditingId);
                   }}
                   disabled={busy}
                 />
