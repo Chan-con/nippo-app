@@ -3773,6 +3773,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  // calendar tab でも「おやすみ日」を表示したいので、ログイン後に一度だけ取得しておく
+  useEffect(() => {
+    if (!accessToken) return;
+    if (holidayCalendarLoaded) return;
+    void loadHolidayCalendarFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, holidayCalendarLoaded]);
+
   async function saveHolidayCalendarToServer() {
     if (!accessToken) return;
     setHolidayCalendarSyncing(true);
@@ -7645,6 +7653,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   todayYmd={todayYmd}
                   nowMs={nowMs}
                   events={calendarEvents}
+                  holidayYmds={holidayCalendarHolidays}
                   jumpToYmd={todayYmd}
                   jumpNonce={calendarJumpNonce}
                   onCommitEvents={(nextEvents) => {

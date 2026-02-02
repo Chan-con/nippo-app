@@ -156,6 +156,7 @@ export default function CalendarBoard(props: {
   todayYmd: string;
   nowMs: number;
   events: CalendarEvent[];
+  holidayYmds?: Set<string> | string[];
   onCommitEvents: (next: CalendarEvent[]) => void;
   onSaveAndSync?: (next: CalendarEvent[]) => void;
   onInteractionChange?: (active: boolean, editingId: string | null) => void;
@@ -197,6 +198,14 @@ export default function CalendarBoard(props: {
   const shiftingRef = useRef(false);
   const lastShiftAtRef = useRef(0);
   const ignoreScrollUntilRef = useRef(0);
+
+  const userHolidaySet = useMemo(() => {
+    const raw = props.holidayYmds;
+    if (!raw) return new Set<string>();
+    if (raw instanceof Set) return raw;
+    if (Array.isArray(raw)) return new Set(raw.map((s) => String(s || '').slice(0, 10)));
+    return new Set<string>();
+  }, [props.holidayYmds]);
 
   const windowStartMonthFirstYmdRef = useRef(windowStartMonthFirstYmd);
   useEffect(() => {
@@ -793,7 +802,8 @@ export default function CalendarBoard(props: {
             const inMonth = ymd.slice(0, 7) === monthPrefix;
             const isToday = ymd === todayYmd;
             const isHolidayFlag = !!p && isHoliday(new Date(p.year, p.month0, p.day));
-            return { ymd, day: p?.day ?? 0, weekday0, inMonth, isToday, isHoliday: isHolidayFlag };
+            const isUserHoliday = userHolidaySet.has(ymd);
+            return { ymd, day: p?.day ?? 0, weekday0, inMonth, isToday, isHoliday: isHolidayFlag, isUserHoliday };
           });
 
           return (
@@ -824,7 +834,15 @@ export default function CalendarBoard(props: {
 
               <div className="calendar-grid" role="grid" aria-label={`月間カレンダー ${monthTitleJa(monthFirstYmd)}`}>
                 {gridDays.map((cell) => {
-                  const dayToneClass = cell.isHoliday ? 'is-holiday' : cell.weekday0 === 0 ? 'is-sun' : cell.weekday0 === 6 ? 'is-sat' : '';
+                  const dayToneClass = cell.isUserHoliday
+                    ? 'is-user-holiday'
+                    : cell.isHoliday
+                      ? 'is-holiday'
+                      : cell.weekday0 === 0
+                        ? 'is-sun'
+                        : cell.weekday0 === 6
+                          ? 'is-sat'
+                          : '';
                   const dayEvents = eventsByDay.get(cell.ymd) ?? [];
                   const { allDay, timed } = sortForDayRender(dayEvents);
 
@@ -834,7 +852,7 @@ export default function CalendarBoard(props: {
                   return (
                     <div
                       key={cell.ymd}
-                      className={`calendar-cell${cell.inMonth ? '' : ' is-out'}${cell.isToday ? ' is-today' : ''}${isDragOver ? ' is-drag-over' : ''}`}
+                      className={`calendar-cell${cell.inMonth ? '' : ' is-out'}${cell.isToday ? ' is-today' : ''}${cell.isUserHoliday ? ' is-user-holiday' : ''}${isDragOver ? ' is-drag-over' : ''}`}
                       role="gridcell"
                       aria-label={cell.ymd}
                       onDoubleClick={() => {

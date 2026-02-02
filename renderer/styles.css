@@ -1340,6 +1340,10 @@ input[type='number']::-webkit-inner-spin-button {
   box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.15);
 }
 
+.calendar-cell.is-user-holiday {
+  background: rgba(203, 166, 247, 0.08);
+}
+
 /* 日付は「右上」ではなく、左上に固定 */
 .calendar-day-number {
   position: absolute;
@@ -1361,6 +1365,10 @@ input[type='number']::-webkit-inner-spin-button {
 
 .calendar-day-number.is-holiday {
   color: var(--success);
+}
+
+.calendar-day-number.is-user-holiday {
+  color: var(--purple);
 }
 
 .calendar-cell-body {
