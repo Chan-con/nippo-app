@@ -166,6 +166,22 @@ export default function CalendarBoard(props: {
   const todayYmd = String(props.todayYmd || '').slice(0, 10);
   const initialMonth = /^\d{4}-\d{2}-\d{2}$/.test(todayYmd) ? `${todayYmd.slice(0, 7)}-01` : '1970-01-01';
 
+  const CALENDAR_SCROLL_SESSION_KEY = 'nippoCalendarScrollV1';
+  type CalendarScrollSession = {
+    v: 1;
+    scrollTop: number;
+    windowStartMonthFirstYmd: string;
+    activeMonthFirstYmd: string;
+  };
+
+  function getSafeSessionStorage(): Storage | undefined {
+    try {
+      return window.sessionStorage;
+    } catch {
+      return undefined;
+    }
+  }
+
   // 無限スクロール: 表示する月の「ウィンドウ」を固定個数だけ描画し、
   // 端に近づいたらウィンドウ自体を前後にスライドして年数無制限を実現する。
   const monthsCount = 9;
@@ -181,6 +197,46 @@ export default function CalendarBoard(props: {
   const shiftingRef = useRef(false);
   const lastShiftAtRef = useRef(0);
   const ignoreScrollUntilRef = useRef(0);
+
+  const windowStartMonthFirstYmdRef = useRef(windowStartMonthFirstYmd);
+  useEffect(() => {
+    windowStartMonthFirstYmdRef.current = windowStartMonthFirstYmd;
+  }, [windowStartMonthFirstYmd]);
+
+  const activeMonthFirstYmdRef = useRef(activeMonthFirstYmd);
+  useEffect(() => {
+    activeMonthFirstYmdRef.current = activeMonthFirstYmd;
+  }, [activeMonthFirstYmd]);
+
+  const hasRestoredScrollRef = useRef(false);
+  const hasInitializedScrollRef = useRef(false);
+  const persistTimerRef = useRef<number | null>(null);
+  const pendingRestoreRef = useRef<CalendarScrollSession | null>(null);
+  const pendingScrollToInitialMonthRef = useRef<string | null>(null);
+
+  function schedulePersistScrollPosition() {
+    if (typeof window === 'undefined') return;
+    const storage = getSafeSessionStorage();
+    if (!storage) return;
+    if (persistTimerRef.current != null) return;
+
+    persistTimerRef.current = window.setTimeout(() => {
+      persistTimerRef.current = null;
+      const root = scrollRef.current;
+      if (!root) return;
+      const payload: CalendarScrollSession = {
+        v: 1,
+        scrollTop: Number.isFinite(root.scrollTop) ? root.scrollTop : 0,
+        windowStartMonthFirstYmd: String(windowStartMonthFirstYmdRef.current || ''),
+        activeMonthFirstYmd: String(activeMonthFirstYmdRef.current || ''),
+      };
+      try {
+        storage.setItem(CALENDAR_SCROLL_SESSION_KEY, JSON.stringify(payload));
+      } catch {
+        // ignore
+      }
+    }, 120);
+  }
 
   const months = useMemo(() => {
     const out: string[] = [];
@@ -555,6 +611,8 @@ export default function CalendarBoard(props: {
       ignoreScrollUntilRef.current = now + 350;
       lastShiftAtRef.current = now;
       shiftingRef.current = false;
+
+      schedulePersistScrollPosition();
     });
   }
 
@@ -582,6 +640,42 @@ export default function CalendarBoard(props: {
       lastShiftAtRef.current = now;
       shiftWindow(+shiftStep, 'bottom');
     }
+
+    schedulePersistScrollPosition();
+  }
+
+  function isValidMonthFirstYmd(v: string) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && String(v).endsWith('-01');
+  }
+
+  function applyPendingScrollIfPossible() {
+    const root = scrollRef.current;
+    if (!root) return false;
+    if (root.clientHeight <= 0) return false;
+
+    const restore = pendingRestoreRef.current;
+    if (restore) {
+      pendingRestoreRef.current = null;
+      root.scrollTop = Math.max(0, Math.round(Number.isFinite(restore.scrollTop) ? restore.scrollTop : 0));
+      const now = performance.now();
+      ignoreScrollUntilRef.current = now + 600;
+      lastShiftAtRef.current = now;
+      hasInitializedScrollRef.current = true;
+      schedulePersistScrollPosition();
+      return true;
+    }
+
+    const targetMonth = pendingScrollToInitialMonthRef.current;
+    if (targetMonth && isValidMonthFirstYmd(targetMonth) && !hasInitializedScrollRef.current && !hasRestoredScrollRef.current) {
+      pendingScrollToInitialMonthRef.current = null;
+      scrollToMonthAfterRender(targetMonth);
+      setActiveMonthFirstYmd(targetMonth);
+      hasInitializedScrollRef.current = true;
+      schedulePersistScrollPosition();
+      return true;
+    }
+
+    return false;
   }
 
   // 外部トリガーで「今月(指定月)へ」
@@ -593,16 +687,95 @@ export default function CalendarBoard(props: {
     setWindowStartMonthFirstYmd(addMonthsYmd(m, -centerIndex));
     // display:none → 表示に切り替わるケースがあるので、2フレーム待ってから合わせる
     scrollToMonthAfterRender(m);
+
+    // 明示ジャンプは「初期化済み」として扱う（ここからはユーザーの位置を維持）
+    hasInitializedScrollRef.current = true;
+    schedulePersistScrollPosition();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.jumpNonce]);
 
   useEffect(() => {
-    // 初回は today 月を見える位置へ
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(initialMonth)) return;
-    window.requestAnimationFrame(() => {
-      scrollToMonthAfterRender(initialMonth);
+    if (typeof window === 'undefined') return;
+
+    // 1) 可能ならセッションからスクロール位置を復元（ブラウザ更新まで保持）
+    const storage = getSafeSessionStorage();
+    if (storage) {
+      try {
+        const raw = storage.getItem(CALENDAR_SCROLL_SESSION_KEY);
+        const parsed = raw ? (JSON.parse(raw) as CalendarScrollSession) : null;
+        if (
+          parsed &&
+          parsed.v === 1 &&
+          typeof parsed.scrollTop === 'number' &&
+          isValidMonthFirstYmd(String(parsed.windowStartMonthFirstYmd || '')) &&
+          isValidMonthFirstYmd(String(parsed.activeMonthFirstYmd || ''))
+        ) {
+          hasRestoredScrollRef.current = true;
+          pendingRestoreRef.current = {
+            v: 1,
+            scrollTop: parsed.scrollTop,
+            windowStartMonthFirstYmd: String(parsed.windowStartMonthFirstYmd),
+            activeMonthFirstYmd: String(parsed.activeMonthFirstYmd),
+          };
+          setActiveMonthFirstYmd(String(parsed.activeMonthFirstYmd));
+          setWindowStartMonthFirstYmd(String(parsed.windowStartMonthFirstYmd));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 2) 復元がなければ、初回は「今月」をデフォルト表示（ただし可視になるまで待つ）
+    if (!hasRestoredScrollRef.current && isValidMonthFirstYmd(initialMonth)) {
+      pendingScrollToInitialMonthRef.current = initialMonth;
       setActiveMonthFirstYmd(initialMonth);
+    }
+
+    // 3) display:none から表示に切り替わるときに scroll が失敗しやすいので、可視化を監視してから適用
+    const root = scrollRef.current;
+    if (!root) return;
+    let stopped = false;
+
+    const tryApply = () => {
+      if (stopped) return;
+      applyPendingScrollIfPossible();
+    };
+
+    // まず1回は即トライ（既に可視なケース）
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tryApply);
     });
+
+    // 以降はサイズ変化（=可視化）でトライ
+    let ro: ResizeObserver | null = null;
+    try {
+      if (typeof ResizeObserver !== 'undefined') {
+        ro = new ResizeObserver(() => {
+          tryApply();
+        });
+        ro.observe(root);
+      }
+    } catch {
+      ro = null;
+    }
+
+    return () => {
+      stopped = true;
+      try {
+        ro?.disconnect();
+      } catch {
+        // ignore
+      }
+      ro = null;
+      if (persistTimerRef.current != null) {
+        try {
+          window.clearTimeout(persistTimerRef.current);
+        } catch {
+          // ignore
+        }
+        persistTimerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
