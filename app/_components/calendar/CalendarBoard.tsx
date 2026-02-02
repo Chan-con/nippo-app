@@ -364,6 +364,11 @@ export default function CalendarBoard(props: {
   function onDragEndEvent() {
     setDraggingId(null);
     setDragOverKey(null);
+    try {
+      (window as any).__calendarAltCopy = false;
+    } catch {
+      // ignore
+    }
   }
 
   function moveOrCopyEventToDate(eventId: string, targetDate: string, beforeEventId: string | null) {
@@ -629,10 +634,15 @@ export default function CalendarBoard(props: {
                         ev.preventDefault();
                         const id = ev.dataTransfer.getData('text/plain');
                         if (!id) return;
-                        (window as any).__calendarAltCopy = !!ev.altKey;
-                        moveOrCopyEventToDate(id, cell.ymd, null);
-                        (window as any).__calendarAltCopy = false;
-                        setDragOverKey(null);
+                        try {
+                          (window as any).__calendarAltCopy = !!ev.altKey;
+                          moveOrCopyEventToDate(id, cell.ymd, null);
+                        } finally {
+                          (window as any).__calendarAltCopy = false;
+                          setDragOverKey(null);
+                          // 環境によっては dragend が発火しないため、drop で確実に終了させる
+                          onDragEndEvent();
+                        }
                       }}
                     >
                       <div className={`calendar-day-number ${dayToneClass}`}>{cell.day}</div>
@@ -662,10 +672,14 @@ export default function CalendarBoard(props: {
                                   ev.preventDefault();
                                   const id = ev.dataTransfer.getData('text/plain');
                                   if (!id) return;
-                                  (window as any).__calendarAltCopy = !!ev.altKey;
-                                  moveOrCopyEventToDate(id, cell.ymd, e.id);
-                                  (window as any).__calendarAltCopy = false;
-                                  setDragOverKey(null);
+                                  try {
+                                    (window as any).__calendarAltCopy = !!ev.altKey;
+                                    moveOrCopyEventToDate(id, cell.ymd, e.id);
+                                  } finally {
+                                    (window as any).__calendarAltCopy = false;
+                                    setDragOverKey(null);
+                                    onDragEndEvent();
+                                  }
                                 }}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
@@ -714,11 +728,15 @@ export default function CalendarBoard(props: {
                                   ev.preventDefault();
                                   const id = ev.dataTransfer.getData('text/plain');
                                   if (!id) return;
-                                  (window as any).__calendarAltCopy = !!ev.altKey;
-                                  // 時間指定は「開始時刻順」を維持：同じ開始時刻グループ内で並び替える
-                                  moveOrCopyEventToDate(id, cell.ymd, e.id);
-                                  (window as any).__calendarAltCopy = false;
-                                  setDragOverKey(null);
+                                  try {
+                                    (window as any).__calendarAltCopy = !!ev.altKey;
+                                    // 時間指定は「開始時刻順」を維持：同じ開始時刻グループ内で並び替える
+                                    moveOrCopyEventToDate(id, cell.ymd, e.id);
+                                  } finally {
+                                    (window as any).__calendarAltCopy = false;
+                                    setDragOverKey(null);
+                                    onDragEndEvent();
+                                  }
                                 }}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
