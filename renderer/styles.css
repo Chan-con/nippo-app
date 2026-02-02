@@ -3161,7 +3161,7 @@ input[type='number']::-webkit-inner-spin-button {
   gap: 4px;
   flex-wrap: nowrap;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge(legacy) */
@@ -3661,6 +3661,47 @@ input[type='number']::-webkit-inner-spin-button {
   white-space: nowrap;
   position: relative;
   flex: 0 0 auto;
+}
+
+.tab-button.tab-icon-only {
+  padding: 10px 14px;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+}
+
+.tab-button.tab-icon-only[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(2px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 200;
+
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  color: var(--text-primary);
+  background: rgba(30, 30, 46, 0.98);
+  border: 1px solid rgba(108, 112, 134, 0.6);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.tab-button.tab-icon-only[data-tooltip]:hover::after,
+.tab-button.tab-icon-only[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .tab-button:hover {

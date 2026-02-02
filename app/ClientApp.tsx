@@ -7222,49 +7222,59 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               >
                 <button
                   type="button"
-                  className={`tab-button ${todayMainTab === 'timeline' ? 'active' : ''}`}
+                  className={`tab-button tab-icon-only ${todayMainTab === 'timeline' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'timeline'}
+                  aria-label="タイムライン"
+                  data-tooltip="タイムライン"
                   onClick={() => setTodayMainTab('timeline')}
                 >
-                  📈 タイムライン
+                  <span aria-hidden="true">📈</span>
                 </button>
                 <button
                   type="button"
-                  className={`tab-button ${todayMainTab === 'calendar' ? 'active' : ''}`}
+                  className={`tab-button tab-icon-only ${todayMainTab === 'calendar' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'calendar'}
+                  aria-label="カレンダー"
+                  data-tooltip="カレンダー"
                   onClick={() => setTodayMainTab('calendar')}
                   onDoubleClick={() => {
                     setTodayMainTab('calendar');
                     setCalendarJumpNonce((n) => n + 1);
                   }}
                 >
-                  🗓️ カレンダー
+                  <span aria-hidden="true">🗓️</span>
                 </button>
                 <button
                   type="button"
-                  className={`tab-button ${todayMainTab === 'taskline' ? 'active' : ''}`}
+                  className={`tab-button tab-icon-only ${todayMainTab === 'taskline' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'taskline'}
+                  aria-label="カンバン"
+                  data-tooltip="カンバン"
                   onClick={() => setTodayMainTab('taskline')}
                 >
-                  🗃️ カンバン
+                  <span aria-hidden="true">🗃️</span>
                 </button>
                 <button
                   type="button"
-                  className={`tab-button ${todayMainTab === 'gantt' ? 'active' : ''}`}
+                  className={`tab-button tab-icon-only ${todayMainTab === 'gantt' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'gantt'}
+                  aria-label="ガント"
+                  data-tooltip="ガント"
                   onClick={() => setTodayMainTab('gantt')}
                 >
-                  📅 ガント
+                  <span aria-hidden="true">📅</span>
                 </button>
                 <button
                   type="button"
-                  className={`tab-button ${todayMainTab === 'alerts' ? 'active' : ''}`}
+                  className={`tab-button tab-icon-only ${todayMainTab === 'alerts' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'alerts'}
+                  aria-label="アラート"
+                  data-tooltip={alertsAvailable ? 'アラート' : 'アラート（通知の許可が必要です）'}
                   onClick={() => {
                     if (!alertsAvailable) return;
                     setTodayMainTab('alerts');
@@ -7272,16 +7282,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   disabled={!alertsAvailable}
                   title={alertsAvailable ? undefined : '通知の許可が必要です（設定から許可してください）'}
                 >
-                  🔔 アラート
+                  <span aria-hidden="true">🔔</span>
                 </button>
                 <button
                   type="button"
-                  className={`tab-button ${todayMainTab === 'notes' ? 'active' : ''}`}
+                  className={`tab-button tab-icon-only ${todayMainTab === 'notes' ? 'active' : ''}`}
                   role="tab"
                   aria-selected={todayMainTab === 'notes'}
+                  aria-label="ノート"
+                  data-tooltip="ノート"
                   onClick={() => setTodayMainTab('notes')}
                 >
-                  📝 ノート
+                  <span aria-hidden="true">📝</span>
                 </button>
               </div>
             </div>
