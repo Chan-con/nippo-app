@@ -926,7 +926,7 @@ export default function CalendarBoard(props: {
                                 }}
                                 onMouseLeave={() => hideMemoTooltip()}
                               >
-                                {e.title}
+                                <span className="calendar-event-title">{e.title}</span>
                               </button>
                             );
                           })}
