@@ -53,8 +53,11 @@ function weekday0FromYmd(ymd: string) {
 function startOfCalendarGrid(monthFirstYmd: string) {
   const p = parseYmd(monthFirstYmd);
   if (!p) return monthFirstYmd;
-  const firstWeekday0 = new Date(p.year, p.month0, 1).getDay();
-  const startDay = 1 - firstWeekday0;
+  const firstWeekday0 = new Date(p.year, p.month0, 1).getDay(); // 0=Sun..6=Sat
+  // 月曜始まりにしたいので、月曜を 0 とするオフセットに変換
+  // Mon(1)->0, Tue(2)->1, ... Sun(0)->6
+  const mondayBased = (firstWeekday0 + 6) % 7;
+  const startDay = 1 - mondayBased;
   const start = new Date(p.year, p.month0, startDay);
   return ymdFromYMDParts(start.getFullYear(), start.getMonth(), start.getDate());
 }
@@ -576,6 +579,22 @@ export default function CalendarBoard(props: {
               }}
             >
               <div className="calendar-month-title">{monthTitleJa(monthFirstYmd)}</div>
+
+              <div className="calendar-weekdays" aria-hidden="true">
+                {[
+                  { key: 'mon', label: '月' },
+                  { key: 'tue', label: '火' },
+                  { key: 'wed', label: '水' },
+                  { key: 'thu', label: '木' },
+                  { key: 'fri', label: '金' },
+                  { key: 'sat', label: '土', cls: 'is-sat' },
+                  { key: 'sun', label: '日', cls: 'is-sun' },
+                ].map((d) => (
+                  <div key={d.key} className={`calendar-weekday${d.cls ? ` ${d.cls}` : ''}`}>
+                    {d.label}
+                  </div>
+                ))}
+              </div>
 
               <div className="calendar-grid" role="grid" aria-label={`月間カレンダー ${monthTitleJa(monthFirstYmd)}`}>
                 {gridDays.map((cell) => {
