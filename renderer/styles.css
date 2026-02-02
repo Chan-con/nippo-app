@@ -1882,20 +1882,10 @@ input[type='number']::-webkit-inner-spin-button {
   mask-image: linear-gradient(to bottom, #000 0%, #000 86%, transparent 100%);
 }
 
-/* カレンダー: ホバーは1行で省略 */
+/* カレンダー: ツールチップはガントと同じ（タイトル + メモ本文、改行保持） */
 .calendar-memo-tooltip {
-  max-width: min(520px, calc(100vw - 24px));
-  max-height: unset;
-}
-
-.calendar-memo-tooltip-line {
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: min(520px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: min(280px, calc(100vh - 24px));
 }
 
 

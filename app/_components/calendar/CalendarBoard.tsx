@@ -270,14 +270,6 @@ export default function CalendarBoard(props: {
 
   const [memoTooltip, setMemoTooltip] = useState<null | { title: string; memo: string; x: number; y: number }>(null);
 
-  function toSingleLineText(s: string) {
-    return String(s || '')
-      .replace(/\r\n/g, '\n')
-      .replace(/\n/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
   function getMemoTooltipPosFromPoint(clientX: number, clientY: number) {
     const pad = 12;
     const estW = 420;
@@ -293,10 +285,9 @@ export default function CalendarBoard(props: {
 
   function showMemoTooltip(ev: ReactMouseEvent, e: CalendarEvent) {
     const memo = String(e.memo || '').trim();
-    if (!memo) return;
     const title = String(e.title || '（無題）').trim() || '（無題）';
     const { x, y } = getMemoTooltipPosFromPoint(ev.clientX, ev.clientY);
-    setMemoTooltip({ title: toSingleLineText(title), memo: toSingleLineText(memo), x, y });
+    setMemoTooltip({ title, memo, x, y });
   }
 
   function placeMemoTooltipAtPoint(clientX: number, clientY: number) {
@@ -896,7 +887,6 @@ export default function CalendarBoard(props: {
                                 key={e.id}
                                 type="button"
                                 className={`calendar-event-chip is-allday${draggingId === e.id ? ' is-dragging' : ''}${isOver ? ' is-drop-target' : ''}`}
-                                title={e.title}
                                 draggable={!disabled}
                                 onDragStart={(ev) => onDragStartEvent(ev, e)}
                                 onDragEnd={onDragEndEvent}
@@ -952,7 +942,6 @@ export default function CalendarBoard(props: {
                                 key={e.id}
                                 type="button"
                                 className={`calendar-event-chip${draggingId === e.id ? ' is-dragging' : ''}${isOver ? ' is-drop-target' : ''}`}
-                                title={e.title}
                                 draggable={!disabled}
                                 onDragStart={(ev) => onDragStartEvent(ev, e)}
                                 onDragEnd={onDragEndEvent}
@@ -1019,10 +1008,11 @@ export default function CalendarBoard(props: {
         ? createPortal(
             <div
               className="gantt-memo-tooltip calendar-memo-tooltip"
-              style={{ transform: `translate3d(${memoTooltip.x}px, ${memoTooltip.y}px, 0)` }}
+              style={{ left: memoTooltip.x, top: memoTooltip.y }}
               aria-hidden="true"
             >
-              <div className="calendar-memo-tooltip-line">{`${memoTooltip.title} — ${memoTooltip.memo}`}</div>
+              <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
+              {memoTooltip.memo ? <div className="gantt-memo-tooltip-body">{memoTooltip.memo}</div> : null}
             </div>,
             document.body
           )
