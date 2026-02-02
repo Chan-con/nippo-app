@@ -7376,7 +7376,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           ) : null}
 
           <div
-            className={`main-body${showMainHeader ? '' : ' no-header'}`}
+            className={`main-body${showMainHeader ? '' : ' no-header'}${todayMainTab === 'calendar' ? ' is-calendar-tab' : ''}`}
             ref={mainBodyRef}
           >
             {effectiveViewMode === 'today' && accessToken ? (

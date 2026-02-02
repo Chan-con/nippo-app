@@ -699,6 +699,11 @@ input[type='number']::-webkit-inner-spin-button {
   padding-bottom: 24px;
 }
 
+/* カレンダータブは「外側」をスクロールさせず、カレンダー内部だけスクロールさせる */
+.main-body.is-calendar-tab {
+  overflow-y: hidden;
+}
+
 /* タイムライン以外でヘッダーを非表示にする場合の補正 */
 .main-body.no-header {
   margin-top: 0;
@@ -1116,6 +1121,28 @@ input[type='number']::-webkit-inner-spin-button {
 .calendar-section {
   margin-bottom: 18px;
   min-width: 0;
+}
+
+/* カレンダーはタブ領域に収まるように、残り高さいっぱいを使う */
+.main-body.is-calendar-tab .calendar-section {
+  margin-bottom: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-body.is-calendar-tab .calendar-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-body.is-calendar-tab .calendar-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .calendar-statusbar {
