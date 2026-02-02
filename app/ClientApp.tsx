@@ -1631,6 +1631,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const calendarIsSavingRef = useRef(false);
   const calendarIsInteractingRef = useRef(false);
   const calendarEditingIdRef = useRef<string | null>(null);
+  const [calendarInteractionNonce, setCalendarInteractionNonce] = useState(0);
 
   // alerts (one-shot / weekly / monthly) - synced via Supabase
   const ALERTS_GLOBAL_KEY = 'global';
@@ -2269,7 +2270,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       calendarSaveTimerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarEvents, calendarDirty, accessToken]);
+  }, [calendarEvents, calendarDirty, accessToken, calendarInteractionNonce]);
 
   function commitGanttTasks(nextTasksRaw: GanttTask[]) {
     const nextTasks = normalizeGanttTasks(nextTasksRaw).map((t) => ({ ...t, laneId: 'default' }));
@@ -7472,6 +7473,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   onInteractionChange={(active, editingId) => {
                     calendarIsInteractingRef.current = !!active;
                     calendarEditingIdRef.current = editingId ? String(editingId) : null;
+                    setCalendarInteractionNonce((x) => x + 1);
                   }}
                   disabled={busy}
                 />
