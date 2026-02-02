@@ -369,7 +369,46 @@ export default function CalendarBoard(props: {
     } catch {
       // ignore
     }
+
+    // まれに dragend が落ちて「操作中」が解除されないことがあるので、親へ即通知
+    try {
+      if (props.onInteractionChange) {
+        const nextActive = !!modalOpen;
+        const nextEditingId = modalOpen ? modalEditingId : null;
+        props.onInteractionChange(nextActive, nextEditingId);
+      }
+    } catch {
+      // ignore
+    }
   }
+
+  // DnD系イベントは環境差で dragend が発火しないことがあるため、保険でクリーンアップ
+  useEffect(() => {
+    if (!draggingId) return;
+
+    const cleanup = () => {
+      onDragEndEvent();
+    };
+
+    window.addEventListener('dragend', cleanup, true);
+    window.addEventListener('drop', cleanup, true);
+    window.addEventListener('mouseup', cleanup, true);
+    window.addEventListener('blur', cleanup, true);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cleanup();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+
+    return () => {
+      window.removeEventListener('dragend', cleanup, true);
+      window.removeEventListener('drop', cleanup, true);
+      window.removeEventListener('mouseup', cleanup, true);
+      window.removeEventListener('blur', cleanup, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggingId]);
 
   function moveOrCopyEventToDate(eventId: string, targetDate: string, beforeEventId: string | null) {
     const id = String(eventId || '');
