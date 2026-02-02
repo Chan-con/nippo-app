@@ -157,6 +157,7 @@ export default function CalendarBoard(props: {
   nowMs: number;
   events: CalendarEvent[];
   onCommitEvents: (next: CalendarEvent[]) => void;
+  onSaveAndSync?: (next: CalendarEvent[]) => void;
   onInteractionChange?: (active: boolean, editingId: string | null) => void;
   disabled?: boolean;
   jumpToYmd?: string;
@@ -306,7 +307,9 @@ export default function CalendarBoard(props: {
 
   function commit(mutator: (prev: CalendarEvent[]) => CalendarEvent[]) {
     const next = mutator(normalizedEvents);
-    props.onCommitEvents(normalizeEvents(next));
+    const normalized = normalizeEvents(next);
+    props.onCommitEvents(normalized);
+    return normalized;
   }
 
   function upsertFromModal() {
@@ -319,7 +322,7 @@ export default function CalendarBoard(props: {
     if (!allDay && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(startTime)) return;
     const memo = String(modalMemo || '').slice(0, 8000);
 
-    commit((prev) => {
+    const nextEvents = commit((prev) => {
       const list = prev.slice();
       if (!modalEditingId) {
         const id = safeRandomId('cal');
@@ -336,6 +339,11 @@ export default function CalendarBoard(props: {
     });
 
     setModalOpen(false);
+    try {
+      props.onSaveAndSync?.(nextEvents);
+    } catch {
+      // ignore
+    }
   }
 
   function deleteFromModal() {
@@ -344,8 +352,13 @@ export default function CalendarBoard(props: {
       setModalOpen(false);
       return;
     }
-    commit((prev) => prev.filter((e) => e.id !== id));
+    const nextEvents = commit((prev) => prev.filter((e) => e.id !== id));
     setModalOpen(false);
+    try {
+      props.onSaveAndSync?.(nextEvents);
+    } catch {
+      // ignore
+    }
   }
 
   function onDragStartEvent(ev: ReactDragEvent, e: CalendarEvent) {

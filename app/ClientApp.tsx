@@ -1904,12 +1904,66 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setAlertsRemoteUpdatePending(false);
   }
 
+  function upsertAlertFromDraftAndSync(draft: AlertItem) {
+    const effectiveTitle = String(draft.title || '').trim() ? String(draft.title) : getAlertDefaultTitle(draft.kind);
+    const normalized = normalizeAlertItem(
+      { ...(draft as any), title: effectiveTitle } as any,
+      draft.id || safeRandomId('alert'),
+      activeTimeZone,
+      nowMs
+    );
+    normalized.nextFireAt = computeNextFireAt(normalized, getAlertComputeBase(normalized, now), activeTimeZone);
+
+    const base = Array.isArray(alertsRef.current) ? alertsRef.current : Array.isArray(alerts) ? alerts : [];
+    const list = base.slice();
+    const idx = list.findIndex((a) => a.id === normalized.id);
+    if (idx >= 0) list[idx] = normalized;
+    else list.push(normalized);
+
+    // Keep refs in sync to avoid race with effects.
+    alertsRef.current = list;
+    setAlerts(list);
+    setAlertsDirty(true);
+    setAlertsRemoteUpdatePending(false);
+
+    try {
+      if (alertsSaveTimerRef.current) window.clearTimeout(alertsSaveTimerRef.current);
+    } catch {
+      // ignore
+    }
+    alertsSaveTimerRef.current = null;
+
+    const snap = alertsSnapshot(list);
+    void saveAlertsToServer(list, snap);
+  }
+
   function deleteAlert(alertId: string) {
     const id = String(alertId || '');
     if (!id) return;
     setAlerts((prev) => (Array.isArray(prev) ? prev.filter((a) => a.id !== id) : prev));
     setAlertsDirty(true);
     setAlertsRemoteUpdatePending(false);
+  }
+
+  function deleteAlertAndSync(alertId: string) {
+    const id = String(alertId || '');
+    if (!id) return;
+    const base = Array.isArray(alertsRef.current) ? alertsRef.current : Array.isArray(alerts) ? alerts : [];
+    const list = base.filter((a) => a.id !== id);
+    alertsRef.current = list;
+    setAlerts(list);
+    setAlertsDirty(true);
+    setAlertsRemoteUpdatePending(false);
+
+    try {
+      if (alertsSaveTimerRef.current) window.clearTimeout(alertsSaveTimerRef.current);
+    } catch {
+      // ignore
+    }
+    alertsSaveTimerRef.current = null;
+
+    const snap = alertsSnapshot(list);
+    void saveAlertsToServer(list, snap);
   }
 
   const alertsAvailable = reservationNotificationPermission === 'granted';
@@ -2520,14 +2574,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [notesModalId, setNotesModalId] = useState<string | null>(null);
   const [notesModalBody, setNotesModalBody] = useState('');
-  const notesModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [notesModalLinkCopied, setNotesModalLinkCopied] = useState(false);
-  const notesModalLinkCopiedTimerRef = useRef<number | null>(null);
 
   const notesOpenFromUrlIdRef = useRef<string | null>(null);
-
-  const notesModalTrimmed = String(notesModalBody || '').trim();
-  const notesModalWillDelete = !!notesModalId && !notesModalTrimmed;
 
   const notesGridRef = useRef<HTMLDivElement | null>(null);
   const notesLayoutRafRef = useRef<number | null>(null);
@@ -3236,7 +3284,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!found) return;
     setNotesModalId(noteId);
     setNotesModalBody(found.body ?? '');
-    setNotesModalLinkCopied(false);
     setNotesModalOpen(true);
     setNotesEditingId(noteId);
   }
@@ -3244,7 +3291,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   function openNewNoteModal() {
     setNotesModalId(null);
     setNotesModalBody('');
-    setNotesModalLinkCopied(false);
     setNotesModalOpen(true);
     setNotesEditingId('new');
   }
@@ -3285,61 +3331,68 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function closeNoteModal() {
-    if (notesModalLinkCopiedTimerRef.current != null) {
-      window.clearTimeout(notesModalLinkCopiedTimerRef.current);
-      notesModalLinkCopiedTimerRef.current = null;
-    }
     setNotesModalOpen(false);
     setNotesModalId(null);
     setNotesModalBody('');
     setNotesEditingId(null);
-    setNotesModalLinkCopied(false);
   }
 
-  function saveNoteModal() {
+  function saveNoteModal(body: string) {
     const id = notesModalId;
-    const trimmed = String(notesModalBody || '').trim();
+    const trimmed = String(body || '').trim();
 
     // create mode
     if (!id) {
-      if (trimmed) createNoteFromBody(trimmed);
+      if (trimmed) {
+        const nowIso = now.toISOString();
+        const note: NoteItem = { id: `note-${newId()}`, body: trimmed, createdAt: nowIso, updatedAt: nowIso };
+        const nextList = [note, ...normalizeNotes(notes)];
+        setNotes(nextList);
+        setNotesDirty(true);
+        setNotesRemoteUpdatePending(false);
+
+        try {
+          if (notesSaveTimerRef.current) window.clearTimeout(notesSaveTimerRef.current);
+        } catch {
+          // ignore
+        }
+        notesSaveTimerRef.current = null;
+        const snap = notesSnapshot(nextList);
+        void saveNotesToServer(nextList, snap);
+      }
       closeNoteModal();
       return;
     }
 
-    setNotes((prev) => {
-      const normalized = normalizeNotes(prev);
-      const idx = normalized.findIndex((n) => n.id === id);
-      if (idx === -1) return normalized;
+    // update/delete mode
+    const normalizedPrev = normalizeNotes(notes);
+    const idx = normalizedPrev.findIndex((n) => n.id === id);
+    if (idx !== -1) {
+      let nextList = normalizedPrev;
       if (!trimmed) {
-        // delete when body cleared
-        return normalized.filter((n) => n.id !== id);
+        nextList = normalizedPrev.filter((n) => n.id !== id);
+      } else {
+        const nowIso = now.toISOString();
+        const cur = normalizedPrev[idx];
+        const updated: NoteItem = { ...cur, body: trimmed, updatedAt: nowIso };
+        nextList = normalizedPrev.slice();
+        nextList[idx] = updated;
       }
-      const nowIso = now.toISOString();
-      const cur = normalized[idx];
-      const updated: NoteItem = { ...cur, body: trimmed, updatedAt: nowIso };
-      const next = normalized.slice();
-      next[idx] = updated;
-      return next;
-    });
-    setNotesDirty(true);
-    setNotesRemoteUpdatePending(false);
-    closeNoteModal();
-  }
+      setNotes(nextList);
+      setNotesDirty(true);
+      setNotesRemoteUpdatePending(false);
 
-  useEffect(() => {
-    if (!notesModalOpen) return;
-    window.setTimeout(() => {
-      const el = notesModalTextareaRef.current;
-      if (!el) return;
       try {
-        el.focus();
+        if (notesSaveTimerRef.current) window.clearTimeout(notesSaveTimerRef.current);
       } catch {
         // ignore
       }
-    }, 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notesModalOpen]);
+      notesSaveTimerRef.current = null;
+      const snap = notesSnapshot(nextList);
+      void saveNotesToServer(nextList, snap);
+    }
+    closeNoteModal();
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -6171,6 +6224,69 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
+  type TaskEditDraft = {
+    name: string;
+    tag: string;
+    startTime: string;
+    endTime: string;
+    memo: string;
+    url: string;
+  };
+
+  async function saveEditingTaskFromDraft(draft: TaskEditDraft) {
+    if (!accessToken) return;
+    if (!editingTaskId) return;
+
+    const name = String(draft?.name || '').trim();
+    const startTime = String(draft?.startTime || '').trim();
+    const endTime = String(draft?.endTime || '').trim();
+    const tag = String(draft?.tag || '').trim();
+    const memo = String(draft?.memo || '');
+    const url = String(draft?.url || '');
+
+    if (!name || !startTime) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      if (effectiveViewMode === 'history') {
+        const dateKey = editingTaskDateKey || historyDate;
+        if (!dateKey) throw new Error('日付が未選択です');
+        const res = await apiFetch(`/api/history/${dateKey}/tasks/${editingTaskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url }),
+        });
+        const body = await res.json().catch(() => null as any);
+        if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
+        await loadHistory(dateKey);
+      } else {
+        const res = await apiFetch(`/api/tasks/${editingTaskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, startTime, endTime, tag: tag || null, memo, url }),
+        });
+        const body = await res.json().catch(() => null as any);
+        if (!res.ok || !body?.success) throw new Error(body?.message || body?.error || '更新に失敗しました');
+        await reloadTasks();
+      }
+
+      // keep parent snapshot in sync for next open
+      setEditName(name);
+      setEditTag(tag);
+      setEditStartTime(startTime);
+      setEditEndTime(endTime);
+      setEditMemo(memo);
+      setEditUrl(url);
+
+      setEditOpen(false);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteEditingTask() {
     if (!accessToken) return;
     if (!editingTaskId) return;
@@ -7472,6 +7588,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     setCalendarDirty(true);
                     setCalendarRemoteUpdatePending(false);
                   }}
+                  onSaveAndSync={(nextEvents) => {
+                    if (!accessToken) return;
+                    try {
+                      if (calendarSaveTimerRef.current) window.clearTimeout(calendarSaveTimerRef.current);
+                    } catch {
+                      // ignore
+                    }
+                    calendarSaveTimerRef.current = null;
+                    const snapshot = calendarSnapshot(nextEvents);
+                    void saveCalendarToServer(normalizeCalendarEvents(nextEvents), snapshot);
+                  }}
                   onInteractionChange={(active, editingId) => {
                     const nextActive = !!active;
                     const nextEditingId = editingId ? String(editingId) : null;
@@ -7539,12 +7666,32 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   onDelete={(taskId) => {
                     const nextTasks = (Array.isArray(ganttTasks) ? ganttTasks : []).filter((t) => t.id !== taskId);
                     commitGanttTasks(nextTasks);
+                    try {
+                      if (ganttSaveTimerRef.current) window.clearTimeout(ganttSaveTimerRef.current);
+                    } catch {
+                      // ignore
+                    }
+                    ganttSaveTimerRef.current = null;
+                    const lanes = [{ id: 'default', name: '', order: 0 }];
+                    const normalized = normalizeGanttTasks(nextTasks).map((t) => ({ ...t, laneId: 'default' }));
+                    const snap = ganttSnapshot(lanes, normalized);
+                    void saveGanttToServer(lanes, normalized, snap);
                     closeGanttDrawer();
                   }}
                   onSave={(next) => {
                     const safe = { ...next, endDate: String(next.endDate || '') < String(next.startDate || '') ? String(next.startDate || '') : next.endDate };
                     const nextTasks = (Array.isArray(ganttTasks) ? ganttTasks : []).map((t) => (t.id === safe.id ? safe : t));
                     commitGanttTasks(nextTasks);
+                    try {
+                      if (ganttSaveTimerRef.current) window.clearTimeout(ganttSaveTimerRef.current);
+                    } catch {
+                      // ignore
+                    }
+                    ganttSaveTimerRef.current = null;
+                    const lanes = [{ id: 'default', name: '', order: 0 }];
+                    const normalized = normalizeGanttTasks(nextTasks).map((t) => ({ ...t, laneId: 'default' }));
+                    const snap = ganttSnapshot(lanes, normalized);
+                    void saveGanttToServer(lanes, normalized, snap);
                     closeGanttDrawer();
                   }}
                   disabled={busy}
@@ -7991,7 +8138,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           onClick={() => {
                             if (!alertDraft) return;
                             const effectiveTitle = String(alertDraft.title || '').trim() ? String(alertDraft.title) : getAlertDefaultTitle(alertDraft.kind);
-                            upsertAlertFromDraft({ ...alertDraft, title: effectiveTitle });
+                            upsertAlertFromDraftAndSync({ ...alertDraft, title: effectiveTitle });
                             closeAlertModal();
                           }}
                           disabled={busy}
@@ -8006,7 +8153,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             aria-label="削除"
                             onClick={() => {
                               if (!alertEditingId) return;
-                              deleteAlert(alertEditingId);
+                              deleteAlertAndSync(alertEditingId);
                               closeAlertModal();
                             }}
                             disabled={busy}
@@ -8319,316 +8466,54 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         </main>
       </div>
 
-      <div className={`edit-dialog ${editOpen ? 'show' : ''}`} id="edit-dialog" aria-hidden={!editOpen}>
-        <div className="edit-content">
-          <div className="edit-header">
-            <h3>✏️ タスク編集</h3>
-            <button
-              className="edit-close"
-              id="edit-close"
-              title="閉じる"
-              aria-label="閉じる"
-              type="button"
-              onClick={() => setEditOpen(false)}
-            >
-              <span className="material-icons">close</span>
-            </button>
-          </div>
-          <div className="edit-body">
-            <div className="edit-field">
-              <label htmlFor="edit-task-name">作業内容</label>
-              <div className="input-with-button">
-                <input
-                  id="edit-task-name"
-                  className="edit-input"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="タスク名"
-                  disabled={busy}
-                />
-                <button
-                  id="edit-add-to-task-stock-btn"
-                  className="icon-btn"
-                  title={editNameInTaskStock ? 'タスクストックから解除' : 'タスクストックに追加'}
-                  aria-label={editNameInTaskStock ? 'タスクストックから解除' : 'タスクストックに追加'}
-                  type="button"
-                  onClick={() => void (editNameInTaskStock ? removeTextFromTaskStock(editNameTrimmed) : addTextToTaskStock(editNameTrimmed))}
-                  disabled={!accessToken || busy || !String(editName || '').trim()}
-                >
-                  <span className="material-icons">{editNameInTaskStock ? 'bookmark_remove' : 'bookmark_add'}</span>
-                </button>
-              </div>
-            </div>
-            <div className="edit-field">
-              <label htmlFor="edit-task-tag">タグ（任意）</label>
-              <select
-                id="edit-task-tag"
-                className="edit-input"
-                aria-label="タグを選択"
-                value={editTagTrimmed}
-                onChange={(e) => setEditTag(e.target.value)}
-                disabled={busy}
-              >
-                <option value="">タグを選択</option>
-                {editTagTrimmed && !tagStock.some((t) => String(t?.name || '').trim() === editTagTrimmed) ? (
-                  <option value={editTagTrimmed}>{editTagTrimmed}</option>
-                ) : null}
-                {tagStock.map((t) => (
-                  <option key={`${t.id ?? ''}:${t.name}`} value={t.name}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="edit-field">
-              <label htmlFor="edit-task-start">作業開始時刻</label>
-              <input
-                id="edit-task-start"
-                className="edit-input"
-                value={editStartTime}
-                onChange={(e) => setEditStartTime(e.target.value)}
-                type="time"
-                onClick={() => {
-                  if (busy) return;
-                  if (!editStartTime) setEditStartTime(nowHHMM());
-                }}
-                onDoubleClick={() => {
-                  if (busy) return;
-                  setEditStartTime('');
-                }}
-                disabled={busy}
-              />
-            </div>
-            <div className="edit-field">
-              <label htmlFor="edit-task-end">作業終了時刻</label>
-              <input
-                id="edit-task-end"
-                className="edit-input"
-                value={editEndTime}
-                onChange={(e) => setEditEndTime(e.target.value)}
-                type="time"
-                onClick={() => {
-                  if (busy) return;
-                  if (!editEndTime) setEditEndTime(nowHHMM());
-                }}
-                onDoubleClick={() => {
-                  if (busy) return;
-                  setEditEndTime('');
-                }}
-                disabled={busy}
-              />
-            </div>
-
-            <div className="edit-field">
-              <label htmlFor="edit-task-memo">メモ（任意）</label>
-              <textarea
-                id="edit-task-memo"
-                className="edit-input"
-                value={editMemo}
-                onChange={(e) => setEditMemo(e.target.value)}
-                placeholder="メモ"
-                rows={3}
-                disabled={busy}
-              />
-            </div>
-
-            <div className="edit-field">
-              <label htmlFor="edit-task-url">URL（任意）</label>
-              <input
-                id="edit-task-url"
-                className="edit-input"
-                value={editUrl}
-                onChange={(e) => setEditUrl(e.target.value)}
-                placeholder="https://..."
-                inputMode="url"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                disabled={busy}
-              />
-            </div>
-          </div>
-          <div className="edit-footer">
-            <button className="btn-cancel" id="edit-cancel" title="キャンセル" aria-label="キャンセル" type="button" onClick={() => setEditOpen(false)} disabled={busy}>
-              <span className="material-icons">arrow_back</span>
-            </button>
-            <button className="btn-primary" id="edit-save" title="保存" aria-label="保存" type="button" onClick={saveEditingTask} disabled={!accessToken || busy}>
-              <span className="material-icons">save</span>
-            </button>
-            <button className="btn-danger" id="edit-delete" title="削除" aria-label="削除" type="button" onClick={deleteEditingTask} disabled={!accessToken || busy}>
-              <span className="material-icons">delete</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className={`edit-dialog ${notesModalOpen ? 'show' : ''}`}
-        id="notes-edit-dialog"
-        aria-hidden={!notesModalOpen}
-        onMouseDown={(e) => {
-          // click outside to close
-          if (e.target === e.currentTarget) closeNoteModal();
+      <TaskEditDialog
+        open={editOpen}
+        busy={busy}
+        accessToken={accessToken}
+        initial={{ name: editName, tag: editTagTrimmed, startTime: editStartTime, endTime: editEndTime, memo: editMemo, url: editUrl }}
+        taskStock={taskStock}
+        tagStock={tagStock}
+        onClose={() => setEditOpen(false)}
+        onToggleTaskStock={(name) => {
+          const trimmed = String(name || '').trim();
+          if (!trimmed) return;
+          const inStock = taskStock.includes(trimmed);
+          void (inStock ? removeTextFromTaskStock(trimmed) : addTextToTaskStock(trimmed));
         }}
-      >
-        <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
-          <div className="edit-body">
-            <textarea
-              ref={notesModalTextareaRef}
-              className="notes-modal-textarea"
-              placeholder="本文（タイトル不要）"
-              value={notesModalBody}
-              onChange={(e) => {
-                setNotesModalBody(e.target.value);
-              }}
-              onKeyDown={(ev) => {
-                if (ev.key === 'Escape') {
-                  ev.preventDefault();
-                  closeNoteModal();
-                  return;
-                }
-                if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-                  ev.preventDefault();
-                  saveNoteModal();
-                }
-              }}
-              disabled={busy}
-            />
-          </div>
-          <div className="edit-footer">
-            <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => closeNoteModal()} disabled={busy}>
-              <span className="material-icons">close</span>
-            </button>
-            <button
-              className="btn-cancel"
-              type="button"
-              title={notesModalLinkCopied ? 'コピー完了' : 'リンクをコピー'}
-              aria-label={notesModalLinkCopied ? 'コピー完了' : 'リンクをコピー'}
-              onClick={async () => {
-                if (!notesModalId) return;
-                setNotesError(null);
-                const ok = await copyNotePermalinkToClipboard(notesModalId);
-                if (!ok) {
-                  setNotesError('リンクのコピーに失敗しました');
-                  return;
-                }
-
-                setNotesModalLinkCopied(true);
-                if (notesModalLinkCopiedTimerRef.current != null) {
-                  window.clearTimeout(notesModalLinkCopiedTimerRef.current);
-                  notesModalLinkCopiedTimerRef.current = null;
-                }
-                notesModalLinkCopiedTimerRef.current = window.setTimeout(() => {
-                  setNotesModalLinkCopied(false);
-                  notesModalLinkCopiedTimerRef.current = null;
-                }, 1200);
-              }}
-              disabled={!notesModalId || busy}
-            >
-              <span className="material-icons">{notesModalLinkCopied ? 'done' : 'content_copy'}</span>
-            </button>
-            <button
-              className={notesModalWillDelete ? 'btn-danger' : 'btn-primary'}
-              type="button"
-              title={notesModalWillDelete ? '削除' : '保存'}
-              aria-label={notesModalWillDelete ? '削除' : '保存'}
-              onClick={() => saveNoteModal()}
-              disabled={busy}
-            >
-              <span className="material-icons">{notesModalWillDelete ? 'close' : 'done'}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className={`edit-dialog ${noticeModalOpen ? 'show' : ''}`}
-        id="notice-edit-dialog"
-        aria-hidden={!noticeModalOpen}
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) setNoticeModalOpen(false);
+        onSave={(draft) => {
+          void saveEditingTaskFromDraft(draft);
         }}
-      >
-        <div className="edit-content" onMouseDown={(e) => e.stopPropagation()}>
-          <div className="edit-body">
-            <div className="edit-field">
-              <label htmlFor="notice-text">お知らせ</label>
-              <textarea
-                id="notice-text"
-                className="edit-input"
-                value={noticeModalText}
-                onChange={(e) => setNoticeModalText(e.target.value)}
-                rows={5}
-                placeholder="お知らせ内容（改行OK）"
-                onKeyDown={(ev) => {
-                  if (ev.key === 'Escape') {
-                    ev.preventDefault();
-                    setNoticeModalOpen(false);
-                    return;
-                  }
-                  if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-                    ev.preventDefault();
-                    setNotice({ text: noticeModalText, tone: noticeModalTone });
-                    setNoticeModalOpen(false);
-                  }
-                }}
-                disabled={busy}
-                style={{ resize: 'vertical', minHeight: 120, lineHeight: 1.5 }}
-              />
-            </div>
+        onDelete={() => {
+          void deleteEditingTask();
+        }}
+      />
 
-            <div className="edit-field">
-              <label>カラー</label>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    { tone: 'info', label: 'Info', cls: 'bg-blue-950/50 border-blue-700/40' },
-                    { tone: 'danger', label: 'Danger', cls: 'bg-rose-950/55 border-rose-700/40' },
-                    { tone: 'success', label: 'Success', cls: 'bg-emerald-950/50 border-emerald-700/40' },
-                    { tone: 'warning', label: 'Warning', cls: 'bg-amber-950/55 border-amber-700/40' },
-                    { tone: 'default', label: 'Default', cls: 'bg-slate-900/60 border-slate-700/50' },
-                  ] as Array<{ tone: NoticeTone; label: string; cls: string }>
-                ).map((opt) => {
-                  const active = noticeModalTone === opt.tone;
-                  return (
-                    <button
-                      key={opt.tone}
-                      type="button"
-                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${opt.cls} ${
-                        active ? 'ring-2 ring-[rgba(137,180,250,0.25)]' : 'hover:bg-white/5'
-                      }`}
-                      aria-pressed={active}
-                      onClick={() => setNoticeModalTone(opt.tone)}
-                      disabled={busy}
-                    >
-                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-white/70" aria-hidden="true" />
-                      <span className="text-[color:var(--text-primary)]">{opt.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-          <div className="edit-footer">
-            <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={() => setNoticeModalOpen(false)} disabled={busy}>
-              <span className="material-icons">close</span>
-            </button>
-            <button
-              className="btn-primary"
-              type="button"
-              title="保存"
-              aria-label="保存"
-              onClick={() => {
-                setNotice({ text: noticeModalText, tone: noticeModalTone });
-                setNoticeModalOpen(false);
-              }}
-              disabled={busy}
-            >
-              <span className="material-icons">done</span>
-            </button>
-          </div>
-        </div>
-      </div>
+      <NotesEditDialog
+        open={notesModalOpen}
+        noteId={notesModalId}
+        initialBody={notesModalBody}
+        busy={busy}
+        onClose={() => closeNoteModal()}
+        onSave={(body) => saveNoteModal(body)}
+        onCopyLink={async (noteId) => {
+          setNotesError(null);
+          const ok = await copyNotePermalinkToClipboard(noteId);
+          if (!ok) setNotesError('リンクのコピーに失敗しました');
+          return ok;
+        }}
+      />
+
+      <NoticeEditDialog
+        open={noticeModalOpen}
+        busy={busy}
+        initial={{ text: noticeModalText, tone: noticeModalTone }}
+        onClose={() => setNoticeModalOpen(false)}
+        onSave={(next) => {
+          setNotice(next);
+          void saveNoticeToServerNow(next);
+          setNoticeModalOpen(false);
+        }}
+      />
 
       <div
         className={`edit-dialog ${shortcutModalOpen ? 'show' : ''}`}
@@ -10518,6 +10403,443 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           notifications
         </span>
         <div id="toast-message">{reservationToastMessage}</div>
+      </div>
+    </div>
+  );
+}
+
+function TaskEditDialog(props: {
+  open: boolean;
+  busy: boolean;
+  accessToken: string | null;
+  initial: { name: string; tag: string; startTime: string; endTime: string; memo: string; url: string };
+  taskStock: string[];
+  tagStock: Array<{ id?: string | null; name: string }>;
+  onClose: () => void;
+  onToggleTaskStock: (name: string) => void;
+  onSave: (draft: { name: string; tag: string; startTime: string; endTime: string; memo: string; url: string }) => void;
+  onDelete: () => void;
+}) {
+  function hhmmNow() {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
+  const [name, setName] = useState(props.initial.name);
+  const [tag, setTag] = useState(props.initial.tag);
+  const [startTime, setStartTime] = useState(props.initial.startTime);
+  const [endTime, setEndTime] = useState(props.initial.endTime);
+  const [memo, setMemo] = useState(props.initial.memo);
+  const [url, setUrl] = useState(props.initial.url);
+
+  useEffect(() => {
+    if (!props.open) return;
+    setName(props.initial.name);
+    setTag(props.initial.tag);
+    setStartTime(props.initial.startTime);
+    setEndTime(props.initial.endTime);
+    setMemo(props.initial.memo);
+    setUrl(props.initial.url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, props.initial.name, props.initial.tag, props.initial.startTime, props.initial.endTime, props.initial.memo, props.initial.url]);
+
+  if (!props.open) {
+    return <div className={`edit-dialog ${props.open ? 'show' : ''}`} id="edit-dialog" aria-hidden={!props.open} />;
+  }
+
+  const trimmedName = String(name || '').trim();
+  const trimmedTag = String(tag || '').trim();
+  const inStock = !!trimmedName && (Array.isArray(props.taskStock) ? props.taskStock : []).includes(trimmedName);
+  const effectiveTagStock = Array.isArray(props.tagStock) ? props.tagStock : [];
+
+  return (
+    <div className={`edit-dialog ${props.open ? 'show' : ''}`} id="edit-dialog" aria-hidden={!props.open}>
+      <div className="edit-content">
+        <div className="edit-header">
+          <h3>✏️ タスク編集</h3>
+          <button className="edit-close" id="edit-close" title="閉じる" aria-label="閉じる" type="button" onClick={props.onClose}>
+            <span className="material-icons">close</span>
+          </button>
+        </div>
+
+        <div className="edit-body">
+          <div className="edit-field">
+            <label htmlFor="edit-task-name">作業内容</label>
+            <div className="input-with-button">
+              <input
+                id="edit-task-name"
+                className="edit-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="タスク名"
+                disabled={props.busy}
+              />
+              <button
+                id="edit-add-to-task-stock-btn"
+                className="icon-btn"
+                title={inStock ? 'タスクストックから解除' : 'タスクストックに追加'}
+                aria-label={inStock ? 'タスクストックから解除' : 'タスクストックに追加'}
+                type="button"
+                onClick={() => props.onToggleTaskStock(trimmedName)}
+                disabled={!props.accessToken || props.busy || !trimmedName}
+              >
+                <span className="material-icons">{inStock ? 'bookmark_remove' : 'bookmark_add'}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="edit-field">
+            <label htmlFor="edit-task-tag">タグ（任意）</label>
+            <select
+              id="edit-task-tag"
+              className="edit-input"
+              aria-label="タグを選択"
+              value={trimmedTag}
+              onChange={(e) => setTag(e.target.value)}
+              disabled={props.busy}
+            >
+              <option value="">タグを選択</option>
+              {trimmedTag && !effectiveTagStock.some((t) => String(t?.name || '').trim() === trimmedTag) ? (
+                <option value={trimmedTag}>{trimmedTag}</option>
+              ) : null}
+              {effectiveTagStock.map((t) => (
+                <option key={`${t.id ?? ''}:${t.name}`} value={t.name}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="edit-field">
+            <label htmlFor="edit-task-start">作業開始時刻</label>
+            <input
+              id="edit-task-start"
+              className="edit-input"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              type="time"
+              onClick={() => {
+                if (props.busy) return;
+                if (!startTime) setStartTime(hhmmNow());
+              }}
+              onDoubleClick={() => {
+                if (props.busy) return;
+                setStartTime('');
+              }}
+              disabled={props.busy}
+            />
+          </div>
+
+          <div className="edit-field">
+            <label htmlFor="edit-task-end">作業終了時刻</label>
+            <input
+              id="edit-task-end"
+              className="edit-input"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              type="time"
+              onClick={() => {
+                if (props.busy) return;
+                if (!endTime) setEndTime(hhmmNow());
+              }}
+              onDoubleClick={() => {
+                if (props.busy) return;
+                setEndTime('');
+              }}
+              disabled={props.busy}
+            />
+          </div>
+
+          <div className="edit-field">
+            <label htmlFor="edit-task-memo">メモ（任意）</label>
+            <textarea
+              id="edit-task-memo"
+              className="edit-input"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="メモ"
+              rows={3}
+              disabled={props.busy}
+            />
+          </div>
+
+          <div className="edit-field">
+            <label htmlFor="edit-task-url">URL（任意）</label>
+            <input
+              id="edit-task-url"
+              className="edit-input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://..."
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={props.busy}
+            />
+          </div>
+        </div>
+
+        <div className="edit-footer">
+          <button className="btn-cancel" id="edit-cancel" title="キャンセル" aria-label="キャンセル" type="button" onClick={props.onClose} disabled={props.busy}>
+            <span className="material-icons">arrow_back</span>
+          </button>
+          <button
+            className="btn-primary"
+            id="edit-save"
+            title="保存"
+            aria-label="保存"
+            type="button"
+            onClick={() => props.onSave({ name, tag: trimmedTag, startTime, endTime, memo, url })}
+            disabled={!props.accessToken || props.busy}
+          >
+            <span className="material-icons">save</span>
+          </button>
+          <button
+            className="btn-danger"
+            id="edit-delete"
+            title="削除"
+            aria-label="削除"
+            type="button"
+            onClick={props.onDelete}
+            disabled={!props.accessToken || props.busy}
+          >
+            <span className="material-icons">delete</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotesEditDialog(props: {
+  open: boolean;
+  noteId: string | null;
+  initialBody: string;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (body: string) => void;
+  onCopyLink: (noteId: string) => Promise<boolean>;
+}) {
+  const [body, setBody] = useState(props.initialBody);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!props.open) return;
+    setBody(props.initialBody);
+    setLinkCopied(false);
+    if (copiedTimerRef.current != null) {
+      try {
+        window.clearTimeout(copiedTimerRef.current);
+      } catch {
+        // ignore
+      }
+      copiedTimerRef.current = null;
+    }
+    window.setTimeout(() => {
+      try {
+        textareaRef.current?.focus();
+      } catch {
+        // ignore
+      }
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, props.noteId, props.initialBody]);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current != null) {
+        try {
+          window.clearTimeout(copiedTimerRef.current);
+        } catch {
+          // ignore
+        }
+        copiedTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const trimmed = String(body || '').trim();
+  const willDelete = !!props.noteId && !trimmed;
+
+  return (
+    <div
+      className={`edit-dialog ${props.open ? 'show' : ''}`}
+      id="notes-edit-dialog"
+      aria-hidden={!props.open}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) props.onClose();
+      }}
+    >
+      <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="edit-body">
+          <textarea
+            ref={textareaRef}
+            className="notes-modal-textarea"
+            placeholder="本文（タイトル不要）"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Escape') {
+                ev.preventDefault();
+                props.onClose();
+                return;
+              }
+              if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                ev.preventDefault();
+                props.onSave(body);
+              }
+            }}
+            disabled={props.busy}
+          />
+        </div>
+
+        <div className="edit-footer">
+          <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={props.onClose} disabled={props.busy}>
+            <span className="material-icons">close</span>
+          </button>
+          <button
+            className="btn-cancel"
+            type="button"
+            title={linkCopied ? 'コピー完了' : 'リンクをコピー'}
+            aria-label={linkCopied ? 'コピー完了' : 'リンクをコピー'}
+            onClick={async () => {
+              if (!props.noteId) return;
+              const ok = await props.onCopyLink(props.noteId);
+              if (!ok) return;
+
+              setLinkCopied(true);
+              if (copiedTimerRef.current != null) {
+                try {
+                  window.clearTimeout(copiedTimerRef.current);
+                } catch {
+                  // ignore
+                }
+                copiedTimerRef.current = null;
+              }
+              copiedTimerRef.current = window.setTimeout(() => {
+                setLinkCopied(false);
+                copiedTimerRef.current = null;
+              }, 1200);
+            }}
+            disabled={!props.noteId || props.busy}
+          >
+            <span className="material-icons">{linkCopied ? 'done' : 'content_copy'}</span>
+          </button>
+          <button
+            className={willDelete ? 'btn-danger' : 'btn-primary'}
+            type="button"
+            title={willDelete ? '削除' : '保存'}
+            aria-label={willDelete ? '削除' : '保存'}
+            onClick={() => props.onSave(body)}
+            disabled={props.busy}
+          >
+            <span className="material-icons">{willDelete ? 'close' : 'done'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoticeEditDialog(props: {
+  open: boolean;
+  busy: boolean;
+  initial: { text: string; tone: any };
+  onClose: () => void;
+  onSave: (next: { text: string; tone: any }) => void;
+}) {
+  const [text, setText] = useState(String(props.initial.text || ''));
+  const [tone, setTone] = useState(props.initial.tone);
+
+  useEffect(() => {
+    if (!props.open) return;
+    setText(String(props.initial.text || ''));
+    setTone(props.initial.tone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, props.initial.text, props.initial.tone]);
+
+  return (
+    <div
+      className={`edit-dialog ${props.open ? 'show' : ''}`}
+      id="notice-edit-dialog"
+      aria-hidden={!props.open}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) props.onClose();
+      }}
+    >
+      <div className="edit-content" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="edit-body">
+          <div className="edit-field">
+            <label htmlFor="notice-text">お知らせ</label>
+            <textarea
+              id="notice-text"
+              className="edit-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={5}
+              placeholder="お知らせ内容（改行OK）"
+              onKeyDown={(ev) => {
+                if (ev.key === 'Escape') {
+                  ev.preventDefault();
+                  props.onClose();
+                  return;
+                }
+                if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                  ev.preventDefault();
+                  props.onSave({ text, tone });
+                }
+              }}
+              disabled={props.busy}
+              style={{ resize: 'vertical', minHeight: 120, lineHeight: 1.5 }}
+            />
+          </div>
+
+          <div className="edit-field">
+            <label>カラー</label>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { tone: 'info', label: 'Info', cls: 'bg-blue-950/50 border-blue-700/40' },
+                  { tone: 'danger', label: 'Danger', cls: 'bg-rose-950/55 border-rose-700/40' },
+                  { tone: 'success', label: 'Success', cls: 'bg-emerald-950/50 border-emerald-700/40' },
+                  { tone: 'warning', label: 'Warning', cls: 'bg-amber-950/55 border-amber-700/40' },
+                  { tone: 'default', label: 'Default', cls: 'bg-slate-900/60 border-slate-700/50' },
+                ] as Array<{ tone: any; label: string; cls: string }>
+              ).map((opt) => {
+                const active = tone === opt.tone;
+                return (
+                  <button
+                    key={String(opt.tone)}
+                    type="button"
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${opt.cls} ${
+                      active ? 'ring-2 ring-[rgba(137,180,250,0.25)]' : 'hover:bg-white/5'
+                    }`}
+                    aria-pressed={active}
+                    onClick={() => setTone(opt.tone)}
+                    disabled={props.busy}
+                  >
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-white/70" aria-hidden="true" />
+                    <span className="text-[color:var(--text-primary)]">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="edit-footer">
+          <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={props.onClose} disabled={props.busy}>
+            <span className="material-icons">close</span>
+          </button>
+          <button className="btn-primary" type="button" title="保存" aria-label="保存" onClick={() => props.onSave({ text, tone })} disabled={props.busy}>
+            <span className="material-icons">done</span>
+          </button>
+        </div>
       </div>
     </div>
   );
