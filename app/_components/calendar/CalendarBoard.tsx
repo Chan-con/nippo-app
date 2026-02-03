@@ -825,15 +825,7 @@ export default function CalendarBoard(props: {
 
               <div className="calendar-grid" role="grid" aria-label={`月間カレンダー ${monthTitleJa(monthFirstYmd)}`}>
                 {gridDays.map((cell) => {
-                  const dayToneClass = cell.isUserHoliday
-                    ? 'is-user-holiday'
-                    : cell.isHoliday
-                      ? 'is-holiday'
-                      : cell.weekday0 === 0
-                        ? 'is-sun'
-                        : cell.weekday0 === 6
-                          ? 'is-sat'
-                          : '';
+                  const dayToneClass = cell.isHoliday ? 'is-holiday' : cell.weekday0 === 0 ? 'is-sun' : cell.weekday0 === 6 ? 'is-sat' : '';
                   const dayEvents = eventsByDay.get(cell.ymd) ?? [];
                   const { allDay, timed } = sortForDayRender(dayEvents);
 
