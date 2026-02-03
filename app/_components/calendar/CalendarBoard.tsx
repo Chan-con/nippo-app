@@ -1000,10 +1000,6 @@ export default function CalendarBoard(props: {
         })}
       </div>
 
-      <div className="calendar-hint">
-        日付ダブルクリックで追加 / 予定ドラッグで日付移動 / Alt+ドラッグでコピー / 予定ダブルクリックで編集
-      </div>
-
       {memoTooltip
         ? createPortal(
             <div
