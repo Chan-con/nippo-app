@@ -1389,8 +1389,9 @@ input[type='number']::-webkit-inner-spin-button {
   width: 100%;
   text-align: left;
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   border: 1px solid rgba(108, 112, 134, 0.45);
   background: rgba(108, 112, 134, 0.12);
   color: var(--text-primary);
@@ -1424,16 +1425,32 @@ input[type='number']::-webkit-inner-spin-button {
 .calendar-event-time {
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
+  display: block;
+  width: 100%;
   flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.05;
+  font-size: clamp(8px, 2.2vw, 12px);
+  letter-spacing: -0.01em;
 }
 
 .calendar-event-title {
   color: var(--text-primary);
+  display: block;
+  width: 100%;
   flex: 1 1 auto;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (max-width: 420px) {
+  .calendar-event-chip {
+    padding: 5px 6px;
+  }
 }
 
 .calendar-task-chip {
