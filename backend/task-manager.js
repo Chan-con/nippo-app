@@ -3054,26 +3054,156 @@ function createApp(taskManagerInstance, options = {}) {
                 .map((t) => ({
                     name: String(t?.name || '').slice(0, 200),
                     memo: String(t?.memo || '').slice(0, 1400),
+                    dateString: typeof t?.dateString === 'string' ? String(t.dateString).slice(0, 32) : '',
                 }))
                 .filter((t) => String(t.memo || '').trim() !== '');
 
-            const limited = normalized.slice(0, 80);
+            // Group same-name tasks across days to reduce redundancy (no UI, automatic).
+            const grouped = new Map();
+            for (let i = 0; i < normalized.length; i += 1) {
+                const t = normalized[i];
+                const title = String(t?.name || '').trim();
+                const memo = String(t?.memo || '').trim();
+                if (!memo) continue;
+                const key = title ? `t:${title}` : `u:${i}`;
+                const cur = grouped.get(key) || { name: title, memos: [] };
+                cur.memos.push({ dateString: String(t?.dateString || ''), memo });
+                grouped.set(key, cur);
+            }
+
+            const merged = [];
+            for (const v of grouped.values()) {
+                const memos = Array.isArray(v?.memos) ? v.memos : [];
+                memos.sort((a, b) => String(a?.dateString || '').localeCompare(String(b?.dateString || '')));
+                const mergedMemo = memos
+                    .map((m) => String(m?.memo || '').trim())
+                    .filter(Boolean)
+                    .join('\n');
+                if (!mergedMemo) continue;
+                merged.push({ name: String(v?.name || '').slice(0, 200), memo: mergedMemo.slice(0, 4000) });
+            }
+
+            const limited = merged.slice(0, 80);
             if (limited.length === 0) return res.status(400).json({ success: false, error: 'メモがあるタスクがありません' });
+
+            const splitMemoToPieces = (input) => {
+                const memo = String(input || '')
+                    .replace(/\r\n?/g, '\n')
+                    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+                    .trim();
+                if (!memo) return [];
+
+                const lines = memo
+                    .split('\n')
+                    .map((s) => String(s || '').trim())
+                    .filter(Boolean);
+
+                if (lines.length >= 2) return lines;
+                if (memo.length <= 220) return [memo];
+
+                const pieces = [];
+                let buf = '';
+                for (const ch of memo) {
+                    buf += ch;
+                    if (ch === '。' || ch === '！' || ch === '？' || ch === '!' || ch === '?' || buf.length >= 120) {
+                        const t = buf.trim();
+                        if (t) pieces.push(t);
+                        buf = '';
+                    }
+                }
+                const tail = buf.trim();
+                if (tail) pieces.push(tail);
+                return pieces.length ? pieces : [memo];
+            };
+
+            const dedupePieces = (pieces) => {
+                const seen = new Set();
+                const out = [];
+                for (const raw of pieces) {
+                    const line = String(raw || '').trim();
+                    if (!line) continue;
+                    const norm = line
+                        .replace(/^[\-\*・●◯]+\s*/g, '')
+                        .replace(/[\s\u3000\t]+/g, ' ')
+                        .replace(/[。．\.]+$/g, '')
+                        .toLowerCase();
+                    if (!norm) continue;
+                    if (seen.has(norm)) continue;
+                    seen.add(norm);
+                    out.push(line);
+                }
+                return out;
+            };
+
+            const scoreMemoPiece = (piece) => {
+                const s = String(piece || '').trim();
+                if (!s) return -999;
+                const lowSignal = /(調査中|確認中|対応中|作業中|進行中|継続|続き|WIP|wip|いったん|一旦|ひとまず|様子見|試行|試す|検討中)/;
+                const resultSignal = /(完了|修正|改善|解消|復旧|反映|追加|更新|削除|統合|作成|実装|リリース|公開|原因|特定|再現|回避|方針|決定|合意|対応済|できた|OK|クローズ)/;
+                const problemSignal = /(不具合|エラー|失敗|原因|問題|課題|ボトルネック|遅い|重い|詰まり|ブロック|障害)/;
+
+                let score = 0;
+                const len = s.length;
+                if (len >= 12 && len <= 140) score += 2;
+                else if (len > 140) score += 1;
+                else score -= 1;
+
+                if (resultSignal.test(s)) score += 4;
+                if (problemSignal.test(s)) score += 2;
+                if (lowSignal.test(s) && !resultSignal.test(s)) score -= 3;
+                if (/^(確認|調査|対応|作業|実装|修正|変更)(中|予定|します|した)?[。\.]*$/.test(s)) score -= 4;
+                return score;
+            };
+
+            const pickKeyPieces = (pieces, maxPieces) => {
+                const list = dedupePieces(pieces);
+                if (list.length <= maxPieces) return list;
+                const scored = list
+                    .map((text, idx) => ({ idx, text, score: scoreMemoPiece(text) }))
+                    .sort((a, b) => (b.score - a.score) || (a.idx - b.idx));
+                const picked = scored.slice(0, Math.max(1, maxPieces)).sort((a, b) => a.idx - b.idx);
+                return picked.map((p) => p.text);
+            };
+
+            const decideKeyPieceBudget = (totalMemoChars, totalPieces) => {
+                if (totalMemoChars >= 12000 || totalPieces >= 180) return 1;
+                if (totalMemoChars >= 7000 || totalPieces >= 110) return 2;
+                if (totalMemoChars >= 3500 || totalPieces >= 60) return 3;
+                return 4;
+            };
+
+            let totalMemoChars = 0;
+            let totalPieces = 0;
+            for (const t of limited) {
+                totalMemoChars += String(t.memo || '').length;
+                totalPieces += splitMemoToPieces(t.memo).length;
+            }
+            const budget = decideKeyPieceBudget(totalMemoChars, totalPieces);
 
             const timeline = limited
                 .map((t) => {
                     const title = String(t.name || '').trim();
                     const memo = String(t.memo || '').trim();
                     if (!memo) return '';
-                    if (!title) return `【メモ】\n${memo}`;
-                    return `【${title}】\n${memo}`;
+
+                    const pieces = splitMemoToPieces(memo);
+                    const picked = pickKeyPieces(pieces, budget);
+                    const compact = picked
+                        .map((s) => String(s || '').trim())
+                        .filter(Boolean)
+                        .map((s) => (s.length > 220 ? s.slice(0, 220) + '…' : s))
+                        .join('\n');
+
+                    const body = compact || memo;
+                    if (!title) return `【メモ】\n${body}`;
+                    return `【${title}】\n${body}`;
                 })
                 .filter(Boolean)
                 .join('\n\n');
 
             const messages = [
                 { role: 'system', content: 'あなたは日本語の業務日報を作成するアシスタントです。入力(作業タイトル/メモ)のみを根拠に、社内向けの丁寧で簡潔な報告文を作成してください。誇張せず、事実ベースでまとめます。硬い言い回しは避け、です/ます調は維持しつつ、できるだけ平易でわかりやすい言葉を使います。' },
-                { role: 'user', content: '次の入力から「報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 文章は硬くしすぎない（自然でわかりやすい言葉を使う）\n- 難しい言い回し・過度にビジネスっぽい敬語・抽象語（例: 〜いたしました/〜させていただきました/推進/実施/対応 等）の多用は避ける\n- 箇条書きは使わず、読みやすい文章\n- 改行は段落区切りのみ（文の途中で不自然に改行しない）\n- 2〜4段落程度に収める（必要なら段落を分ける）\n- 作業時間・工数・時間帯など時間情報には一切触れない（推測もしない）\n- 対象期間・日付・複数日にわたる継続など、期間に関する言及は一切しない（推測もしない）\n- 入力に無い事実は追加しない\n- メモがあれば自然に文章へ反映する\n\n入力（作業タイトル/メモ）:\n' + timeline }
+                { role: 'user', content: '次の入力から「報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 文章は硬くしすぎない（自然でわかりやすい言葉を使う）\n- 難しい言い回し・過度にビジネスっぽい敬語・抽象語（例: 〜いたしました/〜させていただきました/推進/実施/対応 等）の多用は避ける\n- 箇条書きは使わず、読みやすい文章\n- 改行は段落区切りのみ（文の途中で不自然に改行しない）\n- 2〜4段落程度に収める（必要なら段落を分ける）\n- 作業時間・工数・時間帯など時間情報には一切触れない（推測もしない）\n- 対象期間・日付・複数日にわたる継続など、期間に関する言及は一切しない（推測もしない）\n- 入力に無い事実は追加しない\n- メモがあれば自然に文章へ反映する\n- 似た内容や同一趣旨の作業は、言い換えて繰り返さず可能な限り統合して一度だけ述べる（冗長な重複を避ける）\n- 入力の情報量が多い場合、途中経過（調査中/確認中/対応中など）は省略し、完了・変更点・決定事項・課題の解消など「結果」を優先する\n- 入力の情報量が少ない場合は、途中経過も最大1点まで自然に拾ってよい\n- 専門用語は可能な範囲でわかりやすい言葉に置き換える（ただし解説は不要で、文章を長くしない）\n\n入力（作業タイトル/メモ）:\n' + timeline }
             ];
 
             const text = await callOpenAiChatNode({ apiKey, messages, temperature: 0.1, maxTokens: 900 });
