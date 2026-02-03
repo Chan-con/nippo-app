@@ -7691,15 +7691,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {effectiveViewMode === 'today' && accessToken ? (
               <div className="gantt-section" style={{ display: todayMainTab === 'gantt' ? undefined : 'none' }}>
-                <div className="gantt-toolbar">
-                  <div className="gantt-status" aria-live="polite">
-                    {ganttLoading ? <span className="gantt-status-item">同期中…</span> : null}
-                    {!ganttLoading && ganttSaving ? <span className="gantt-status-item">保存中…</span> : null}
-                    {!ganttLoading && !ganttSaving && ganttDirty ? <span className="gantt-status-item">未保存</span> : null}
-                    {ganttRemoteUpdatePending ? <span className="gantt-status-item">他端末で更新あり（保存後に反映）</span> : null}
-                    {ganttError ? <span className="gantt-status-item error">{ganttError}</span> : null}
+                {ganttLoading || ganttSaving || ganttDirty || ganttRemoteUpdatePending || ganttError ? (
+                  <div className="gantt-toolbar">
+                    <div className="gantt-status" aria-live="polite">
+                      {ganttLoading ? <span className="gantt-status-item">同期中…</span> : null}
+                      {!ganttLoading && ganttSaving ? <span className="gantt-status-item">保存中…</span> : null}
+                      {!ganttLoading && !ganttSaving && ganttDirty ? <span className="gantt-status-item">未保存</span> : null}
+                      {ganttRemoteUpdatePending ? <span className="gantt-status-item">他端末で更新あり（保存後に反映）</span> : null}
+                      {ganttError ? <span className="gantt-status-item error">{ganttError}</span> : null}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <GanttBoard
                   tasks={normalizeGanttTasks(ganttTasks)}
