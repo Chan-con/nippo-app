@@ -3,6 +3,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import FloatingNotices, { type FloatingNoticeItem } from './_components/FloatingNotices';
+import { useFloatingNotices } from './_components/FloatingNoticesProvider';
 import CalendarBoard from './_components/calendar/CalendarBoard';
 import GanttBoard from './_components/gantt/GanttBoard';
 import GanttDrawer from './_components/gantt/GanttDrawer';
@@ -767,9 +769,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const reservationNotifyTimeoutsRef = useRef<Map<string, number>>(new Map());
   const reservationNotifyFiredRef = useRef<Set<string>>(new Set());
   const reservationNotifyIntervalRef = useRef<number | null>(null);
-  const reservationToastTimerRef = useRef<number | null>(null);
-  const [reservationToastOpen, setReservationToastOpen] = useState(false);
-  const [reservationToastMessage, setReservationToastMessage] = useState('');
+  const floating = useFloatingNotices();
 
   const [settingsGptApiKeyInput, setSettingsGptApiKeyInput] = useState('');
   const [settingsGptApiKeySaved, setSettingsGptApiKeySaved] = useState(false);
@@ -2112,6 +2112,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         } catch {
           // ignore
         }
+      }
+
+      // In-app floating notice (always, regardless of Notification permission)
+      try {
+        if (due.length === 1) {
+          const a = due[0];
+          const title = String(a.title || 'アラート').trim() || 'アラート';
+          floating?.push({ text: `${title}：時間になりました`, tone: 'info', icon: 'notifications', ttlMs: 6000 });
+        } else {
+          const titles = due
+            .map((a) => String(a.title || '（無題）').trim())
+            .filter(Boolean)
+            .slice(0, 3);
+          const suffix = due.length > titles.length ? ` ほか${due.length - titles.length}件` : '';
+          const body = titles.length ? `${titles.join(' / ')}${suffix}` : `${due.length}件のアラート`;
+          floating?.push({ text: `アラート：${body}`, tone: 'info', icon: 'notifications', ttlMs: 6000 });
+        }
+      } catch {
+        // ignore
       }
 
       const bumpedBase = new Date(nowMs + 60 * 1000);
@@ -4803,13 +4822,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function showReservationToast(message: string) {
-    setReservationToastMessage(message);
-    setReservationToastOpen(true);
-    if (reservationToastTimerRef.current != null) window.clearTimeout(reservationToastTimerRef.current);
-    reservationToastTimerRef.current = window.setTimeout(() => {
-      setReservationToastOpen(false);
-      reservationToastTimerRef.current = null;
-    }, 6000);
+    floating?.push({ text: message, tone: 'success', icon: 'notifications', ttlMs: 6000 });
   }
 
   function notifyReservationTask(opts: { task: Task; startTimeMinutes: number; minutesBefore: number }) {
@@ -6740,6 +6753,93 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   // 今日モードのタブ表示時は「タイムライン」タブでのみ表示する。
   const showMainHeader = effectiveViewMode === 'history' || !(effectiveViewMode === 'today' && accessToken) || todayMainTab === 'timeline';
 
+  const floatingNotices: FloatingNoticeItem[] = useMemo(() => {
+    const items: FloatingNoticeItem[] = [];
+
+    // global warnings
+    if (error) items.push({ id: 'global:error', text: String(error), tone: 'danger', icon: 'error' });
+    if (!accessToken) items.push({ id: 'global:login', text: 'Googleでログインしてください', tone: 'info', icon: 'login' });
+
+    // active tab statuses
+    if (effectiveViewMode === 'today' && accessToken) {
+      if (todayMainTab === 'taskline') {
+        if (taskLineLoading) items.push({ id: 'status:taskline:loading', text: '同期中…' });
+        if (!taskLineLoading && taskLineSaving) items.push({ id: 'status:taskline:saving', text: '保存中…' });
+        if (!taskLineLoading && !taskLineSaving && taskLineDirty) items.push({ id: 'status:taskline:dirty', text: '未保存' });
+        if (taskLineRemoteUpdatePending) items.push({ id: 'status:taskline:remote', text: '他端末で更新あり（保存後に反映）' });
+        if (taskLineError) items.push({ id: 'status:taskline:error', text: String(taskLineError), tone: 'danger', icon: 'error' });
+      }
+
+      if (todayMainTab === 'calendar') {
+        if (calendarLoading) items.push({ id: 'status:calendar:loading', text: '同期中…' });
+        if (!calendarLoading && calendarSaving) items.push({ id: 'status:calendar:saving', text: '保存中…' });
+        if (!calendarLoading && !calendarSaving && calendarDirty) items.push({ id: 'status:calendar:dirty', text: '未保存' });
+        if (calendarRemoteUpdatePending) items.push({ id: 'status:calendar:remote', text: '他端末で更新あり（保存後に反映）' });
+        if (calendarError) items.push({ id: 'status:calendar:error', text: String(calendarError), tone: 'danger', icon: 'error' });
+      }
+
+      if (todayMainTab === 'gantt') {
+        if (ganttLoading) items.push({ id: 'status:gantt:loading', text: '同期中…' });
+        if (!ganttLoading && ganttSaving) items.push({ id: 'status:gantt:saving', text: '保存中…' });
+        if (!ganttLoading && !ganttSaving && ganttDirty) items.push({ id: 'status:gantt:dirty', text: '未保存' });
+        if (ganttRemoteUpdatePending) items.push({ id: 'status:gantt:remote', text: '他端末で更新あり（保存後に反映）' });
+        if (ganttError) items.push({ id: 'status:gantt:error', text: String(ganttError), tone: 'danger', icon: 'error' });
+      }
+
+      if (todayMainTab === 'alerts') {
+        if (alertsLoading) items.push({ id: 'status:alerts:loading', text: '同期中…' });
+        if (!alertsLoading && alertsSaving) items.push({ id: 'status:alerts:saving', text: '保存中…' });
+        if (!alertsLoading && !alertsSaving && alertsDirty) items.push({ id: 'status:alerts:dirty', text: '未保存' });
+        if (alertsRemoteUpdatePending) items.push({ id: 'status:alerts:remote', text: '他端末で更新あり（保存後に反映）' });
+        if (alertsError) items.push({ id: 'status:alerts:error', text: String(alertsError), tone: 'danger', icon: 'error' });
+      }
+
+      if (todayMainTab === 'notes') {
+        if (notesLoading) items.push({ id: 'status:notes:loading', text: '同期中…' });
+        if (!notesLoading && notesSaving) items.push({ id: 'status:notes:saving', text: '保存中…' });
+        if (!notesLoading && !notesSaving && notesDirty) items.push({ id: 'status:notes:dirty', text: '未保存' });
+        if (notesRemoteUpdatePending) items.push({ id: 'status:notes:remote', text: '他端末で更新あり（保存後に反映）' });
+        if (notesError) items.push({ id: 'status:notes:error', text: String(notesError), tone: 'danger', icon: 'error' });
+      }
+    }
+
+    // ephemeral toasts last
+    const toasts = Array.isArray(floating?.toasts) ? floating?.toasts : [];
+    for (const t of toasts) items.push(t);
+    return items;
+  }, [
+    accessToken,
+    alertsDirty,
+    alertsError,
+    alertsLoading,
+    alertsRemoteUpdatePending,
+    alertsSaving,
+    calendarDirty,
+    calendarError,
+    calendarLoading,
+    calendarRemoteUpdatePending,
+    calendarSaving,
+    effectiveViewMode,
+    error,
+    floating?.toasts,
+    ganttDirty,
+    ganttError,
+    ganttLoading,
+    ganttRemoteUpdatePending,
+    ganttSaving,
+    notesDirty,
+    notesError,
+    notesLoading,
+    notesRemoteUpdatePending,
+    notesSaving,
+    taskLineDirty,
+    taskLineError,
+    taskLineLoading,
+    taskLineRemoteUpdatePending,
+    taskLineSaving,
+    todayMainTab,
+  ]);
+
   return (
     <div style={{ display: 'contents' }}>
       <div className="titlebar">
@@ -7164,13 +7264,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 設定
               </button>
             </div>
-
-            {error ? (
-              <div style={{ marginTop: 12, color: 'var(--error)', fontSize: 12 }}>{error}</div>
-            ) : null}
-            {!accessToken ? (
-              <div style={{ marginTop: 12, color: 'var(--text-muted)', fontSize: 12 }}>Googleでログインしてください</div>
-            ) : null}
           </div>
         </aside>
 
@@ -7515,18 +7608,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           >
             {effectiveViewMode === 'today' && accessToken ? (
               <div className="taskline-section" style={{ display: todayMainTab === 'taskline' ? undefined : 'none' }}>
-              {taskLineLoading || taskLineSaving || taskLineDirty || taskLineRemoteUpdatePending || !!taskLineError ? (
-                <div className="taskline-header" style={{ justifyContent: 'flex-end' }}>
-                  <div className="taskline-status" aria-live="polite">
-                    {taskLineLoading ? <span className="taskline-status-item">同期中…</span> : null}
-                    {!taskLineLoading && taskLineSaving ? <span className="taskline-status-item">保存中…</span> : null}
-                    {!taskLineLoading && !taskLineSaving && taskLineDirty ? <span className="taskline-status-item">未保存</span> : null}
-                    {taskLineRemoteUpdatePending ? <span className="taskline-status-item">他端末で更新あり（保存後に反映）</span> : null}
-                    {taskLineError ? <span className="taskline-status-item error">{taskLineError}</span> : null}
-                  </div>
-                </div>
-              ) : null}
-
               <div
                 className="taskline-scroll"
                 ref={taskLineBoardRef}
@@ -7673,15 +7754,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {effectiveViewMode === 'today' && accessToken ? (
               <div className="calendar-section" style={{ display: todayMainTab === 'calendar' ? undefined : 'none' }}>
-                <div className="calendar-statusbar" aria-hidden="true">
-                  <div className="calendar-status" aria-live="polite">
-                    {calendarLoading ? <span className="calendar-status-item">同期中…</span> : null}
-                    {!calendarLoading && calendarSaving ? <span className="calendar-status-item">保存中…</span> : null}
-                    {!calendarLoading && !calendarSaving && calendarDirty ? <span className="calendar-status-item">未保存</span> : null}
-                    {calendarRemoteUpdatePending ? <span className="calendar-status-item">他端末で更新あり（保存後に反映）</span> : null}
-                    {calendarError ? <span className="calendar-status-item error">{calendarError}</span> : null}
-                  </div>
-                </div>
                 <CalendarBoard
                   todayYmd={todayYmd}
                   nowMs={nowMs}
@@ -7724,18 +7796,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {effectiveViewMode === 'today' && accessToken ? (
               <div className="gantt-section" style={{ display: todayMainTab === 'gantt' ? undefined : 'none' }}>
-                {ganttLoading || ganttSaving || ganttDirty || ganttRemoteUpdatePending || ganttError ? (
-                  <div className="gantt-toolbar">
-                    <div className="gantt-status" aria-live="polite">
-                      {ganttLoading ? <span className="gantt-status-item">同期中…</span> : null}
-                      {!ganttLoading && ganttSaving ? <span className="gantt-status-item">保存中…</span> : null}
-                      {!ganttLoading && !ganttSaving && ganttDirty ? <span className="gantt-status-item">未保存</span> : null}
-                      {ganttRemoteUpdatePending ? <span className="gantt-status-item">他端末で更新あり（保存後に反映）</span> : null}
-                      {ganttError ? <span className="gantt-status-item error">{ganttError}</span> : null}
-                    </div>
-                  </div>
-                ) : null}
-
                 <GanttBoard
                   tasks={normalizeGanttTasks(ganttTasks)}
                   todayYmd={todayYmd}
@@ -7890,14 +7950,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         add
                       </span>
                     </button>
-                  </div>
-
-                  <div className="alerts-status" aria-live="polite">
-                    {alertsLoading ? <span className="alerts-status-item">同期中…</span> : null}
-                    {!alertsLoading && alertsSaving ? <span className="alerts-status-item">保存中…</span> : null}
-                    {!alertsLoading && !alertsSaving && alertsDirty ? <span className="alerts-status-item">未保存</span> : null}
-                    {alertsRemoteUpdatePending ? <span className="alerts-status-item">他端末で更新あり（保存後に反映）</span> : null}
-                    {alertsError ? <span className="alerts-status-item error">{alertsError}</span> : null}
                   </div>
                 </div>
 
@@ -8305,13 +8357,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           disabled={busy}
                         />
                       </div>
-                    </div>
-                    <div className="notes-status" aria-live="polite">
-                      {notesLoading ? <span className="notes-status-item">同期中…</span> : null}
-                      {!notesLoading && notesSaving ? <span className="notes-status-item">保存中…</span> : null}
-                      {!notesLoading && !notesSaving && notesDirty ? <span className="notes-status-item">未保存</span> : null}
-                      {notesRemoteUpdatePending ? <span className="notes-status-item">他端末で更新あり（保存後に反映）</span> : null}
-                      {notesError ? <span className="notes-status-item error">{notesError}</span> : null}
                     </div>
                   </div>
                 </div>
@@ -10526,12 +10571,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         </div>
       </div>
 
-      <div className={`toast ${reservationToastOpen ? 'show' : ''}`} role="status" aria-live="polite">
-        <span className="material-icons" aria-hidden="true">
-          notifications
-        </span>
-        <div id="toast-message">{reservationToastMessage}</div>
-      </div>
+      <FloatingNotices items={floatingNotices} />
     </div>
   );
 }

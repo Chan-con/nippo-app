@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import ClientApp from './ClientApp';
+import FloatingNoticesProvider from './_components/FloatingNoticesProvider';
 
 export default function ClientAppShell(props: { supabaseUrl: string; supabaseAnonKey: string }) {
   const [mounted, setMounted] = useState(false);
@@ -14,5 +15,9 @@ export default function ClientAppShell(props: { supabaseUrl: string; supabaseAno
   // on the very first client render.
   if (!mounted) return null;
 
-  return <ClientApp supabaseUrl={props.supabaseUrl} supabaseAnonKey={props.supabaseAnonKey} />;
+  return (
+    <FloatingNoticesProvider>
+      <ClientApp supabaseUrl={props.supabaseUrl} supabaseAnonKey={props.supabaseAnonKey} />
+    </FloatingNoticesProvider>
+  );
 }

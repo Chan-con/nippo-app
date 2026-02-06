@@ -797,6 +797,66 @@ input[type='number']::-webkit-inner-spin-button {
   min-width: 0;
 }
 
+/* 共通フロート通知（右下・レイアウト非干渉） */
+.floating-notices {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+  max-width: min(560px, 76vw);
+}
+
+.floating-notice-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-medium);
+  background: rgba(30, 30, 46, 0.72);
+  border: 1px solid rgba(108, 112, 134, 0.35);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.floating-notice-icon {
+  font-size: 18px;
+  line-height: 1;
+  margin-top: 1px;
+  color: var(--text-muted);
+}
+
+.floating-notice-text {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.floating-notice-item.tone-danger .floating-notice-icon,
+.floating-notice-item.tone-danger .floating-notice-text {
+  color: var(--error);
+}
+
+.floating-notice-item.tone-warning .floating-notice-icon,
+.floating-notice-item.tone-warning .floating-notice-text {
+  color: var(--warning);
+}
+
+.floating-notice-item.tone-success .floating-notice-icon,
+.floating-notice-item.tone-success .floating-notice-text {
+  color: var(--success);
+}
+
+.floating-notice-item.tone-info .floating-notice-icon,
+.floating-notice-item.tone-info .floating-notice-text {
+  color: var(--accent);
+}
+
 /* タスクライン（付箋レーン） */
 .taskline-section {
   margin-bottom: 18px;
