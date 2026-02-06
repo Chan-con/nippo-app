@@ -10838,7 +10838,7 @@ function TaskLineEditDialog(props: {
               onChange={(e) => setWeekday((e.target.value || '') as TaskLineWeekday | '')}
               disabled={props.busy}
             >
-              <option value="">未設定（ストック）</option>
+              <option value="">ストック</option>
               <option value="mon">月</option>
               <option value="tue">火</option>
               <option value="wed">水</option>
