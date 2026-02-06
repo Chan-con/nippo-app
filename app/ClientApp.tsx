@@ -43,6 +43,8 @@ type TaskLineCard = {
 
 type TaskLineLane = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'stock';
 
+type TaskLineWeekday = Exclude<TaskLineLane, 'stock'>;
+
 type TodayMainTab = 'timeline' | 'calendar' | 'taskline' | 'gantt' | 'alerts' | 'notes';
 
 type CalendarEvent = {
@@ -1633,6 +1635,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const taskLineLastSavedSnapshotRef = useRef<string>('');
   const taskLineIsSavingRef = useRef(false);
 
+  // task line edit modal (common edit-dialog spec)
+  const [taskLineModalOpen, setTaskLineModalOpen] = useState(false);
+  const [taskLineModalCardId, setTaskLineModalCardId] = useState<string | null>(null);
+  const [taskLineModalInitialText, setTaskLineModalInitialText] = useState('');
+  const [taskLineModalInitialWeekday, setTaskLineModalInitialWeekday] = useState<TaskLineWeekday | ''>('');
+
   // gantt (roadmap) - lanes + draggable/resizable bars (synced via Supabase)
   const GANTT_GLOBAL_KEY = 'global';
   const [ganttLanes, setGanttLanes] = useState<GanttLane[]>([]);
@@ -2837,14 +2845,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  function autoResizeTextarea(el: HTMLTextAreaElement | null) {
-    if (!el) return;
-    try {
-      el.style.height = 'auto';
-      el.style.height = `${el.scrollHeight}px`;
-    } catch {
-      // ignore
-    }
+  function taskLineWeekdayFromLane(lane: TaskLineLane): TaskLineWeekday | '' {
+    return lane === 'stock' ? '' : lane;
+  }
+
+  function taskLineLaneFromWeekday(weekday: TaskLineWeekday | ''): TaskLineLane {
+    return weekday ? weekday : 'stock';
   }
 
   function shortenUrlForDisplay(rawUrl: string) {
@@ -3643,15 +3649,83 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setTaskLineDirty(true);
   }
 
-  function addTaskLineCardAtStart(lane: TaskLineLane = 'stock') {
-    const id = newId();
+  function openTaskLineEditModalForCard(cardId: string) {
+    if (busy) return;
+    const id = String(cardId || '').trim();
+    if (!id) return;
+    const found = normalizeTaskLineCards(taskLineCards).find((c) => c.id === id) ?? null;
+    if (!found) return;
+    setTaskLineModalCardId(found.id);
+    setTaskLineModalInitialText(found.text ?? '');
+    setTaskLineModalInitialWeekday(taskLineWeekdayFromLane(found.lane));
+    setTaskLineModalOpen(true);
+    setTaskLineEditingId(found.id);
+  }
+
+  function openTaskLineEditModalForNew(defaultLane: TaskLineLane) {
+    if (busy) return;
+    setTaskLineModalCardId(null);
+    setTaskLineModalInitialText('');
+    setTaskLineModalInitialWeekday(taskLineWeekdayFromLane(defaultLane));
+    setTaskLineModalOpen(true);
+    setTaskLineEditingId('new');
+  }
+
+  function closeTaskLineEditModal() {
+    setTaskLineModalOpen(false);
+    setTaskLineModalCardId(null);
+    setTaskLineModalInitialText('');
+    setTaskLineModalInitialWeekday('');
+    setTaskLineEditingId(null);
+  }
+
+  function saveTaskLineEditModal(draft: { text: string; weekday: TaskLineWeekday | '' }) {
+    const text = String(draft?.text || '').trim();
+    if (!text) return;
+    const nextLane = taskLineLaneFromWeekday(draft.weekday);
+
+    const editingId = taskLineModalCardId;
+
+    // create
+    if (!editingId) {
+      const id = newId();
+      setTaskLineCards((prev) => {
+        const normalized = normalizeTaskLineCards(prev);
+        const next = [{ id, text, lane: nextLane, order: -1 }, ...normalized];
+        return normalizeTaskLineCards(next);
+      });
+      setTaskLineDirty(true);
+      setTaskLineRemoteUpdatePending(false);
+      closeTaskLineEditModal();
+      return;
+    }
+
+    // update
     setTaskLineCards((prev) => {
       const normalized = normalizeTaskLineCards(prev);
-      const next = [{ id, text: '', lane, order: -1 }, ...normalized];
+      const cur = normalized.find((c) => c.id === editingId) ?? null;
+      const laneChanged = !!cur && cur.lane !== nextLane;
+      const next = normalized.map((c) => (c.id === editingId ? { ...c, text, lane: nextLane, order: laneChanged ? 9999 : c.order } : c));
       return normalizeTaskLineCards(next);
     });
-    setTaskLineEditingId(id);
     setTaskLineDirty(true);
+    setTaskLineRemoteUpdatePending(false);
+    closeTaskLineEditModal();
+  }
+
+  function deleteTaskLineFromModal() {
+    const id = String(taskLineModalCardId || '').trim();
+    if (!id) {
+      closeTaskLineEditModal();
+      return;
+    }
+    deleteTaskLineCard(id);
+    setTaskLineRemoteUpdatePending(false);
+    closeTaskLineEditModal();
+  }
+
+  function addTaskLineCardAtStart(lane: TaskLineLane = 'stock') {
+    openTaskLineEditModalForNew(lane);
   }
 
   function updateTaskLineCardText(id: string, text: string) {
@@ -7551,14 +7625,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         }}
                       >
                         {laneCards.map((card, laneIndex) => {
-                          const isEditing = taskLineEditingId === card.id;
                           return (
                             <div
                               key={card.id}
                               className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}`}
                               data-taskline-cardid={card.id}
                               data-taskline-laneindex={laneIndex}
-                              draggable={!isEditing && !busy}
+                              draggable={!busy && !taskLineEditingId}
                               onDragStart={(e) => {
                                 setTaskLineDraggingId(card.id);
                                 taskLineLastPreviewRef.current = null;
@@ -7574,57 +7647,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 taskLineDragJustEndedAtRef.current = Date.now();
                               }}
                               onClick={() => {
-                                if (isEditing) return;
                                 if (Date.now() - taskLineDragJustEndedAtRef.current < 200) return;
                               }}
                               onDoubleClick={(ev) => {
                                 ev.preventDefault();
                                 ev.stopPropagation();
                                 if (busy) return;
-                                setTaskLineEditingId(card.id);
+                                openTaskLineEditModalForCard(card.id);
                               }}
-                              title={isEditing ? '' : 'ダブルクリックで編集'}
+                              title={'ダブルクリックで編集'}
                             >
-                              {isEditing ? (
-                                <textarea
-                                  className="taskline-card-input"
-                                  rows={1}
-                                  autoFocus
-                                  value={card.text}
-                                  onChange={(ev) => {
-                                    updateTaskLineCardText(card.id, ev.target.value);
-                                    autoResizeTextarea(ev.currentTarget);
-                                  }}
-                                  onFocus={(ev) => autoResizeTextarea(ev.currentTarget)}
-                                  onBlur={() => {
-                                    const v = String(card.text ?? '').trim();
-                                    if (!v) {
-                                      deleteTaskLineCard(card.id);
-                                      return;
-                                    }
-                                    setTaskLineEditingId(null);
-                                  }}
-                                  onKeyDown={(ev) => {
-                                    if (ev.key === 'Escape') {
-                                      ev.preventDefault();
-                                      deleteTaskLineCard(card.id);
-                                      return;
-                                    }
-
-                                    if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-                                      ev.preventDefault();
-                                      const v = String(card.text ?? '').trim();
-                                      if (!v) {
-                                        deleteTaskLineCard(card.id);
-                                        return;
-                                      }
-                                      setTaskLineEditingId(null);
-                                    }
-                                  }}
-                                />
-                              ) : (
-                                <div className="taskline-card-text">{renderTextWithLinks(card.text)}</div>
-                              )}
+                              <div className="taskline-card-text">{renderTextWithLinks(card.text)}</div>
                             </div>
                           );
                         })}
@@ -8598,6 +8631,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           void saveNoticeToServerNow(next);
           setNoticeModalOpen(false);
         }}
+      />
+
+      <TaskLineEditDialog
+        open={taskLineModalOpen}
+        busy={busy}
+        cardId={taskLineModalCardId}
+        initial={{ text: taskLineModalInitialText, weekday: taskLineModalInitialWeekday }}
+        onClose={() => closeTaskLineEditModal()}
+        onSave={(draft) => saveTaskLineEditModal(draft)}
+        onDelete={() => deleteTaskLineFromModal()}
       />
 
       <div
@@ -10709,6 +10752,128 @@ function TaskEditDialog(props: {
             type="button"
             onClick={props.onDelete}
             disabled={!props.accessToken || props.busy}
+          >
+            <span className="material-icons">delete</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskLineEditDialog(props: {
+  open: boolean;
+  busy: boolean;
+  cardId: string | null;
+  initial: { text: string; weekday: TaskLineWeekday | '' };
+  onClose: () => void;
+  onSave: (draft: { text: string; weekday: TaskLineWeekday | '' }) => void;
+  onDelete: () => void;
+}) {
+  const [text, setText] = useState(String(props.initial.text || ''));
+  const [weekday, setWeekday] = useState<TaskLineWeekday | ''>(props.initial.weekday);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!props.open) return;
+    setText(String(props.initial.text || ''));
+    setWeekday(props.initial.weekday);
+    const t = window.setTimeout(() => {
+      try {
+        textareaRef.current?.focus();
+        textareaRef.current?.select();
+      } catch {
+        // ignore
+      }
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, props.cardId, props.initial.text, props.initial.weekday]);
+
+  const trimmed = String(text || '').trim();
+  const canSave = !!trimmed;
+
+  return (
+    <div
+      className={`edit-dialog ${props.open ? 'show' : ''}`}
+      id="taskline-edit-dialog"
+      aria-hidden={!props.open}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) props.onClose();
+      }}
+    >
+      <div className="edit-content" role="dialog" aria-modal="true" aria-label="付箋の編集" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="edit-body">
+          <div className="edit-field">
+            <label>テキスト</label>
+            <textarea
+              ref={textareaRef}
+              className="edit-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="タスク内容"
+              rows={6}
+              style={{ resize: 'vertical', minHeight: 140, lineHeight: 1.5 }}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Escape') {
+                  ev.preventDefault();
+                  props.onClose();
+                  return;
+                }
+                if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                  ev.preventDefault();
+                  if (!canSave) return;
+                  props.onSave({ text, weekday });
+                }
+              }}
+              disabled={props.busy}
+            />
+          </div>
+
+          <div className="edit-field">
+            <label>曜日</label>
+            <select
+              className="edit-input"
+              value={weekday}
+              onChange={(e) => setWeekday((e.target.value || '') as TaskLineWeekday | '')}
+              disabled={props.busy}
+            >
+              <option value="">未設定（ストック）</option>
+              <option value="mon">月</option>
+              <option value="tue">火</option>
+              <option value="wed">水</option>
+              <option value="thu">木</option>
+              <option value="fri">金</option>
+              <option value="sat">土</option>
+              <option value="sun">日</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="edit-footer">
+          <button className="btn-cancel" type="button" title="キャンセル" aria-label="キャンセル" onClick={props.onClose} disabled={props.busy}>
+            <span className="material-icons">close</span>
+          </button>
+          <button
+            className="btn-primary"
+            type="button"
+            title="保存"
+            aria-label="保存"
+            onClick={() => {
+              if (!canSave) return;
+              props.onSave({ text, weekday });
+            }}
+            disabled={props.busy || !canSave}
+          >
+            <span className="material-icons">done</span>
+          </button>
+          <button
+            className="btn-danger"
+            type="button"
+            title="削除"
+            aria-label="削除"
+            onClick={props.onDelete}
+            disabled={props.busy || !props.cardId}
           >
             <span className="material-icons">delete</span>
           </button>
