@@ -386,8 +386,16 @@ function pickKeyPieces(pieces, maxPieces) {
   const list = dedupePieces(pieces);
   if (list.length <= maxPieces) return list;
 
+  // Recency bias: earlier pieces are treated as more recent because callers
+  // merge memo blocks in descending date order (newest first).
+  const recencyBonusMax = 1.2;
+  const denom = Math.max(1, list.length - 1);
   const scored = list
-    .map((text, idx) => ({ idx, text, score: scoreMemoPiece(text) }))
+    .map((text, idx) => {
+      const base = scoreMemoPiece(text);
+      const recencyBonus = ((denom - idx) / denom) * recencyBonusMax;
+      return { idx, text, score: base + recencyBonus };
+    })
     .sort((a, b) => (b.score - a.score) || (a.idx - b.idx));
 
   const picked = scored.slice(0, Math.max(1, maxPieces)).sort((a, b) => a.idx - b.idx);
@@ -768,7 +776,8 @@ export async function onRequest(context) {
       const merged = [];
       for (const v of grouped.values()) {
         const memos = Array.isArray(v?.memos) ? v.memos : [];
-        memos.sort((a, b) => String(a?.dateString || '').localeCompare(String(b?.dateString || '')));
+        // Newer side of the range should dominate when compacting/merging.
+        memos.sort((a, b) => String(b?.dateString || '').localeCompare(String(a?.dateString || '')));
         const mergedMemo = memos
           .map((m) => String(m?.memo || '').trim())
           .filter(Boolean)
