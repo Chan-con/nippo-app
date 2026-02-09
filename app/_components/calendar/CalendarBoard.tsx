@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { isHoliday } from '@holiday-jp/holiday_jp';
@@ -270,34 +270,74 @@ export default function CalendarBoard(props: {
 
   const [memoTooltip, setMemoTooltip] = useState<null | { title: string; memo: string; x: number; y: number }>(null);
 
-  function getMemoTooltipPosFromPoint(clientX: number, clientY: number) {
+  const memoTooltipElRef = useRef<HTMLDivElement | null>(null);
+  const memoTooltipSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const memoTooltipPointRef = useRef<{ x: number; y: number } | null>(null);
+
+  function getMemoTooltipPosFromPoint(clientX: number, clientY: number, size?: { w: number; h: number } | null) {
     const pad = 12;
-    const estW = 420;
-    const estH = 280;
+    const estW = Math.max(1, Math.trunc(size?.w ?? 420));
+    const estH = Math.max(1, Math.trunc(size?.h ?? 280));
     const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+
+    // Prefer slightly to the bottom-right of the cursor.
+    // If it would overflow, flip to the opposite side, then clamp.
     let x = clientX + pad;
     let y = clientY + pad;
-    if (vw) x = Math.max(12, Math.min(x, vw - estW - 12));
-    if (vh) y = Math.max(12, Math.min(y, vh - estH - 12));
+
+    if (vw) {
+      const maxX = vw - estW - 12;
+      if (x > maxX) x = clientX - pad - estW;
+      x = Math.max(12, Math.min(x, vw - estW - 12));
+    }
+
+    if (vh) {
+      const maxY = vh - estH - 12;
+      if (y > maxY) y = clientY - pad - estH;
+      y = Math.max(12, Math.min(y, vh - estH - 12));
+    }
+
     return { x, y };
   }
 
   function showMemoTooltip(ev: ReactMouseEvent, e: CalendarEvent) {
     const memo = String(e.memo || '').trim();
     const title = String(e.title || '（無題）').trim() || '（無題）';
-    const { x, y } = getMemoTooltipPosFromPoint(ev.clientX, ev.clientY);
+    memoTooltipPointRef.current = { x: ev.clientX, y: ev.clientY };
+    const { x, y } = getMemoTooltipPosFromPoint(ev.clientX, ev.clientY, memoTooltipSizeRef.current);
     setMemoTooltip({ title, memo, x, y });
   }
 
   function placeMemoTooltipAtPoint(clientX: number, clientY: number) {
-    const { x, y } = getMemoTooltipPosFromPoint(clientX, clientY);
+    memoTooltipPointRef.current = { x: clientX, y: clientY };
+    const { x, y } = getMemoTooltipPosFromPoint(clientX, clientY, memoTooltipSizeRef.current);
     setMemoTooltip((prev) => (prev ? { ...prev, x, y } : prev));
   }
 
   function hideMemoTooltip() {
     setMemoTooltip(null);
   }
+
+  // After the tooltip is rendered, measure its real size and re-position.
+  useLayoutEffect(() => {
+    if (!memoTooltip) return;
+    const el = memoTooltipElRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return;
+
+    memoTooltipSizeRef.current = { w: r.width, h: r.height };
+    const p = memoTooltipPointRef.current;
+    if (!p) return;
+
+    const next = getMemoTooltipPosFromPoint(p.x, p.y, memoTooltipSizeRef.current);
+    setMemoTooltip((prev) => {
+      if (!prev) return prev;
+      if (prev.x === next.x && prev.y === next.y) return prev;
+      return { ...prev, x: next.x, y: next.y };
+    });
+  }, [memoTooltip?.title, memoTooltip?.memo]);
 
   // modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -997,6 +1037,7 @@ export default function CalendarBoard(props: {
             <div
               className="gantt-memo-tooltip calendar-memo-tooltip"
               style={{ left: memoTooltip.x, top: memoTooltip.y }}
+              ref={memoTooltipElRef}
               aria-hidden="true"
             >
               <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
