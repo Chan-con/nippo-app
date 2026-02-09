@@ -776,8 +776,8 @@ export async function onRequest(context) {
       const merged = [];
       for (const v of grouped.values()) {
         const memos = Array.isArray(v?.memos) ? v.memos : [];
-        // Newer side of the range should dominate when compacting/merging.
-        memos.sort((a, b) => String(b?.dateString || '').localeCompare(String(a?.dateString || '')));
+        // Keep chronological order in the merged memo (old -> new).
+        memos.sort((a, b) => String(a?.dateString || '').localeCompare(String(b?.dateString || '')));
         const mergedMemo = memos
           .map((m) => String(m?.memo || '').trim())
           .filter(Boolean)
@@ -806,8 +806,11 @@ export async function onRequest(context) {
           const memo = String(t.memo || '').trim();
           if (!memo) return '';
 
-          const pieces = splitMemoToPieces(memo);
-          const picked = pickKeyPieces(pieces, budget);
+          // Prefer newer side for picking, but keep chronological order in display.
+          const piecesChrono = splitMemoToPieces(memo);
+          const piecesForPick = piecesChrono.slice().reverse();
+          const pickedNewerFirst = pickKeyPieces(piecesForPick, budget);
+          const picked = pickedNewerFirst.slice().reverse();
           const compact = picked
             .map((s) => String(s || '').trim())
             .filter(Boolean)
