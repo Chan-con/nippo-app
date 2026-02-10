@@ -301,6 +301,9 @@ export default function CalendarBoard(props: {
     if (disabled) return;
     if (ev.button !== 0) return;
 
+    // ドラッグ開始時にホバーツールチップが残りやすいので、先に閉じる。
+    hideMemoTooltip();
+
     ev.stopPropagation();
     pointerDragRef.current = {
       eventId: e.id,
@@ -323,6 +326,7 @@ export default function CalendarBoard(props: {
     pointerDragRef.current = null;
     setDraggingId(null);
     setDragOverKey(null);
+    hideMemoTooltip();
   }
 
   function onRootPointerMove(ev: React.PointerEvent) {
@@ -336,6 +340,7 @@ export default function CalendarBoard(props: {
     if (!st.didDrag && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
       st.didDrag = true;
       setDraggingId(st.eventId);
+      hideMemoTooltip();
     }
     if (!st.didDrag) return;
 
@@ -355,6 +360,7 @@ export default function CalendarBoard(props: {
 
     setDraggingId(null);
     setDragOverKey(null);
+    hideMemoTooltip();
 
     if (!didDrag || !drop) return;
     try {
@@ -975,10 +981,16 @@ export default function CalendarBoard(props: {
                                 }}
                                 onMouseEnter={(ev) => showMemoTooltip(ev, e)}
                                 onMouseMove={(ev) => {
+                                  if (pointerDragRef.current) return;
+                                  if (draggingId) return;
                                   if (!memoTooltip) return;
                                   placeMemoTooltipAtPoint(ev.clientX, ev.clientY);
                                 }}
-                                onMouseLeave={() => hideMemoTooltip()}
+                                onMouseLeave={() => {
+                                  if (pointerDragRef.current) return;
+                                  if (draggingId) return;
+                                  hideMemoTooltip();
+                                }}
                               >
                                 <span className="calendar-event-title">{e.title}</span>
                               </button>
@@ -1011,10 +1023,16 @@ export default function CalendarBoard(props: {
                                 }}
                                 onMouseEnter={(ev) => showMemoTooltip(ev, e)}
                                 onMouseMove={(ev) => {
+                                  if (pointerDragRef.current) return;
+                                  if (draggingId) return;
                                   if (!memoTooltip) return;
                                   placeMemoTooltipAtPoint(ev.clientX, ev.clientY);
                                 }}
-                                onMouseLeave={() => hideMemoTooltip()}
+                                onMouseLeave={() => {
+                                  if (pointerDragRef.current) return;
+                                  if (draggingId) return;
+                                  hideMemoTooltip();
+                                }}
                               >
                                 <span className="calendar-event-time" aria-hidden="true">
                                   {timeLabel}
