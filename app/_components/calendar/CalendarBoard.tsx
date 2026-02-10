@@ -268,6 +268,11 @@ export default function CalendarBoard(props: {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
+  // HTML5 DnD は環境差が大きく、ドラッグ中にホイールスクロールできない場合があるため、
+  // wheel を拾ってスクロール領域の scrollTop を直接動かす。
+  const dragClientPointRef = useRef<{ x: number; y: number } | null>(null);
+  const dragIsOverScrollRef = useRef(false);
+
   const [memoTooltip, setMemoTooltip] = useState<null | { title: string; memo: string; x: number; y: number }>(null);
 
   const memoTooltipElRef = useRef<HTMLDivElement | null>(null);
@@ -513,6 +518,73 @@ export default function CalendarBoard(props: {
       window.removeEventListener('keydown', onKeyDown, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggingId]);
+
+  // ドラッグ中のホイールスクロール対応
+  useEffect(() => {
+    if (!draggingId) return;
+
+    const onDragOver = (ev: DragEvent) => {
+      if (!ev) return;
+      const x = typeof ev.clientX === 'number' ? ev.clientX : 0;
+      const y = typeof ev.clientY === 'number' ? ev.clientY : 0;
+      dragClientPointRef.current = { x, y };
+
+      const root = scrollRef.current;
+      if (!root) {
+        dragIsOverScrollRef.current = false;
+        return;
+      }
+      const r = root.getBoundingClientRect();
+      dragIsOverScrollRef.current = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+
+    const onWheel = (ev: WheelEvent) => {
+      const root = scrollRef.current;
+      if (!root) return;
+
+      const x = typeof ev.clientX === 'number' ? ev.clientX : 0;
+      const y = typeof ev.clientY === 'number' ? ev.clientY : 0;
+      dragClientPointRef.current = { x, y };
+
+      const r = root.getBoundingClientRect();
+      const isOver = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+      dragIsOverScrollRef.current = isOver;
+      if (!isOver) return;
+
+      let deltaY = Number(ev.deltaY || 0);
+      if (!deltaY) return;
+
+      // Normalize for line/page mode.
+      const mode = typeof ev.deltaMode === 'number' ? ev.deltaMode : 0;
+      if (mode === 1) deltaY *= 16;
+      else if (mode === 2) deltaY *= Math.max(1, root.clientHeight);
+
+      root.scrollTop = Math.max(0, Math.round(root.scrollTop + deltaY));
+
+      // Prevent the page from scrolling while dragging.
+      try {
+        ev.preventDefault();
+      } catch {
+        // ignore
+      }
+      try {
+        ev.stopPropagation();
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('dragover', onDragOver, true);
+    // passive:false で preventDefault を有効にする
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+
+    return () => {
+      window.removeEventListener('dragover', onDragOver, true);
+      window.removeEventListener('wheel', onWheel, true);
+      dragClientPointRef.current = null;
+      dragIsOverScrollRef.current = false;
+    };
   }, [draggingId]);
 
   function moveOrCopyEventToDate(eventId: string, targetDate: string, beforeEventId: string | null) {
