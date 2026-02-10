@@ -1626,6 +1626,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskLineRemoteUpdatePending, setTaskLineRemoteUpdatePending] = useState(false);
   const [taskLineError, setTaskLineError] = useState<string | null>(null);
   const [taskLineDraggingId, setTaskLineDraggingId] = useState<string | null>(null);
+  const [taskLineDraggingIds, setTaskLineDraggingIds] = useState<string[]>([]);
   const [taskLineSelectedCardIds, setTaskLineSelectedCardIds] = useState<string[]>([]);
   const taskLineLastDragAtRef = useRef(0);
   const taskLineDragJustEndedAtRef = useRef(0);
@@ -1637,10 +1638,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const taskLineIsSavingRef = useRef(false);
 
   const taskLineSelectedCardSet = useMemo(() => new Set(taskLineSelectedCardIds), [taskLineSelectedCardIds]);
+  const taskLineDraggingCardSet = useMemo(() => new Set(taskLineDraggingIds), [taskLineDraggingIds]);
 
   type TaskLinePointerDragState = {
     pointerId: number;
     dragId: string;
+    dragIds: string[];
     startClientX: number;
     startClientY: number;
     didDrag: boolean;
@@ -2833,12 +2836,86 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setTaskLineDirty(true);
   }
 
+  function taskLineMoveCards(dragIdsRaw: string[], targetLane: TaskLineLane, targetIndex: number) {
+    const dragIds = (Array.isArray(dragIdsRaw) ? dragIdsRaw : []).map((x) => String(x || '')).filter(Boolean);
+    if (dragIds.length === 0) return;
+    const dragIdSet = new Set(dragIds);
+
+    setTaskLineCards((prev) => {
+      const normalized = normalizeTaskLineCards(prev);
+      const laneOrder = TASK_LINE_LANES.map((x) => x.key);
+
+      const laneLists = new Map<TaskLineLane, string[]>();
+      for (const lane of laneOrder) laneLists.set(lane, []);
+      for (const c of normalized) laneLists.get(c.lane)!.push(c.id);
+
+      // Preserve relative order: lane order, then current order within lane
+      const orderedDragIds: string[] = [];
+      for (const lane of laneOrder) {
+        const ids = laneLists.get(lane)!;
+        for (const id of ids) {
+          if (dragIdSet.has(id)) orderedDragIds.push(id);
+        }
+      }
+      if (orderedDragIds.length === 0) return normalized;
+
+      const originalTargetList = laneLists.get(targetLane)!.slice();
+      const rawTargetIndex = Number.isFinite(targetIndex) ? targetIndex : originalTargetList.length;
+      let safeInsertIndex = Math.max(0, Math.min(originalTargetList.length, rawTargetIndex));
+
+      // Remove dragged ids from all lanes
+      for (const lane of laneOrder) {
+        const list = laneLists.get(lane)!;
+        if (!list.some((id) => dragIdSet.has(id))) continue;
+        laneLists.set(lane, list.filter((id) => !dragIdSet.has(id)));
+      }
+
+      // If the target lane contained dragged ids before insertion point, adjust for removed items
+      let removedBefore = 0;
+      for (let i = 0; i < Math.min(safeInsertIndex, originalTargetList.length); i += 1) {
+        if (dragIdSet.has(originalTargetList[i])) removedBefore += 1;
+      }
+      if (removedBefore) safeInsertIndex = Math.max(0, safeInsertIndex - removedBefore);
+
+      const targetListAfterRemoval = laneLists.get(targetLane)!;
+      safeInsertIndex = Math.max(0, Math.min(targetListAfterRemoval.length, safeInsertIndex));
+      const nextTarget = targetListAfterRemoval.slice();
+      nextTarget.splice(safeInsertIndex, 0, ...orderedDragIds);
+      laneLists.set(targetLane, nextTarget);
+
+      const byId = new Map<string, TaskLineCard>();
+      for (const c of normalized) byId.set(c.id, c);
+
+      const rebuilt: TaskLineCard[] = [];
+      for (const lane of laneOrder) {
+        const ids = laneLists.get(lane)!;
+        for (let idx = 0; idx < ids.length; idx += 1) {
+          const id = ids[idx];
+          const base = byId.get(id);
+          if (!base) continue;
+          rebuilt.push({ ...base, lane, order: idx });
+        }
+      }
+      return rebuilt;
+    });
+
+    setTaskLineDirty(true);
+  }
+
   function taskLinePreviewMove(dragId: string, targetLane: TaskLineLane, targetIndex: number) {
     const safeIndex = Number.isFinite(targetIndex) ? targetIndex : 0;
     const last = taskLineLastPreviewRef.current;
     if (last && last.dragId === dragId && last.lane === targetLane && last.index === safeIndex) return;
     taskLineLastPreviewRef.current = { dragId, lane: targetLane, index: safeIndex };
     taskLineMoveCard(dragId, targetLane, safeIndex);
+  }
+
+  function taskLinePreviewMoveCards(primaryDragId: string, dragIds: string[], targetLane: TaskLineLane, targetIndex: number) {
+    const safeIndex = Number.isFinite(targetIndex) ? targetIndex : 0;
+    const last = taskLineLastPreviewRef.current;
+    if (last && last.dragId === primaryDragId && last.lane === targetLane && last.index === safeIndex) return;
+    taskLineLastPreviewRef.current = { dragId: primaryDragId, lane: targetLane, index: safeIndex };
+    taskLineMoveCards(dragIds, targetLane, safeIndex);
   }
 
   function taskLineAutoScrollWhileDraggingAtPoint(clientX: number, clientY: number) {
@@ -2937,7 +3014,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  function findTaskLineDropTargetFromPoint(clientX: number, clientY: number, draggingId: string) {
+  function findTaskLineDropTargetFromPoint(clientX: number, clientY: number, draggingIds: string[]) {
     if (typeof document === 'undefined') return null;
     const el = document.elementFromPoint(clientX, clientY);
     if (!(el instanceof HTMLElement)) return null;
@@ -2947,11 +3024,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!isTaskLineLane(laneRaw)) return null;
     const lane = laneRaw as TaskLineLane;
 
+    const draggingIdSet = new Set((Array.isArray(draggingIds) ? draggingIds : []).map((x) => String(x || '')).filter(Boolean));
+
     const cardEls = Array.from(body.querySelectorAll<HTMLElement>('.taskline-card'));
     let insertAt = cardEls.length;
     for (const cardEl of cardEls) {
       const id = String(cardEl.getAttribute('data-taskline-cardid') || '').trim();
-      if (!id || id === draggingId) continue;
+      if (!id || draggingIdSet.has(id)) continue;
       const laneIndexAttr = String(cardEl.getAttribute('data-taskline-laneindex') || '').trim();
       const laneIndex = Number.parseInt(laneIndexAttr, 10);
       if (!Number.isFinite(laneIndex)) continue;
@@ -7758,6 +7837,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   if (!drag.didDrag && dx * dx + dy * dy >= threshold * threshold) {
                     drag.didDrag = true;
                     setTaskLineDraggingId(drag.dragId);
+                    setTaskLineDraggingIds(drag.dragIds.slice());
                     taskLineLastPreviewRef.current = null;
                   }
                   if (!drag.didDrag) return;
@@ -7766,9 +7846,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   const nowMs = Date.now();
                   if (nowMs - taskLineLastDragAtRef.current < 40) return;
                   taskLineLastDragAtRef.current = nowMs;
-                  const drop = findTaskLineDropTargetFromPoint(ev.clientX, ev.clientY, drag.dragId);
+                  const drop = findTaskLineDropTargetFromPoint(ev.clientX, ev.clientY, drag.dragIds);
                   if (!drop) return;
-                  taskLinePreviewMove(drag.dragId, drop.lane, drop.insertAt);
+                  if (drag.dragIds.length > 1) taskLinePreviewMoveCards(drag.dragId, drag.dragIds, drop.lane, drop.insertAt);
+                  else taskLinePreviewMove(drag.dragId, drop.lane, drop.insertAt);
                 }}
                 onPointerUp={(ev) => {
                   const sel = taskLineSelectingRef.current;
@@ -7787,7 +7868,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     taskLinePointerDragRef.current = null;
                     if (drag.didDrag) {
                       setTaskLineDraggingId(null);
+                      setTaskLineDraggingIds([]);
                       taskLineDragJustEndedAtRef.current = Date.now();
+                    } else {
+                      setTaskLineDraggingIds([]);
                     }
                     try {
                       ev.currentTarget.releasePointerCapture(ev.pointerId);
@@ -7806,7 +7890,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     taskLinePointerDragRef.current = null;
                     if (drag.didDrag) {
                       setTaskLineDraggingId(null);
+                      setTaskLineDraggingIds([]);
                       taskLineDragJustEndedAtRef.current = Date.now();
+                    } else {
+                      setTaskLineDraggingIds([]);
                     }
                   }
                   try {
@@ -7856,7 +7943,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           return (
                             <div
                               key={card.id}
-                              className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}${taskLineSelectedCardSet.has(card.id) ? ' is-selected' : ''}`}
+                              className={`taskline-card${taskLineDraggingCardSet.has(card.id) ? ' dragging' : ''}${taskLineSelectedCardSet.has(card.id) ? ' is-selected' : ''}`}
                               data-taskline-cardid={card.id}
                               data-taskline-laneindex={laneIndex}
                               onPointerDown={(ev) => {
@@ -7869,9 +7956,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 const root = taskLineBoardRef.current;
                                 if (!root) return;
 
+                                const currentlySelected = taskLineSelectedCardSet.has(card.id) && taskLineSelectedCardIds.length > 0;
+                                const dragIds = currentlySelected ? taskLineSelectedCardIds.slice() : [card.id];
+                                if (!currentlySelected) setTaskLineSelectedCardIds([card.id]);
+
                                 taskLinePointerDragRef.current = {
                                   pointerId: ev.pointerId,
                                   dragId: card.id,
+                                  dragIds,
                                   startClientX: ev.clientX,
                                   startClientY: ev.clientY,
                                   didDrag: false,
