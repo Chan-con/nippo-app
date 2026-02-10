@@ -1827,6 +1827,14 @@ input[type='number']::-webkit-inner-spin-button {
   outline-offset: 2px;
 }
 
+.gantt-select-rect {
+  position: absolute;
+  border: 1px dashed var(--system-outline);
+  background: var(--system-today-col-bg);
+  pointer-events: none;
+  z-index: 1200;
+}
+
 .gantt-task-body {
   display: flex;
   align-items: center;

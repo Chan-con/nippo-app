@@ -14,11 +14,25 @@ type DragState = {
   mode: DragMode;
   startClientX: number;
   startClientY: number;
+  baseScrollLeft: number;
   baseStartDay: number;
   baseEndDay: number;
   baseY: number;
+  groupTaskIds: string[];
+  groupBaseById: Record<string, { startDay: number; endDay: number; y: number; duration: number }>;
   didDrag: boolean;
   didPromoteZ: boolean;
+};
+
+type SelectRectState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startX: number; // timeline coordinate (px)
+  startY: number; // canvas coordinate (px)
+  curX: number;
+  curY: number;
+  didDrag: boolean;
 };
 
 type GanttTone = 'info' | 'danger' | 'success' | 'warning' | 'default';
@@ -77,6 +91,14 @@ export default function GanttBoard(props: {
   const [scrollLeftPx, setScrollLeftPx] = useState(0);
   const [viewportWidthPx, setViewportWidthPx] = useState(0);
 
+  const [multiSelectedTaskIds, setMultiSelectedTaskIds] = useState<string[]>(() => (props.selectedTaskId ? [props.selectedTaskId] : []));
+  const multiSelectedSet = useMemo(() => new Set(multiSelectedTaskIds), [multiSelectedTaskIds]);
+
+  const selectingRef = useRef<SelectRectState | null>(null);
+  const [selectRect, setSelectRect] = useState<null | { x: number; y: number; w: number; h: number }>(null);
+
+  const autoScrollRef = useRef<{ dir: -1 | 0 | 1; raf: number | null }>({ dir: 0, raf: null });
+
   useEffect(() => {
     if (initialRangeSetRef.current) return;
     initialRangeSetRef.current = true;
@@ -96,6 +118,15 @@ export default function GanttBoard(props: {
   useEffect(() => {
     setDayWidth(Math.max(6, Math.trunc(props.dayWidth || 24)));
   }, [props.dayWidth]);
+
+  useEffect(() => {
+    const id = props.selectedTaskId ? String(props.selectedTaskId) : null;
+    if (!id) return;
+    setMultiSelectedTaskIds((prev) => {
+      if (prev.includes(id)) return prev;
+      return prev.concat(id);
+    });
+  }, [props.selectedTaskId]);
 
   function zoomAtClientX(clientX: number, deltaY: number) {
     const el = scrollRef.current;
@@ -387,6 +418,29 @@ export default function GanttBoard(props: {
     });
   }
 
+  function applyDragPreviewMany(nextById: Record<string, { startDay: number; endDay: number; y: number }>) {
+    setDraftTasks((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      if (!list.length) return list;
+      let changed = false;
+      const out = list.map((t) => {
+        const next = nextById[t.id];
+        if (!next) return t;
+        const startDate = utcDayNumberToYmd(next.startDay);
+        const endDate = utcDayNumberToYmd(next.endDay);
+        const updated: GanttTask = {
+          ...t,
+          startDate,
+          endDate,
+          y: Math.max(0, Math.trunc(next.y)),
+        };
+        changed = true;
+        return updated;
+      });
+      return changed ? out : list;
+    });
+  }
+
   function onTaskPointerDown(ev: React.PointerEvent, task: GanttTask, mode: DragMode) {
     hideMemoTooltip();
     if (props.disabled) return;
@@ -402,15 +456,50 @@ export default function GanttBoard(props: {
     const root = rootRef.current;
     if (!root) return;
 
+    // If dragging starts on a non-selected task, collapse selection to this task.
+    if (mode === 'move') {
+      setMultiSelectedTaskIds((prev) => {
+        if (prev.includes(task.id)) return prev;
+        return [task.id];
+      });
+      try {
+        props.onSelectTaskId(task.id);
+      } catch {
+        // ignore
+      }
+    }
+
+    const scroller = scrollRef.current;
+    const baseScrollLeft = scroller ? Math.max(0, Math.trunc(scroller.scrollLeft || 0)) : 0;
+
+    const groupTaskIds = mode === 'move' && multiSelectedSet.has(task.id) ? Array.from(multiSelectedSet) : [task.id];
+    const groupBaseById: Record<string, { startDay: number; endDay: number; y: number; duration: number }> = {};
+    if (mode === 'move') {
+      const list = Array.isArray(draftTasks) ? draftTasks : [];
+      for (const id of groupTaskIds) {
+        const t = list.find((x) => x.id === id);
+        if (!t) continue;
+        const s = ymdToUtcDayNumber(t.startDate);
+        const e = ymdToUtcDayNumber(t.endDate);
+        if (s == null || e == null) continue;
+        const yRaw = (t as any)?.y;
+        const y0 = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
+        groupBaseById[id] = { startDay: s, endDay: e, y: y0, duration: Math.max(0, e - s) };
+      }
+    }
+
     draggingRef.current = {
       taskId: task.id,
       pointerId: ev.pointerId,
       mode,
       startClientX: ev.clientX,
       startClientY: ev.clientY,
+      baseScrollLeft,
       baseStartDay: startDay,
       baseEndDay: endDay,
       baseY,
+      groupTaskIds,
+      groupBaseById,
       didDrag: false,
       didPromoteZ: false,
     };
@@ -431,16 +520,77 @@ export default function GanttBoard(props: {
     ev.stopPropagation();
   }
 
+  function startAutoScrollIfNeeded(clientX: number) {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const rect = scroller.getBoundingClientRect();
+    const edge = 36;
+    const x = clientX;
+    let dir: -1 | 0 | 1 = 0;
+    if (x < rect.left + edge) dir = -1;
+    else if (x > rect.right - edge) dir = 1;
+
+    autoScrollRef.current.dir = dir;
+    if (dir === 0) {
+      if (autoScrollRef.current.raf != null) {
+        window.cancelAnimationFrame(autoScrollRef.current.raf);
+        autoScrollRef.current.raf = null;
+      }
+      return;
+    }
+
+    if (autoScrollRef.current.raf != null) return;
+
+    const step = () => {
+      const st = draggingRef.current;
+      const curDir = autoScrollRef.current.dir;
+      const el = scrollRef.current;
+      if (!st || !el || curDir === 0) {
+        if (autoScrollRef.current.raf != null) window.cancelAnimationFrame(autoScrollRef.current.raf);
+        autoScrollRef.current.raf = null;
+        return;
+      }
+      // Slow scroll
+      el.scrollLeft = Math.max(0, (el.scrollLeft || 0) + curDir * 3);
+      autoScrollRef.current.raf = window.requestAnimationFrame(step);
+    };
+
+    autoScrollRef.current.raf = window.requestAnimationFrame(step);
+  }
+
   function onRootPointerMove(ev: React.PointerEvent) {
+    const sel = selectingRef.current;
+    if (sel && sel.pointerId === ev.pointerId) {
+      const x = getXInTimelineFromClientX(ev.clientX);
+      const y = getYInCanvasFromClientY(ev.clientY);
+      if (x != null && y != null) {
+        sel.curX = x;
+        sel.curY = y;
+        const dx = ev.clientX - sel.startClientX;
+        const dy = ev.clientY - sel.startClientY;
+        if (!sel.didDrag && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) sel.didDrag = true;
+        const left = Math.min(sel.startX, sel.curX);
+        const top = Math.min(sel.startY, sel.curY);
+        const w = Math.abs(sel.curX - sel.startX);
+        const h = Math.abs(sel.curY - sel.startY);
+        setSelectRect({ x: left, y: top, w, h });
+      }
+      return;
+    }
+
     const st = draggingRef.current;
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
 
-    const dx = ev.clientX - st.startClientX;
-    const dy = ev.clientY - st.startClientY;
-    if (!st.didDrag && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) st.didDrag = true;
+    startAutoScrollIfNeeded(ev.clientX);
 
-    const deltaDays = Math.round(dx / Math.max(6, props.dayWidth || 24));
+    const scroller = scrollRef.current;
+    const scrollDx = scroller ? Math.trunc(scroller.scrollLeft || 0) - st.baseScrollLeft : 0;
+    const dxEff = ev.clientX - st.startClientX + scrollDx;
+    const dy = ev.clientY - st.startClientY;
+    if (!st.didDrag && (Math.abs(dxEff) > 3 || Math.abs(dy) > 3)) st.didDrag = true;
+
+    const deltaDays = Math.round(dxEff / Math.max(6, props.dayWidth || 24));
     const deltaY = dy;
 
     const duration = Math.max(0, st.baseEndDay - st.baseStartDay);
@@ -497,15 +647,107 @@ export default function GanttBoard(props: {
       });
     }
 
-    applyDragPreview({ taskId: st.taskId, startDay: nextStart, endDay: nextEnd, y: snapY(nextY) });
+    if (st.mode === 'move' && st.groupTaskIds.length > 1) {
+      const groupDeltaY = snapY(st.baseY + deltaY) - st.baseY;
+      const nextById: Record<string, { startDay: number; endDay: number; y: number }> = {};
+      for (const id of st.groupTaskIds) {
+        const base = st.groupBaseById[id];
+        if (!base) continue;
+        let s = base.startDay + deltaDays;
+        let e = base.endDay + deltaDays;
+        let y = base.y + groupDeltaY;
+
+        // Keep at least 1 day
+        if (e < s) e = s;
+
+        // soft clamp
+        const softMin = rangeStartDay - 3650;
+        const softMax = rangeEndDay + 3650;
+        s = clampInt(s, softMin, softMax);
+        e = clampInt(e, softMin, softMax);
+
+        // preserve duration
+        const nextDur = Math.max(0, e - s);
+        if (nextDur !== base.duration) e = s + base.duration;
+
+        nextById[id] = { startDay: s, endDay: e, y: snapY(y) };
+      }
+      applyDragPreviewMany(nextById);
+    } else {
+      applyDragPreview({ taskId: st.taskId, startDay: nextStart, endDay: nextEnd, y: snapY(nextY) });
+    }
   }
 
   function onRootPointerUp(ev: React.PointerEvent) {
+    const sel = selectingRef.current;
+    if (sel && sel.pointerId === ev.pointerId) {
+      selectingRef.current = null;
+      setSelectRect(null);
+
+      const didDrag = sel.didDrag;
+      if (!didDrag) {
+        setMultiSelectedTaskIds([]);
+        try {
+          props.onSelectTaskId(null);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      const left = Math.min(sel.startX, sel.curX);
+      const right = Math.max(sel.startX, sel.curX);
+      const top = Math.min(sel.startY, sel.curY);
+      const bottom = Math.max(sel.startY, sel.curY);
+
+      const wDay = Math.max(6, Math.trunc(props.dayWidth || 24));
+      const hits: Array<{ id: string; z: number }> = [];
+      const list = Array.isArray(draftTasks) ? draftTasks : [];
+      for (const t of list) {
+        if (!t?.id) continue;
+        const s = ymdToUtcDayNumber(t.startDate);
+        const e = ymdToUtcDayNumber(t.endDate);
+        if (s == null || e == null) continue;
+        const start = clampInt(s, rangeStartDay, rangeEndDay);
+        const end = clampInt(e, rangeStartDay, rangeEndDay);
+        if (end < rangeStartDay || start > rangeEndDay) continue;
+        const safeEnd = Math.max(start, end);
+        const taskLeft = (start - rangeStartDay) * wDay;
+        const taskRight = taskLeft + (safeEnd - start + 1) * wDay;
+        const yRaw = (t as any)?.y;
+        const taskTop = typeof yRaw === 'number' && Number.isFinite(yRaw) ? Math.trunc(yRaw) : 8;
+        const taskBottom = taskTop + 22;
+
+        const intersects = taskLeft <= right && taskRight >= left && taskTop <= bottom && taskBottom >= top;
+        if (!intersects) continue;
+        const zRaw = (t as any)?.z;
+        const z = typeof zRaw === 'number' && Number.isFinite(zRaw) ? Math.trunc(zRaw) : 0;
+        hits.push({ id: t.id, z });
+      }
+
+      hits.sort((a, b) => b.z - a.z || String(a.id).localeCompare(String(b.id)));
+      const ids = hits.map((h) => h.id);
+      setMultiSelectedTaskIds(ids);
+      try {
+        props.onSelectTaskId(ids[0] ?? null);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     const st = draggingRef.current;
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
 
     draggingRef.current = null;
+
+    // stop autoscroll
+    autoScrollRef.current.dir = 0;
+    if (autoScrollRef.current.raf != null) {
+      window.cancelAnimationFrame(autoScrollRef.current.raf);
+      autoScrollRef.current.raf = null;
+    }
 
     try {
       props.onInteractionChange?.(false);
@@ -560,15 +802,29 @@ export default function GanttBoard(props: {
 
     // If it was a click (no drag), just select
     if (!st.didDrag) {
+      setMultiSelectedTaskIds([st.taskId]);
       props.onSelectTaskId(st.taskId);
     }
   }
 
   function onRootPointerCancel(ev: React.PointerEvent) {
+    const sel = selectingRef.current;
+    if (sel && sel.pointerId === ev.pointerId) {
+      selectingRef.current = null;
+      setSelectRect(null);
+      return;
+    }
     const st = draggingRef.current;
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
     draggingRef.current = null;
+
+    // stop autoscroll
+    autoScrollRef.current.dir = 0;
+    if (autoScrollRef.current.raf != null) {
+      window.cancelAnimationFrame(autoScrollRef.current.raf);
+      autoScrollRef.current.raf = null;
+    }
     try {
       props.onInteractionChange?.(false);
     } catch {
@@ -649,6 +905,37 @@ export default function GanttBoard(props: {
             ref={canvasRef}
             className="gantt-canvas"
             style={{ width: timelineWidth, height: canvasHeight }}
+            onPointerDown={(ev) => {
+              if (props.disabled) return;
+              if (draggingRef.current) return;
+              if (selectingRef.current) return;
+              if (ev.button !== 0) return;
+
+              const x = getXInTimelineFromClientX(ev.clientX);
+              const y = getYInCanvasFromClientY(ev.clientY);
+              if (x == null || y == null) return;
+
+              selectingRef.current = {
+                pointerId: ev.pointerId,
+                startClientX: ev.clientX,
+                startClientY: ev.clientY,
+                startX: x,
+                startY: y,
+                curX: x,
+                curY: y,
+                didDrag: false,
+              };
+              setSelectRect({ x, y, w: 0, h: 0 });
+
+              try {
+                (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+              } catch {
+                // ignore
+              }
+
+              ev.preventDefault();
+              ev.stopPropagation();
+            }}
             onWheel={(ev) => {
               // Allow zoom anywhere when holding Ctrl/Alt (keeps normal vertical scroll otherwise)
               if (props.disabled) return;
@@ -692,6 +979,14 @@ export default function GanttBoard(props: {
               />
             ) : null}
 
+            {selectRect ? (
+              <div
+                className="gantt-select-rect"
+                style={{ left: selectRect.x, top: selectRect.y, width: selectRect.w, height: selectRect.h }}
+                aria-hidden="true"
+              />
+            ) : null}
+
             {tasksForRender.length === 0 ? <div className="gantt-empty-placeholder-text">ダブルクリックでタスクを追加</div> : null}
 
             {/* If a long bar's left edge is out of view, show a pinned label so the title stays readable. */}
@@ -722,7 +1017,7 @@ export default function GanttBoard(props: {
               const zRaw = (t as any)?.z;
               const z = typeof zRaw === 'number' && Number.isFinite(zRaw) ? Math.trunc(zRaw) : 0;
 
-              const isSelected = props.selectedTaskId === t.id;
+              const isSelected = multiSelectedSet.has(t.id) || props.selectedTaskId === t.id;
               const tone = normalizeGanttTone((t as any)?.color);
               const isShort = w < 120;
               const titleMaxPx = titleMaxPxById.get(t.id);
@@ -782,6 +1077,7 @@ export default function GanttBoard(props: {
                       ev.stopPropagation();
                       return;
                     }
+                    setMultiSelectedTaskIds([t.id]);
                     props.onSelectTaskId(t.id);
                   }}
                 >
