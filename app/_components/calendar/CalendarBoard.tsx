@@ -268,6 +268,8 @@ export default function CalendarBoard(props: {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
+  const [dragPreview, setDragPreview] = useState<null | { title: string; timeLabel: string; allDay: boolean; x: number; y: number }>(null);
+
   // PointerEvent ベースの自前ドラッグ（ドラッグ中でもホイールスクロールが効く）
   type PointerDragState = {
     eventId: string;
@@ -280,6 +282,34 @@ export default function CalendarBoard(props: {
   };
 
   const pointerDragRef = useRef<PointerDragState | null>(null);
+
+  function clampDragPreviewPos(clientX: number, clientY: number) {
+    const pad = 12;
+    const estW = 320;
+    const estH = 66;
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+
+    let x = clientX + pad;
+    let y = clientY + pad;
+
+    if (vw) x = Math.max(12, Math.min(x, vw - estW - 12));
+    if (vh) y = Math.max(12, Math.min(y, vh - estH - 12));
+
+    return { x, y };
+  }
+
+  function updateDragPreviewAtPoint(eventId: string, clientX: number, clientY: number) {
+    const found = normalizedEvents.find((e) => e.id === eventId) ?? null;
+    if (!found) {
+      setDragPreview(null);
+      return;
+    }
+    const title = String(found.title || '（無題）').trim() || '（無題）';
+    const timeLabel = found.allDay ? '' : (found.startTime ? `${found.startTime} ` : '');
+    const { x, y } = clampDragPreviewPos(clientX, clientY);
+    setDragPreview({ title, timeLabel, allDay: !!found.allDay, x, y });
+  }
 
   function findDropTargetFromPoint(clientX: number, clientY: number) {
     if (typeof document === 'undefined') return null;
@@ -303,6 +333,7 @@ export default function CalendarBoard(props: {
 
     // ドラッグ開始時にホバーツールチップが残りやすいので、先に閉じる。
     hideMemoTooltip();
+    setDragPreview(null);
 
     ev.stopPropagation();
     pointerDragRef.current = {
@@ -327,6 +358,7 @@ export default function CalendarBoard(props: {
     setDraggingId(null);
     setDragOverKey(null);
     hideMemoTooltip();
+    setDragPreview(null);
   }
 
   function onRootPointerMove(ev: React.PointerEvent) {
@@ -341,8 +373,11 @@ export default function CalendarBoard(props: {
       st.didDrag = true;
       setDraggingId(st.eventId);
       hideMemoTooltip();
+      updateDragPreviewAtPoint(st.eventId, ev.clientX, ev.clientY);
     }
     if (!st.didDrag) return;
+
+    updateDragPreviewAtPoint(st.eventId, ev.clientX, ev.clientY);
 
     const next = findDropTargetFromPoint(ev.clientX, ev.clientY);
     st.drop = next;
@@ -361,6 +396,7 @@ export default function CalendarBoard(props: {
     setDraggingId(null);
     setDragOverKey(null);
     hideMemoTooltip();
+    setDragPreview(null);
 
     if (!didDrag || !drop) return;
     try {
@@ -1062,6 +1098,20 @@ export default function CalendarBoard(props: {
             >
               <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
               {memoTooltip.memo ? <div className="gantt-memo-tooltip-body">{memoTooltip.memo}</div> : null}
+            </div>,
+            document.body
+          )
+        : null}
+
+      {dragPreview
+        ? createPortal(
+            <div
+              className={dragPreview.allDay ? 'calendar-drag-preview is-allday' : 'calendar-drag-preview'}
+              style={{ left: dragPreview.x, top: dragPreview.y }}
+              aria-hidden="true"
+            >
+              {dragPreview.timeLabel ? <div className="calendar-drag-preview-time">{dragPreview.timeLabel}</div> : null}
+              <div className="calendar-drag-preview-title">{dragPreview.title}</div>
             </div>,
             document.body
           )

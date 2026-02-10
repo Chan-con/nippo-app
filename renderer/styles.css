@@ -1479,6 +1479,43 @@ input[type='number']::-webkit-inner-spin-button {
   cursor: grabbing;
 }
 
+/* カンバン風：ドラッグ中のプレビュー（カーソル追従） */
+.calendar-drag-preview {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  max-width: min(320px, 84vw);
+  border: 1px solid rgba(108, 112, 134, 0.45);
+  background: rgba(108, 112, 134, 0.12);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  transform: translateZ(0);
+}
+
+.calendar-drag-preview.is-allday {
+  border-color: rgba(137, 180, 250, 0.55);
+  background: rgba(137, 180, 250, 0.14);
+}
+
+.calendar-drag-preview-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.calendar-drag-preview-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .calendar-event-chip.is-drop-target {
   box-shadow: 0 0 0 2px rgba(203, 166, 247, 0.25);
   border-color: rgba(203, 166, 247, 0.6);
