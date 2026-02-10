@@ -1626,6 +1626,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskLineRemoteUpdatePending, setTaskLineRemoteUpdatePending] = useState(false);
   const [taskLineError, setTaskLineError] = useState<string | null>(null);
   const [taskLineDraggingId, setTaskLineDraggingId] = useState<string | null>(null);
+  const [taskLineSelectedCardIds, setTaskLineSelectedCardIds] = useState<string[]>([]);
   const taskLineLastDragAtRef = useRef(0);
   const taskLineDragJustEndedAtRef = useRef(0);
   const taskLineLastPreviewRef = useRef<{ dragId: string; lane: TaskLineLane; index: number } | null>(null);
@@ -1634,6 +1635,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const taskLineSaveTimerRef = useRef<number | null>(null);
   const taskLineLastSavedSnapshotRef = useRef<string>('');
   const taskLineIsSavingRef = useRef(false);
+
+  const taskLineSelectedCardSet = useMemo(() => new Set(taskLineSelectedCardIds), [taskLineSelectedCardIds]);
+
+  type TaskLinePointerDragState = {
+    pointerId: number;
+    dragId: string;
+    startClientX: number;
+    startClientY: number;
+    didDrag: boolean;
+  };
+  const taskLinePointerDragRef = useRef<TaskLinePointerDragState | null>(null);
+
+  type TaskLineSelectRectState = {
+    pointerId: number;
+    startX: number;
+    startY: number;
+  };
+  const taskLineSelectingRef = useRef<TaskLineSelectRectState | null>(null);
+  const [taskLineSelectRect, setTaskLineSelectRect] = useState<null | { x: number; y: number; w: number; h: number }>(null);
 
   // task line edit modal (common edit-dialog spec)
   const [taskLineModalOpen, setTaskLineModalOpen] = useState(false);
@@ -2821,7 +2841,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     taskLineMoveCard(dragId, targetLane, safeIndex);
   }
 
-  function taskLineAutoScrollWhileDragging(e: React.DragEvent) {
+  function taskLineAutoScrollWhileDraggingAtPoint(clientX: number, clientY: number) {
     if (!taskLineDraggingId) return;
 
     const nowMs = Date.now();
@@ -2830,8 +2850,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
     const edge = 60;
     const maxStep = 18;
-    const x = e.clientX;
-    const y = e.clientY;
+    const x = clientX;
+    const y = clientY;
 
     const board = taskLineBoardRef.current;
     if (board) {
@@ -2862,6 +2882,88 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         }
       }
     }
+  }
+
+  function getTaskLinePointInScrollFromClient(clientX: number, clientY: number) {
+    const root = taskLineBoardRef.current;
+    if (!root) return null;
+    const r = root.getBoundingClientRect();
+    return {
+      x: clientX - r.left + root.scrollLeft,
+      y: clientY - r.top + root.scrollTop,
+    };
+  }
+
+  function clearTaskLineSelectionRect() {
+    taskLineSelectingRef.current = null;
+    setTaskLineSelectRect(null);
+  }
+
+  function finalizeTaskLineSelectionRect() {
+    const root = taskLineBoardRef.current;
+    const sel = taskLineSelectingRef.current;
+    const rect = taskLineSelectRect;
+    if (!root || !sel || !rect) {
+      clearTaskLineSelectionRect();
+      return;
+    }
+
+    try {
+      const rootRect = root.getBoundingClientRect();
+      const selected: string[] = [];
+      const cardEls = Array.from(root.querySelectorAll<HTMLElement>('.taskline-card[data-taskline-cardid]'));
+      for (const el of cardEls) {
+        const id = String(el.getAttribute('data-taskline-cardid') || '').trim();
+        if (!id) continue;
+        const r = el.getBoundingClientRect();
+        const elLeft = r.left - rootRect.left + root.scrollLeft;
+        const elTop = r.top - rootRect.top + root.scrollTop;
+        const elRight = elLeft + r.width;
+        const elBottom = elTop + r.height;
+
+        const left = rect.x;
+        const top = rect.y;
+        const right = rect.x + rect.w;
+        const bottom = rect.y + rect.h;
+
+        const intersects = !(elRight < left || elLeft > right || elBottom < top || elTop > bottom);
+        if (intersects) selected.push(id);
+      }
+      setTaskLineSelectedCardIds(selected);
+    } catch {
+      // ignore
+    } finally {
+      clearTaskLineSelectionRect();
+    }
+  }
+
+  function findTaskLineDropTargetFromPoint(clientX: number, clientY: number, draggingId: string) {
+    if (typeof document === 'undefined') return null;
+    const el = document.elementFromPoint(clientX, clientY);
+    if (!(el instanceof HTMLElement)) return null;
+    const body = el.closest<HTMLElement>('[data-taskline-drop-lane]');
+    if (!body) return null;
+    const laneRaw = body.getAttribute('data-taskline-drop-lane') || '';
+    if (!isTaskLineLane(laneRaw)) return null;
+    const lane = laneRaw as TaskLineLane;
+
+    const cardEls = Array.from(body.querySelectorAll<HTMLElement>('.taskline-card'));
+    let insertAt = cardEls.length;
+    for (const cardEl of cardEls) {
+      const id = String(cardEl.getAttribute('data-taskline-cardid') || '').trim();
+      if (!id || id === draggingId) continue;
+      const laneIndexAttr = String(cardEl.getAttribute('data-taskline-laneindex') || '').trim();
+      const laneIndex = Number.parseInt(laneIndexAttr, 10);
+      if (!Number.isFinite(laneIndex)) continue;
+      const rect = cardEl.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (clientY < midY) {
+        insertAt = laneIndex;
+        break;
+      }
+    }
+
+    return { lane, insertAt };
   }
 
   function taskLineWeekdayFromLane(lane: TaskLineLane): TaskLineWeekday | '' {
@@ -7611,16 +7713,107 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <div
                 className="taskline-scroll"
                 ref={taskLineBoardRef}
-                onDragOver={(e) => {
-                  // allow dropping into the board
-                  if (taskLineDraggingId) {
-                    e.preventDefault();
-                    taskLineAutoScrollWhileDragging(e);
+                onPointerDown={(ev) => {
+                  if (busy) return;
+                  if (taskLineEditingId) return;
+                  if (ev.button !== 0) return;
+                  if (taskLinePointerDragRef.current) return;
+
+                  const target = ev.target instanceof HTMLElement ? ev.target : null;
+                  if (target) {
+                    if (target.closest('.taskline-card')) return;
+                    if (target.closest('button, input, textarea, select, a')) return;
+                  }
+
+                  const p = getTaskLinePointInScrollFromClient(ev.clientX, ev.clientY);
+                  if (!p) return;
+                  taskLineSelectingRef.current = { pointerId: ev.pointerId, startX: p.x, startY: p.y };
+                  setTaskLineSelectRect({ x: p.x, y: p.y, w: 0, h: 0 });
+
+                  try {
+                    ev.currentTarget.setPointerCapture(ev.pointerId);
+                  } catch {
+                    // ignore
                   }
                 }}
-                onDrop={() => {
-                  setTaskLineDraggingId(null);
-                  taskLineDragJustEndedAtRef.current = Date.now();
+                onPointerMove={(ev) => {
+                  const sel = taskLineSelectingRef.current;
+                  if (sel && sel.pointerId === ev.pointerId) {
+                    const p = getTaskLinePointInScrollFromClient(ev.clientX, ev.clientY);
+                    if (!p) return;
+                    const left = Math.min(sel.startX, p.x);
+                    const top = Math.min(sel.startY, p.y);
+                    const w = Math.abs(p.x - sel.startX);
+                    const h = Math.abs(p.y - sel.startY);
+                    setTaskLineSelectRect({ x: left, y: top, w, h });
+                    return;
+                  }
+
+                  const drag = taskLinePointerDragRef.current;
+                  if (!drag || drag.pointerId !== ev.pointerId) return;
+
+                  const dx = ev.clientX - drag.startClientX;
+                  const dy = ev.clientY - drag.startClientY;
+                  const threshold = 3;
+                  if (!drag.didDrag && dx * dx + dy * dy >= threshold * threshold) {
+                    drag.didDrag = true;
+                    setTaskLineDraggingId(drag.dragId);
+                    taskLineLastPreviewRef.current = null;
+                  }
+                  if (!drag.didDrag) return;
+
+                  taskLineAutoScrollWhileDraggingAtPoint(ev.clientX, ev.clientY);
+                  const nowMs = Date.now();
+                  if (nowMs - taskLineLastDragAtRef.current < 40) return;
+                  taskLineLastDragAtRef.current = nowMs;
+                  const drop = findTaskLineDropTargetFromPoint(ev.clientX, ev.clientY, drag.dragId);
+                  if (!drop) return;
+                  taskLinePreviewMove(drag.dragId, drop.lane, drop.insertAt);
+                }}
+                onPointerUp={(ev) => {
+                  const sel = taskLineSelectingRef.current;
+                  if (sel && sel.pointerId === ev.pointerId) {
+                    finalizeTaskLineSelectionRect();
+                    try {
+                      ev.currentTarget.releasePointerCapture(ev.pointerId);
+                    } catch {
+                      // ignore
+                    }
+                    return;
+                  }
+
+                  const drag = taskLinePointerDragRef.current;
+                  if (drag && drag.pointerId === ev.pointerId) {
+                    taskLinePointerDragRef.current = null;
+                    if (drag.didDrag) {
+                      setTaskLineDraggingId(null);
+                      taskLineDragJustEndedAtRef.current = Date.now();
+                    }
+                    try {
+                      ev.currentTarget.releasePointerCapture(ev.pointerId);
+                    } catch {
+                      // ignore
+                    }
+                  }
+                }}
+                onPointerCancel={(ev) => {
+                  const sel = taskLineSelectingRef.current;
+                  if (sel && sel.pointerId === ev.pointerId) {
+                    clearTaskLineSelectionRect();
+                  }
+                  const drag = taskLinePointerDragRef.current;
+                  if (drag && drag.pointerId === ev.pointerId) {
+                    taskLinePointerDragRef.current = null;
+                    if (drag.didDrag) {
+                      setTaskLineDraggingId(null);
+                      taskLineDragJustEndedAtRef.current = Date.now();
+                    }
+                  }
+                  try {
+                    ev.currentTarget.releasePointerCapture(ev.pointerId);
+                  } catch {
+                    // ignore
+                  }
                 }}
               >
                 {TASK_LINE_LANES.map((lane) => {
@@ -7635,19 +7828,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     <div
                       key={lane.key}
                       className={`taskline-column${isTodayLane ? ' is-today' : ''}`}
-                      onDragOver={(e) => {
-                        if (!taskLineDraggingId) return;
-                        e.preventDefault();
-                        taskLineAutoScrollWhileDragging(e);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Do not override the last previewed order.
-                        // (Reordering happens during dragover; drop only finalizes the drag.)
-                        setTaskLineDraggingId(null);
-                        taskLineDragJustEndedAtRef.current = Date.now();
-                      }}
                     >
                       <div className="taskline-column-header">
                         <div className="taskline-column-title">{lane.label}</div>
@@ -7670,62 +7850,37 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                       <div
                         className="taskline-column-body"
-                        onDragOver={(e) => {
-                          if (!taskLineDraggingId) return;
-                          e.preventDefault();
-                          e.stopPropagation();
-                          taskLineAutoScrollWhileDragging(e);
-
-                          const nowMs = Date.now();
-                          if (nowMs - taskLineLastDragAtRef.current < 40) return;
-                          taskLineLastDragAtRef.current = nowMs;
-
-                          const body = e.currentTarget as HTMLDivElement;
-                          const cardEls = Array.from(body.querySelectorAll<HTMLElement>('.taskline-card'));
-                          let insertAt = laneCards.length;
-                          for (const el of cardEls) {
-                            const id = el.getAttribute('data-taskline-cardid') || '';
-                            if (!id || id === taskLineDraggingId) continue;
-                            const laneIndexAttr = el.getAttribute('data-taskline-laneindex') || '';
-                            const laneIndex = Number.parseInt(laneIndexAttr, 10);
-                            if (!Number.isFinite(laneIndex)) continue;
-                            const rect = el.getBoundingClientRect();
-                            const midY = rect.top + rect.height / 2;
-                            if (e.clientY < midY) {
-                              insertAt = laneIndex;
-                              break;
-                            }
-                          }
-                          taskLinePreviewMove(taskLineDraggingId, lane.key, insertAt);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setTaskLineDraggingId(null);
-                          taskLineDragJustEndedAtRef.current = Date.now();
-                        }}
+                        data-taskline-drop-lane={lane.key}
                       >
                         {laneCards.map((card, laneIndex) => {
                           return (
                             <div
                               key={card.id}
-                              className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}`}
+                              className={`taskline-card${taskLineDraggingId === card.id ? ' dragging' : ''}${taskLineSelectedCardSet.has(card.id) ? ' is-selected' : ''}`}
                               data-taskline-cardid={card.id}
                               data-taskline-laneindex={laneIndex}
-                              draggable={!busy && !taskLineEditingId}
-                              onDragStart={(e) => {
-                                setTaskLineDraggingId(card.id);
-                                taskLineLastPreviewRef.current = null;
+                              onPointerDown={(ev) => {
+                                if (busy) return;
+                                if (taskLineEditingId) return;
+                                if (taskLineSelectingRef.current) return;
+                                if (ev.button !== 0) return;
+                                if (ev.target instanceof HTMLElement && ev.target.closest('a.inline-url')) return;
+
+                                const root = taskLineBoardRef.current;
+                                if (!root) return;
+
+                                taskLinePointerDragRef.current = {
+                                  pointerId: ev.pointerId,
+                                  dragId: card.id,
+                                  startClientX: ev.clientX,
+                                  startClientY: ev.clientY,
+                                  didDrag: false,
+                                };
                                 try {
-                                  e.dataTransfer.effectAllowed = 'move';
-                                  e.dataTransfer.setData('text/plain', card.id);
+                                  root.setPointerCapture(ev.pointerId);
                                 } catch {
                                   // ignore
                                 }
-                              }}
-                              onDragEnd={() => {
-                                setTaskLineDraggingId(null);
-                                taskLineDragJustEndedAtRef.current = Date.now();
                               }}
                               onClick={() => {
                                 if (Date.now() - taskLineDragJustEndedAtRef.current < 200) return;
@@ -7748,6 +7903,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     </div>
                   );
                 })}
+                {taskLineSelectRect ? (
+                  <div
+                    className="taskline-select-rect"
+                    style={{ left: taskLineSelectRect.x, top: taskLineSelectRect.y, width: taskLineSelectRect.w, height: taskLineSelectRect.h }}
+                    aria-hidden="true"
+                  />
+                ) : null}
               </div>
               </div>
             ) : null}
