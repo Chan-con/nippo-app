@@ -14,7 +14,6 @@ type DragState = {
   mode: DragMode;
   startClientX: number;
   startClientY: number;
-  baseScrollLeft: number;
   baseStartDay: number;
   baseEndDay: number;
   baseY: number;
@@ -96,8 +95,6 @@ export default function GanttBoard(props: {
 
   const selectingRef = useRef<SelectRectState | null>(null);
   const [selectRect, setSelectRect] = useState<null | { x: number; y: number; w: number; h: number }>(null);
-
-  const autoScrollRef = useRef<{ dir: -1 | 0 | 1; raf: number | null }>({ dir: 0, raf: null });
 
   useEffect(() => {
     if (initialRangeSetRef.current) return;
@@ -469,9 +466,6 @@ export default function GanttBoard(props: {
       }
     }
 
-    const scroller = scrollRef.current;
-    const baseScrollLeft = scroller ? Math.max(0, Math.trunc(scroller.scrollLeft || 0)) : 0;
-
     const groupTaskIds = mode === 'move' && multiSelectedSet.has(task.id) ? Array.from(multiSelectedSet) : [task.id];
     const groupBaseById: Record<string, { startDay: number; endDay: number; y: number; duration: number }> = {};
     if (mode === 'move') {
@@ -494,7 +488,6 @@ export default function GanttBoard(props: {
       mode,
       startClientX: ev.clientX,
       startClientY: ev.clientY,
-      baseScrollLeft,
       baseStartDay: startDay,
       baseEndDay: endDay,
       baseY,
@@ -518,44 +511,6 @@ export default function GanttBoard(props: {
 
     ev.preventDefault();
     ev.stopPropagation();
-  }
-
-  function startAutoScrollIfNeeded(clientX: number) {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-    const rect = scroller.getBoundingClientRect();
-    const edge = 36;
-    const x = clientX;
-    let dir: -1 | 0 | 1 = 0;
-    if (x < rect.left + edge) dir = -1;
-    else if (x > rect.right - edge) dir = 1;
-
-    autoScrollRef.current.dir = dir;
-    if (dir === 0) {
-      if (autoScrollRef.current.raf != null) {
-        window.cancelAnimationFrame(autoScrollRef.current.raf);
-        autoScrollRef.current.raf = null;
-      }
-      return;
-    }
-
-    if (autoScrollRef.current.raf != null) return;
-
-    const step = () => {
-      const st = draggingRef.current;
-      const curDir = autoScrollRef.current.dir;
-      const el = scrollRef.current;
-      if (!st || !el || curDir === 0) {
-        if (autoScrollRef.current.raf != null) window.cancelAnimationFrame(autoScrollRef.current.raf);
-        autoScrollRef.current.raf = null;
-        return;
-      }
-      // Slow scroll
-      el.scrollLeft = Math.max(0, (el.scrollLeft || 0) + curDir * 3);
-      autoScrollRef.current.raf = window.requestAnimationFrame(step);
-    };
-
-    autoScrollRef.current.raf = window.requestAnimationFrame(step);
   }
 
   function onRootPointerMove(ev: React.PointerEvent) {
@@ -582,15 +537,11 @@ export default function GanttBoard(props: {
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
 
-    startAutoScrollIfNeeded(ev.clientX);
-
-    const scroller = scrollRef.current;
-    const scrollDx = scroller ? Math.trunc(scroller.scrollLeft || 0) - st.baseScrollLeft : 0;
-    const dxEff = ev.clientX - st.startClientX + scrollDx;
+    const dx = ev.clientX - st.startClientX;
     const dy = ev.clientY - st.startClientY;
-    if (!st.didDrag && (Math.abs(dxEff) > 3 || Math.abs(dy) > 3)) st.didDrag = true;
+    if (!st.didDrag && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) st.didDrag = true;
 
-    const deltaDays = Math.round(dxEff / Math.max(6, props.dayWidth || 24));
+    const deltaDays = Math.round(dx / Math.max(6, props.dayWidth || 24));
     const deltaY = dy;
 
     const duration = Math.max(0, st.baseEndDay - st.baseStartDay);
@@ -742,13 +693,6 @@ export default function GanttBoard(props: {
 
     draggingRef.current = null;
 
-    // stop autoscroll
-    autoScrollRef.current.dir = 0;
-    if (autoScrollRef.current.raf != null) {
-      window.cancelAnimationFrame(autoScrollRef.current.raf);
-      autoScrollRef.current.raf = null;
-    }
-
     try {
       props.onInteractionChange?.(false);
     } catch {
@@ -818,13 +762,6 @@ export default function GanttBoard(props: {
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
     draggingRef.current = null;
-
-    // stop autoscroll
-    autoScrollRef.current.dir = 0;
-    if (autoScrollRef.current.raf != null) {
-      window.cancelAnimationFrame(autoScrollRef.current.raf);
-      autoScrollRef.current.raf = null;
-    }
     try {
       props.onInteractionChange?.(false);
     } catch {
