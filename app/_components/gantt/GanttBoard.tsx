@@ -51,6 +51,14 @@ function dayNumberLabel(ymd: string) {
   return String(Number(m[1]));
 }
 
+function dayNumberWithWeekdayLabel(ymd: string) {
+  const d = dayNumberLabel(ymd);
+  if (!d) return '';
+  const wd = weekdayLabel(ymd);
+  if (!wd) return d;
+  return `${d}(${wd})`;
+}
+
 function weekdayLabel(ymd: string) {
   const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return '';
@@ -965,8 +973,8 @@ export default function GanttBoard(props: {
               const dragMode = isDraggingThis ? drag.mode : null;
               const showLeftBubble = isDraggingThis && (dragMode === 'move' || dragMode === 'resize-left');
               const showRightBubble = isDraggingThis && (dragMode === 'move' || dragMode === 'resize-right');
-              const startDayLabel = dayNumberLabel(t.startDate);
-              const endDayLabel = dayNumberLabel(t.endDate);
+              const startDayLabel = dayNumberWithWeekdayLabel(t.startDate);
+              const endDayLabel = dayNumberWithWeekdayLabel(t.endDate);
 
 
               const style = { left: x, top: y, width: w, zIndex: z } as CSSProperties & Record<string, unknown>;
