@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { isHoliday } from '@holiday-jp/holiday_jp';
 
@@ -268,10 +268,109 @@ export default function CalendarBoard(props: {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
-  // HTML5 DnD は環境差が大きく、ドラッグ中にホイールスクロールできない場合があるため、
-  // wheel を拾ってスクロール領域の scrollTop を直接動かす。
-  const dragClientPointRef = useRef<{ x: number; y: number } | null>(null);
-  const dragIsOverScrollRef = useRef(false);
+  // PointerEvent ベースの自前ドラッグ（ドラッグ中でもホイールスクロールが効く）
+  type PointerDragState = {
+    eventId: string;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    didDrag: boolean;
+    lastAltKey: boolean;
+    drop: null | { dateYmd: string; beforeEventId: string | null; overKey: string | null };
+  };
+
+  const pointerDragRef = useRef<PointerDragState | null>(null);
+
+  function findDropTargetFromPoint(clientX: number, clientY: number) {
+    if (typeof document === 'undefined') return null;
+    let el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    while (el) {
+      const dateYmd = String(el.dataset?.calDropDate || '').slice(0, 10);
+      const overKey = el.dataset?.calDropKey ? String(el.dataset.calDropKey) : null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) {
+        const beforeRaw = el.dataset?.calDropBefore ? String(el.dataset.calDropBefore) : '';
+        const beforeEventId = beforeRaw ? beforeRaw : null;
+        return { dateYmd, beforeEventId, overKey };
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function onEventPointerDown(ev: React.PointerEvent, e: CalendarEvent) {
+    if (disabled) return;
+    if (ev.button !== 0) return;
+
+    ev.stopPropagation();
+    pointerDragRef.current = {
+      eventId: e.id,
+      pointerId: ev.pointerId,
+      startClientX: ev.clientX,
+      startClientY: ev.clientY,
+      didDrag: false,
+      lastAltKey: !!ev.altKey,
+      drop: null,
+    };
+
+    try {
+      (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+
+  function cancelPointerDrag() {
+    pointerDragRef.current = null;
+    setDraggingId(null);
+    setDragOverKey(null);
+  }
+
+  function onRootPointerMove(ev: React.PointerEvent) {
+    const st = pointerDragRef.current;
+    if (!st) return;
+    if (st.pointerId !== ev.pointerId) return;
+
+    st.lastAltKey = !!ev.altKey;
+    const dx = ev.clientX - st.startClientX;
+    const dy = ev.clientY - st.startClientY;
+    if (!st.didDrag && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      st.didDrag = true;
+      setDraggingId(st.eventId);
+    }
+    if (!st.didDrag) return;
+
+    const next = findDropTargetFromPoint(ev.clientX, ev.clientY);
+    st.drop = next;
+    setDragOverKey(next?.overKey ?? null);
+  }
+
+  function onRootPointerUp(ev: React.PointerEvent) {
+    const st = pointerDragRef.current;
+    if (!st) return;
+    if (st.pointerId !== ev.pointerId) return;
+    pointerDragRef.current = null;
+
+    const didDrag = st.didDrag;
+    const drop = st.drop;
+
+    setDraggingId(null);
+    setDragOverKey(null);
+
+    if (!didDrag || !drop) return;
+    try {
+      (window as any).__calendarAltCopy = st.lastAltKey;
+      moveOrCopyEventToDate(st.eventId, drop.dateYmd, drop.beforeEventId);
+    } finally {
+      (window as any).__calendarAltCopy = false;
+    }
+  }
+
+  function onRootPointerCancel(ev: React.PointerEvent) {
+    const st = pointerDragRef.current;
+    if (!st) return;
+    if (st.pointerId !== ev.pointerId) return;
+    cancelPointerDrag();
+  }
 
   const [memoTooltip, setMemoTooltip] = useState<null | { title: string; memo: string; x: number; y: number }>(null);
 
@@ -462,128 +561,19 @@ export default function CalendarBoard(props: {
     }
   }
 
-  function onDragStartEvent(ev: ReactDragEvent, e: CalendarEvent) {
-    if (disabled) return;
-    setDraggingId(e.id);
-    setDragOverKey(null);
-    try {
-      ev.dataTransfer.effectAllowed = 'copyMove';
-      ev.dataTransfer.setData('text/plain', e.id);
-      ev.dataTransfer.setData('application/json', JSON.stringify({ id: e.id }));
-    } catch {
-      // ignore
-    }
-  }
-
-  function onDragEndEvent() {
-    setDraggingId(null);
-    setDragOverKey(null);
-    try {
-      (window as any).__calendarAltCopy = false;
-    } catch {
-      // ignore
-    }
-
-    // まれに dragend が落ちて「操作中」が解除されないことがあるので、親へ即通知
-    try {
-      if (props.onInteractionChange) {
-        const nextActive = !!modalOpen;
-        const nextEditingId = modalOpen ? modalEditingId : null;
-        props.onInteractionChange(nextActive, nextEditingId);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // DnD系イベントは環境差で dragend が発火しないことがあるため、保険でクリーンアップ
   useEffect(() => {
     if (!draggingId) return;
 
-    const cleanup = () => {
-      onDragEndEvent();
-    };
-
-    window.addEventListener('dragend', cleanup, true);
+    const cleanup = () => cancelPointerDrag();
     window.addEventListener('blur', cleanup, true);
-
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') cleanup();
     };
     window.addEventListener('keydown', onKeyDown, true);
 
     return () => {
-      window.removeEventListener('dragend', cleanup, true);
       window.removeEventListener('blur', cleanup, true);
       window.removeEventListener('keydown', onKeyDown, true);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draggingId]);
-
-  // ドラッグ中のホイールスクロール対応
-  useEffect(() => {
-    if (!draggingId) return;
-
-    const onDragOver = (ev: DragEvent) => {
-      if (!ev) return;
-      const x = typeof ev.clientX === 'number' ? ev.clientX : 0;
-      const y = typeof ev.clientY === 'number' ? ev.clientY : 0;
-      dragClientPointRef.current = { x, y };
-
-      const root = scrollRef.current;
-      if (!root) {
-        dragIsOverScrollRef.current = false;
-        return;
-      }
-      const r = root.getBoundingClientRect();
-      dragIsOverScrollRef.current = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-    };
-
-    const onWheel = (ev: WheelEvent) => {
-      const root = scrollRef.current;
-      if (!root) return;
-
-      const x = typeof ev.clientX === 'number' ? ev.clientX : 0;
-      const y = typeof ev.clientY === 'number' ? ev.clientY : 0;
-      dragClientPointRef.current = { x, y };
-
-      const r = root.getBoundingClientRect();
-      const isOver = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-      dragIsOverScrollRef.current = isOver;
-      if (!isOver) return;
-
-      let deltaY = Number(ev.deltaY || 0);
-      if (!deltaY) return;
-
-      // Normalize for line/page mode.
-      const mode = typeof ev.deltaMode === 'number' ? ev.deltaMode : 0;
-      if (mode === 1) deltaY *= 16;
-      else if (mode === 2) deltaY *= Math.max(1, root.clientHeight);
-
-      root.scrollTop = Math.max(0, Math.round(root.scrollTop + deltaY));
-
-      // Prevent the page from scrolling while dragging.
-      try {
-        ev.preventDefault();
-      } catch {
-        // ignore
-      }
-      try {
-        ev.stopPropagation();
-      } catch {
-        // ignore
-      }
-    };
-
-    window.addEventListener('dragover', onDragOver, true);
-    // passive:false で preventDefault を有効にする
-    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
-
-    return () => {
-      window.removeEventListener('dragover', onDragOver, true);
-      window.removeEventListener('wheel', onWheel, true);
-      dragClientPointRef.current = null;
-      dragIsOverScrollRef.current = false;
     };
   }, [draggingId]);
 
@@ -892,7 +882,7 @@ export default function CalendarBoard(props: {
   }, []);
 
   return (
-    <div className="calendar-root">
+    <div className="calendar-root" onPointerMove={onRootPointerMove} onPointerUp={onRootPointerUp} onPointerCancel={onRootPointerCancel}>
       <div className="calendar-scroll" ref={scrollRef} onScroll={handleScroll}>
         {months.map((monthFirstYmd) => {
           const gridStartYmd = startOfCalendarGrid(monthFirstYmd);
@@ -950,33 +940,12 @@ export default function CalendarBoard(props: {
                       className={`calendar-cell${cell.inMonth ? '' : ' is-out'}${cell.isToday ? ' is-today' : ''}${cell.isUserHoliday ? ' is-user-holiday' : ''}${isDragOver ? ' is-drag-over' : ''}`}
                       role="gridcell"
                       aria-label={cell.ymd}
+                      data-cal-drop-date={cell.ymd}
+                      data-cal-drop-before=""
+                      data-cal-drop-key={dropKey}
                       onDoubleClick={() => {
                         if (disabled) return;
                         openNewEventModal(cell.ymd);
-                      }}
-                      onDragOver={(ev) => {
-                        if (disabled) return;
-                        ev.preventDefault();
-                        ev.dataTransfer.dropEffect = ev.altKey ? 'copy' : 'move';
-                        setDragOverKey(dropKey);
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverKey === dropKey) setDragOverKey(null);
-                      }}
-                      onDrop={(ev) => {
-                        if (disabled) return;
-                        ev.preventDefault();
-                        const id = ev.dataTransfer.getData('text/plain');
-                        if (!id) return;
-                        try {
-                          (window as any).__calendarAltCopy = !!ev.altKey;
-                          moveOrCopyEventToDate(id, cell.ymd, null);
-                        } finally {
-                          (window as any).__calendarAltCopy = false;
-                          setDragOverKey(null);
-                          // 環境によっては dragend が発火しないため、drop で確実に終了させる
-                          onDragEndEvent();
-                        }
                       }}
                     >
                       <div className={`calendar-day-number ${dayToneClass}`}>{cell.day}</div>
@@ -991,29 +960,10 @@ export default function CalendarBoard(props: {
                                 key={e.id}
                                 type="button"
                                 className={`calendar-event-chip is-allday${draggingId === e.id ? ' is-dragging' : ''}${isOver ? ' is-drop-target' : ''}`}
-                                draggable={!disabled}
-                                onDragStart={(ev) => onDragStartEvent(ev, e)}
-                                onDragEnd={onDragEndEvent}
-                                onDragOver={(ev) => {
-                                  if (disabled) return;
-                                  ev.preventDefault();
-                                  ev.dataTransfer.dropEffect = ev.altKey ? 'copy' : 'move';
-                                  setDragOverKey(overKey);
-                                }}
-                                onDrop={(ev) => {
-                                  if (disabled) return;
-                                  ev.preventDefault();
-                                  const id = ev.dataTransfer.getData('text/plain');
-                                  if (!id) return;
-                                  try {
-                                    (window as any).__calendarAltCopy = !!ev.altKey;
-                                    moveOrCopyEventToDate(id, cell.ymd, e.id);
-                                  } finally {
-                                    (window as any).__calendarAltCopy = false;
-                                    setDragOverKey(null);
-                                    onDragEndEvent();
-                                  }
-                                }}
+                                data-cal-drop-date={cell.ymd}
+                                data-cal-drop-before={e.id}
+                                data-cal-drop-key={overKey}
+                                onPointerDown={(ev) => onEventPointerDown(ev, e)}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
                                 }}
@@ -1046,30 +996,10 @@ export default function CalendarBoard(props: {
                                 key={e.id}
                                 type="button"
                                 className={`calendar-event-chip${draggingId === e.id ? ' is-dragging' : ''}${isOver ? ' is-drop-target' : ''}`}
-                                draggable={!disabled}
-                                onDragStart={(ev) => onDragStartEvent(ev, e)}
-                                onDragEnd={onDragEndEvent}
-                                onDragOver={(ev) => {
-                                  if (disabled) return;
-                                  ev.preventDefault();
-                                  ev.dataTransfer.dropEffect = ev.altKey ? 'copy' : 'move';
-                                  setDragOverKey(overKey);
-                                }}
-                                onDrop={(ev) => {
-                                  if (disabled) return;
-                                  ev.preventDefault();
-                                  const id = ev.dataTransfer.getData('text/plain');
-                                  if (!id) return;
-                                  try {
-                                    (window as any).__calendarAltCopy = !!ev.altKey;
-                                    // 時間指定は「開始時刻順」を維持：同じ開始時刻グループ内で並び替える
-                                    moveOrCopyEventToDate(id, cell.ymd, e.id);
-                                  } finally {
-                                    (window as any).__calendarAltCopy = false;
-                                    setDragOverKey(null);
-                                    onDragEndEvent();
-                                  }
-                                }}
+                                data-cal-drop-date={cell.ymd}
+                                data-cal-drop-before={e.id}
+                                data-cal-drop-key={overKey}
+                                onPointerDown={(ev) => onEventPointerDown(ev, e)}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
                                 }}
