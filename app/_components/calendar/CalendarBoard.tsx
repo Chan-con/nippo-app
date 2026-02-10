@@ -270,7 +270,8 @@ export default function CalendarBoard(props: {
   const [multiSelectedEventIds, setMultiSelectedEventIds] = useState<string[]>([]);
   const multiSelectedEventSet = useMemo(() => new Set(multiSelectedEventIds), [multiSelectedEventIds]);
 
-  const [dragPreview, setDragPreview] = useState<null | { title: string; timeLabel: string; allDay: boolean; x: number; y: number }>(null);
+  const [dragHoverPreview, setDragHoverPreview] = useState<null | { dateYmd: string; beforeEventId: string | null; overKey: string | null }>(null);
+  const [draggingPreviewEventIds, setDraggingPreviewEventIds] = useState<string[] | null>(null);
 
   // PointerEvent ベースの自前ドラッグ（ドラッグ中でもホイールスクロールが効く）
   type PointerDragState = {
@@ -310,32 +311,18 @@ export default function CalendarBoard(props: {
     return { x, y };
   }
 
-  function clampDragPreviewPos(clientX: number, clientY: number) {
-    const pad = 12;
-    const estW = 320;
-    const estH = 66;
-    const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
-
-    let x = clientX + pad;
-    let y = clientY + pad;
-
-    if (vw) x = Math.max(12, Math.min(x, vw - estW - 12));
-    if (vh) y = Math.max(12, Math.min(y, vh - estH - 12));
-
-    return { x, y };
-  }
-
-  function updateDragPreviewAtPoint(eventId: string, clientX: number, clientY: number) {
-    const found = normalizedEvents.find((e) => e.id === eventId) ?? null;
-    if (!found) {
-      setDragPreview(null);
-      return;
-    }
-    const title = String(found.title || '（無題）').trim() || '（無題）';
-    const timeLabel = found.allDay ? '' : (found.startTime ? `${found.startTime} ` : '');
-    const { x, y } = clampDragPreviewPos(clientX, clientY);
-    setDragPreview({ title, timeLabel, allDay: !!found.allDay, x, y });
+  function makePreviewItems(
+    baseEvents: CalendarEvent[],
+    previewEvents: CalendarEvent[],
+    beforeEventId: string | null
+  ): Array<{ e: CalendarEvent; preview: boolean }> {
+    const baseItems = baseEvents.map((e) => ({ e, preview: false }));
+    if (!previewEvents.length) return baseItems;
+    const previewItems = previewEvents.map((e) => ({ e, preview: true }));
+    if (!beforeEventId) return [...baseItems, ...previewItems];
+    const idx = baseEvents.findIndex((e) => e.id === beforeEventId);
+    if (idx < 0) return [...baseItems, ...previewItems];
+    return [...baseItems.slice(0, idx), ...previewItems, ...baseItems.slice(idx)];
   }
 
   function findDropTargetFromPoint(clientX: number, clientY: number) {
@@ -360,7 +347,8 @@ export default function CalendarBoard(props: {
 
     // ドラッグ開始時にホバーツールチップが残りやすいので、先に閉じる。
     hideMemoTooltip();
-    setDragPreview(null);
+    setDragHoverPreview(null);
+    setDraggingPreviewEventIds(null);
 
     ev.stopPropagation();
 
@@ -390,8 +378,9 @@ export default function CalendarBoard(props: {
     pointerDragRef.current = null;
     setDraggingId(null);
     setDragOverKey(null);
+    setDragHoverPreview(null);
+    setDraggingPreviewEventIds(null);
     hideMemoTooltip();
-    setDragPreview(null);
   }
 
   function cancelSelecting() {
@@ -429,16 +418,15 @@ export default function CalendarBoard(props: {
     if (!st.didDrag && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
       st.didDrag = true;
       setDraggingId(st.eventId);
+      setDraggingPreviewEventIds(Array.isArray(st.selectedEventIds) && st.selectedEventIds.length ? st.selectedEventIds : [st.eventId]);
       hideMemoTooltip();
-      updateDragPreviewAtPoint(st.eventId, ev.clientX, ev.clientY);
     }
     if (!st.didDrag) return;
-
-    updateDragPreviewAtPoint(st.eventId, ev.clientX, ev.clientY);
 
     const next = findDropTargetFromPoint(ev.clientX, ev.clientY);
     st.drop = next;
     setDragOverKey(next?.overKey ?? null);
+    setDragHoverPreview(next);
   }
 
   function onRootPointerUp(ev: React.PointerEvent) {
@@ -496,8 +484,9 @@ export default function CalendarBoard(props: {
 
     setDraggingId(null);
     setDragOverKey(null);
+    setDragHoverPreview(null);
+    setDraggingPreviewEventIds(null);
     hideMemoTooltip();
-    setDragPreview(null);
 
     if (!didDrag || !drop) return;
     try {
@@ -1144,7 +1133,8 @@ export default function CalendarBoard(props: {
           if (!p) return;
 
           hideMemoTooltip();
-          setDragPreview(null);
+          setDragHoverPreview(null);
+          setDraggingPreviewEventIds(null);
 
           selectingRef.current = {
             pointerId: ev.pointerId,
@@ -1216,6 +1206,25 @@ export default function CalendarBoard(props: {
                   const dayEvents = eventsByDay.get(cell.ymd) ?? [];
                   const { allDay, timed } = sortForDayRender(dayEvents);
 
+                  const previewActive = !!(dragHoverPreview && draggingPreviewEventIds && draggingPreviewEventIds.length && dragHoverPreview.dateYmd === cell.ymd);
+                  const previewBeforeId = previewActive ? dragHoverPreview!.beforeEventId : null;
+                  const previewIds = previewActive ? draggingPreviewEventIds! : [];
+
+                  const previewEvents = previewActive
+                    ? (previewIds.map((id) => normalizedEvents.find((e) => e.id === id) ?? null).filter(Boolean) as CalendarEvent[])
+                    : ([] as CalendarEvent[]);
+                  const previewAllDay = previewEvents.filter((e) => !!e.allDay);
+                  const previewTimed = previewEvents.filter((e) => !e.allDay);
+
+                  const baseAllDay = previewActive ? allDay.filter((e) => !previewIds.includes(e.id)) : allDay;
+                  const baseTimed = previewActive ? timed.filter((e) => !previewIds.includes(e.id)) : timed;
+
+                  const beforeInAllDay = !!(previewActive && previewBeforeId && baseAllDay.some((e) => e.id === previewBeforeId));
+                  const beforeInTimed = !!(previewActive && previewBeforeId && baseTimed.some((e) => e.id === previewBeforeId));
+
+                  const allDayItemsFinal = makePreviewItems(baseAllDay, previewAllDay, beforeInAllDay ? previewBeforeId : null);
+                  const timedItemsFinal = makePreviewItems(baseTimed, previewTimed, beforeInTimed ? previewBeforeId : null);
+
                   const dropKey = `${cell.ymd}::cell`;
                   const isDragOver = dragOverKey === dropKey;
 
@@ -1237,14 +1246,22 @@ export default function CalendarBoard(props: {
 
                       <div className="calendar-cell-body">
                         <div className="calendar-events-allday" aria-label="終日">
-                          {allDay.map((e) => {
+                          {allDayItemsFinal.map((it) => {
+                            const e = it.e;
+                            if (it.preview) {
+                              return (
+                                <div key={`preview-${e.id}`} className={`calendar-event-chip is-allday is-preview${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}`} aria-hidden="true">
+                                  <span className="calendar-event-title">{e.title}</span>
+                                </div>
+                              );
+                            }
                             const overKey = `${cell.ymd}::allday::${e.id}`;
                             const isOver = dragOverKey === overKey;
                             return (
                               <button
                                 key={e.id}
                                 type="button"
-                                className={`calendar-event-chip is-allday${draggingId === e.id ? ' is-dragging' : ''}${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}${isOver ? ' is-drop-target' : ''}`}
+                                className={`calendar-event-chip is-allday${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}${isOver ? ' is-drop-target' : ''}`}
                                 data-cal-drop-date={cell.ymd}
                                 data-cal-drop-before={e.id}
                                 data-cal-drop-key={overKey}
@@ -1279,15 +1296,26 @@ export default function CalendarBoard(props: {
                         </div>
 
                         <div className="calendar-events-timed" aria-label="時間指定">
-                          {timed.map((e) => {
+                          {timedItemsFinal.map((it) => {
+                            const e = it.e;
+                            const timeLabel = e.startTime ? `${e.startTime} ` : '';
+                            if (it.preview) {
+                              return (
+                                <div key={`preview-${e.id}`} className={`calendar-event-chip is-preview${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}`} aria-hidden="true">
+                                  <span className="calendar-event-time" aria-hidden="true">
+                                    {timeLabel}
+                                  </span>
+                                  <span className="calendar-event-title">{e.title}</span>
+                                </div>
+                              );
+                            }
                             const overKey = `${cell.ymd}::timed::${e.startTime || 'none'}::${e.id}`;
                             const isOver = dragOverKey === overKey;
-                            const timeLabel = e.startTime ? `${e.startTime} ` : '';
                             return (
                               <button
                                 key={e.id}
                                 type="button"
-                                className={`calendar-event-chip${draggingId === e.id ? ' is-dragging' : ''}${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}${isOver ? ' is-drop-target' : ''}`}
+                                className={`calendar-event-chip${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}${isOver ? ' is-drop-target' : ''}`}
                                 data-cal-drop-date={cell.ymd}
                                 data-cal-drop-before={e.id}
                                 data-cal-drop-key={overKey}
@@ -1343,20 +1371,6 @@ export default function CalendarBoard(props: {
             >
               <div className="gantt-memo-tooltip-title">{memoTooltip.title}</div>
               {memoTooltip.memo ? <div className="gantt-memo-tooltip-body">{memoTooltip.memo}</div> : null}
-            </div>,
-            document.body
-          )
-        : null}
-
-      {dragPreview
-        ? createPortal(
-            <div
-              className={dragPreview.allDay ? 'calendar-drag-preview is-allday' : 'calendar-drag-preview'}
-              style={{ left: dragPreview.x, top: dragPreview.y }}
-              aria-hidden="true"
-            >
-              {dragPreview.timeLabel ? <div className="calendar-drag-preview-time">{dragPreview.timeLabel}</div> : null}
-              <div className="calendar-drag-preview-title">{dragPreview.title}</div>
             </div>,
             document.body
           )
