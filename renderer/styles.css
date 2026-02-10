@@ -1242,6 +1242,7 @@ input[type='number']::-webkit-inner-spin-button {
   margin-top: 0;
   max-height: min(72vh, calc(var(--app-height) - var(--titlebar-total-height) - 220px));
   overflow: auto;
+  position: relative;
   -webkit-overflow-scrolling: touch;
   border: 1px solid rgba(108, 112, 134, 0.35);
   border-radius: var(--radius-medium);
@@ -1256,6 +1257,15 @@ input[type='number']::-webkit-inner-spin-button {
 .calendar-scroll::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+.calendar-select-rect {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid rgba(137, 180, 250, 0.7);
+  background: rgba(137, 180, 250, 0.12);
+  border-radius: 10px;
+  pointer-events: none;
 }
 
 .calendar-month {
@@ -1519,6 +1529,11 @@ input[type='number']::-webkit-inner-spin-button {
 .calendar-event-chip.is-drop-target {
   box-shadow: 0 0 0 2px rgba(203, 166, 247, 0.25);
   border-color: rgba(203, 166, 247, 0.6);
+}
+
+.calendar-event-chip.is-selected {
+  border-color: rgba(137, 180, 250, 0.7);
+  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.15);
 }
 
 .calendar-event-time {

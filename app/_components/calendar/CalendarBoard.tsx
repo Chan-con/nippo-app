@@ -267,12 +267,15 @@ export default function CalendarBoard(props: {
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [multiSelectedEventIds, setMultiSelectedEventIds] = useState<string[]>([]);
+  const multiSelectedEventSet = useMemo(() => new Set(multiSelectedEventIds), [multiSelectedEventIds]);
 
   const [dragPreview, setDragPreview] = useState<null | { title: string; timeLabel: string; allDay: boolean; x: number; y: number }>(null);
 
   // PointerEvent ベースの自前ドラッグ（ドラッグ中でもホイールスクロールが効く）
   type PointerDragState = {
     eventId: string;
+    selectedEventIds: string[];
     pointerId: number;
     startClientX: number;
     startClientY: number;
@@ -282,6 +285,30 @@ export default function CalendarBoard(props: {
   };
 
   const pointerDragRef = useRef<PointerDragState | null>(null);
+
+  type SelectRectState = {
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startX: number; // scroll content coordinate (px)
+    startY: number; // scroll content coordinate (px)
+    curX: number;
+    curY: number;
+    didDrag: boolean;
+  };
+
+  const selectingRef = useRef<SelectRectState | null>(null);
+  const [selectRect, setSelectRect] = useState<null | { x: number; y: number; w: number; h: number }>(null);
+
+  function getPointInScrollFromClient(clientX: number, clientY: number) {
+    const root = scrollRef.current;
+    if (!root) return null;
+    const r = root.getBoundingClientRect();
+    const x = clientX - r.left + root.scrollLeft;
+    const y = clientY - r.top + root.scrollTop;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
+  }
 
   function clampDragPreviewPos(clientX: number, clientY: number) {
     const pad = 12;
@@ -336,8 +363,14 @@ export default function CalendarBoard(props: {
     setDragPreview(null);
 
     ev.stopPropagation();
+
+    // Pointer drag starts from a chip.
+    // If it's already selected, keep multi-selection; otherwise collapse to this event.
+    const selectedAtStart = multiSelectedEventSet.has(e.id) ? multiSelectedEventIds : [e.id];
+    if (!multiSelectedEventSet.has(e.id)) setMultiSelectedEventIds([e.id]);
     pointerDragRef.current = {
       eventId: e.id,
+      selectedEventIds: selectedAtStart,
       pointerId: ev.pointerId,
       startClientX: ev.clientX,
       startClientY: ev.clientY,
@@ -361,7 +394,31 @@ export default function CalendarBoard(props: {
     setDragPreview(null);
   }
 
+  function cancelSelecting() {
+    selectingRef.current = null;
+    setSelectRect(null);
+    hideMemoTooltip();
+  }
+
   function onRootPointerMove(ev: React.PointerEvent) {
+    const sel = selectingRef.current;
+    if (sel && sel.pointerId === ev.pointerId) {
+      const p = getPointInScrollFromClient(ev.clientX, ev.clientY);
+      if (p) {
+        sel.curX = p.x;
+        sel.curY = p.y;
+        const dx = ev.clientX - sel.startClientX;
+        const dy = ev.clientY - sel.startClientY;
+        if (!sel.didDrag && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) sel.didDrag = true;
+        const left = Math.min(sel.startX, sel.curX);
+        const top = Math.min(sel.startY, sel.curY);
+        const w = Math.abs(sel.curX - sel.startX);
+        const h = Math.abs(sel.curY - sel.startY);
+        setSelectRect({ x: left, y: top, w, h });
+      }
+      return;
+    }
+
     const st = pointerDragRef.current;
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
@@ -385,6 +442,50 @@ export default function CalendarBoard(props: {
   }
 
   function onRootPointerUp(ev: React.PointerEvent) {
+    const sel = selectingRef.current;
+    if (sel && sel.pointerId === ev.pointerId) {
+      selectingRef.current = null;
+      setSelectRect(null);
+
+      if (!sel.didDrag) {
+        setMultiSelectedEventIds([]);
+        return;
+      }
+
+      const root = scrollRef.current;
+      if (!root) {
+        setMultiSelectedEventIds([]);
+        return;
+      }
+
+      const left = Math.min(sel.startX, sel.curX);
+      const right = Math.max(sel.startX, sel.curX);
+      const top = Math.min(sel.startY, sel.curY);
+      const bottom = Math.max(sel.startY, sel.curY);
+
+      const rootRect = root.getBoundingClientRect();
+      const nodes = Array.from(root.querySelectorAll('[data-cal-event-id]')) as HTMLElement[];
+      const hits: string[] = [];
+      for (const el of nodes) {
+        const id = String(el.dataset?.calEventId || '');
+        if (!id) continue;
+        const r = el.getBoundingClientRect();
+        const elLeft = r.left - rootRect.left + root.scrollLeft;
+        const elTop = r.top - rootRect.top + root.scrollTop;
+        const elRight = elLeft + r.width;
+        const elBottom = elTop + r.height;
+        const intersects = elLeft <= right && elRight >= left && elTop <= bottom && elBottom >= top;
+        if (!intersects) continue;
+        hits.push(id);
+      }
+
+      // Keep stable order
+      const uniq = Array.from(new Set(hits));
+      setMultiSelectedEventIds(uniq);
+      hideMemoTooltip();
+      return;
+    }
+
     const st = pointerDragRef.current;
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
@@ -401,13 +502,20 @@ export default function CalendarBoard(props: {
     if (!didDrag || !drop) return;
     try {
       (window as any).__calendarAltCopy = st.lastAltKey;
-      moveOrCopyEventToDate(st.eventId, drop.dateYmd, drop.beforeEventId);
+      const ids = Array.isArray(st.selectedEventIds) && st.selectedEventIds.length ? st.selectedEventIds : [st.eventId];
+      const affected = moveOrCopyEventsToDate(ids, drop.dateYmd, drop.beforeEventId);
+      setMultiSelectedEventIds(affected);
     } finally {
       (window as any).__calendarAltCopy = false;
     }
   }
 
   function onRootPointerCancel(ev: React.PointerEvent) {
+    const sel = selectingRef.current;
+    if (sel && sel.pointerId === ev.pointerId) {
+      cancelSelecting();
+      return;
+    }
     const st = pointerDragRef.current;
     if (!st) return;
     if (st.pointerId !== ev.pointerId) return;
@@ -498,8 +606,23 @@ export default function CalendarBoard(props: {
 
   useEffect(() => {
     if (!props.onInteractionChange) return;
-    props.onInteractionChange(modalOpen || !!draggingId, modalOpen ? modalEditingId : null);
-  }, [modalOpen, modalEditingId, draggingId, props.onInteractionChange]);
+    props.onInteractionChange(modalOpen || !!draggingId || !!selectRect, modalOpen ? modalEditingId : null);
+  }, [modalOpen, modalEditingId, draggingId, selectRect, props.onInteractionChange]);
+
+  // Selecting cleanup (Escape/blur)
+  useEffect(() => {
+    if (!selectRect) return;
+    const cleanup = () => cancelSelecting();
+    window.addEventListener('blur', cleanup, true);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cleanup();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('blur', cleanup, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [selectRect]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -659,6 +782,87 @@ export default function CalendarBoard(props: {
       const keep = working.filter((x) => !(x.date === date && !!x.allDay === allDay && (allDay ? true : String(x.startTime || '') === startTime)));
       return keep.concat(reindexed);
     });
+  }
+
+  function moveOrCopyEventsToDate(eventIds: string[], targetDate: string, beforeEventId: string | null) {
+    const date = String(targetDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [] as string[];
+
+    const ids = Array.from(new Set((Array.isArray(eventIds) ? eventIds : []).map((s) => String(s || '')).filter(Boolean)));
+    if (!ids.length) return [] as string[];
+
+    // Called only from active drag drop.
+    const isCopy = !!(window as any).__calendarAltCopy;
+    let affectedIds: string[] = [];
+
+    commit((prev) => {
+      const list = prev.slice();
+      const srcById = new Map<string, CalendarEvent>();
+      for (const e of list) srcById.set(e.id, e);
+
+      const selected = ids
+        .map((id, idx) => {
+          const src = srcById.get(id) ?? null;
+          return src ? ({ src, idx } as const) : null;
+        })
+        .filter(Boolean) as Array<{ src: CalendarEvent; idx: number }>;
+      if (!selected.length) {
+        affectedIds = [];
+        return list;
+      }
+
+      // remove originals when moving
+      const working = isCopy ? list : list.filter((x) => !ids.includes(x.id));
+
+      // materialize bases (copy => new ids)
+      const bases = selected.map(({ src, idx }) => {
+        const base = isCopy ? { ...src, id: safeRandomId('cal') } : src;
+        return { base, srcOrder: typeof src.order === 'number' ? src.order : 0, idx };
+      });
+      affectedIds = bases.map((b) => b.base.id);
+
+      // group by lane (allDay/startTime)
+      const groupKeyOf = (e: CalendarEvent) => `${date}::${e.allDay ? '1' : '0'}::${e.allDay ? '' : String(e.startTime || '')}`;
+      const byGroup = new Map<string, Array<{ base: CalendarEvent; srcOrder: number; idx: number }>>();
+      for (const b of bases) {
+        const k = groupKeyOf(b.base);
+        if (!byGroup.has(k)) byGroup.set(k, []);
+        byGroup.get(k)!.push(b);
+      }
+
+      // stable order within selected: by src.order then selection order
+      for (const [k, items] of byGroup.entries()) {
+        items.sort((a, b) => a.srcOrder - b.srcOrder || a.idx - b.idx);
+        byGroup.set(k, items);
+      }
+
+      let out = working;
+      for (const [, items] of byGroup.entries()) {
+        const any = items[0]?.base;
+        if (!any) continue;
+        const allDay = !!any.allDay;
+        const startTime = allDay ? '' : String(any.startTime || '');
+
+        const targetList = out.filter((x) => x.date === date && !!x.allDay === allDay && (allDay ? true : String(x.startTime || '') === startTime));
+        const reordered = targetList.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.id).localeCompare(String(b.id)));
+
+        const insertBeforeId = beforeEventId ? String(beforeEventId) : '';
+        const insertIndex = insertBeforeId ? reordered.findIndex((x) => x.id === insertBeforeId) : -1;
+        const insertAt = insertIndex >= 0 ? insertIndex : reordered.length;
+
+        const nextGroup = reordered.slice();
+        const normalizedItems = items.map(({ base }) => ({ ...base, date, allDay, startTime, order: 0 }));
+        nextGroup.splice(insertAt, 0, ...normalizedItems);
+
+        const reindexed = reindexGroup(nextGroup).map((x) => ({ ...x, date, allDay, startTime }));
+        const keep = out.filter((x) => !(x.date === date && !!x.allDay === allDay && (allDay ? true : String(x.startTime || '') === startTime)));
+        out = keep.concat(reindexed);
+      }
+
+      return out;
+    });
+
+    return affectedIds;
   }
 
   function getScrollInsetTopPx(root: HTMLElement) {
@@ -925,7 +1129,46 @@ export default function CalendarBoard(props: {
 
   return (
     <div className="calendar-root" onPointerMove={onRootPointerMove} onPointerUp={onRootPointerUp} onPointerCancel={onRootPointerCancel}>
-      <div className="calendar-scroll" ref={scrollRef} onScroll={handleScroll}>
+      <div
+        className="calendar-scroll"
+        ref={scrollRef}
+        onScroll={handleScroll}
+        onPointerDown={(ev) => {
+          if (disabled) return;
+          if (pointerDragRef.current) return;
+          if (selectingRef.current) return;
+          if (ev.button !== 0) return;
+
+          // Only start selecting from inside the scroll area.
+          const p = getPointInScrollFromClient(ev.clientX, ev.clientY);
+          if (!p) return;
+
+          hideMemoTooltip();
+          setDragPreview(null);
+
+          selectingRef.current = {
+            pointerId: ev.pointerId,
+            startClientX: ev.clientX,
+            startClientY: ev.clientY,
+            startX: p.x,
+            startY: p.y,
+            curX: p.x,
+            curY: p.y,
+            didDrag: false,
+          };
+          setSelectRect({ x: p.x, y: p.y, w: 0, h: 0 });
+
+          try {
+            (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+          } catch {
+            // ignore
+          }
+
+          ev.preventDefault();
+          ev.stopPropagation();
+        }}
+      >
+        {selectRect ? <div className="calendar-select-rect" style={{ left: selectRect.x, top: selectRect.y, width: selectRect.w, height: selectRect.h }} aria-hidden="true" /> : null}
         {months.map((monthFirstYmd) => {
           const gridStartYmd = startOfCalendarGrid(monthFirstYmd);
           const monthPrefix = monthFirstYmd.slice(0, 7);
@@ -1001,10 +1244,11 @@ export default function CalendarBoard(props: {
                               <button
                                 key={e.id}
                                 type="button"
-                                className={`calendar-event-chip is-allday${draggingId === e.id ? ' is-dragging' : ''}${isOver ? ' is-drop-target' : ''}`}
+                                className={`calendar-event-chip is-allday${draggingId === e.id ? ' is-dragging' : ''}${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}${isOver ? ' is-drop-target' : ''}`}
                                 data-cal-drop-date={cell.ymd}
                                 data-cal-drop-before={e.id}
                                 data-cal-drop-key={overKey}
+                                data-cal-event-id={e.id}
                                 onPointerDown={(ev) => onEventPointerDown(ev, e)}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
@@ -1043,10 +1287,11 @@ export default function CalendarBoard(props: {
                               <button
                                 key={e.id}
                                 type="button"
-                                className={`calendar-event-chip${draggingId === e.id ? ' is-dragging' : ''}${isOver ? ' is-drop-target' : ''}`}
+                                className={`calendar-event-chip${draggingId === e.id ? ' is-dragging' : ''}${multiSelectedEventSet.has(e.id) ? ' is-selected' : ''}${isOver ? ' is-drop-target' : ''}`}
                                 data-cal-drop-date={cell.ymd}
                                 data-cal-drop-before={e.id}
                                 data-cal-drop-key={overKey}
+                                data-cal-event-id={e.id}
                                 onPointerDown={(ev) => onEventPointerDown(ev, e)}
                                 onClick={(ev) => {
                                   ev.stopPropagation();
