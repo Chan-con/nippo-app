@@ -10883,9 +10883,11 @@ function TaskEditDialog(props: {
   const [memo, setMemo] = useState(props.initial.memo);
   const [url, setUrl] = useState(props.initial.url);
   const [trackedOverride, setTrackedOverride] = useState<boolean | null>(props.initial.trackedOverride);
+  const initialRef = useRef(props.initial);
 
   useEffect(() => {
     if (!props.open) return;
+    initialRef.current = props.initial;
     setName(props.initial.name);
     setTag(props.initial.tag);
     setStartTime(props.initial.startTime);
@@ -10896,20 +10898,31 @@ function TaskEditDialog(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.open, props.initial.name, props.initial.tag, props.initial.startTime, props.initial.endTime, props.initial.memo, props.initial.url, props.initial.trackedOverride]);
 
-  if (!props.open) {
-    return <div className={`edit-dialog ${props.open ? 'show' : ''}`} id="edit-dialog" aria-hidden={!props.open} />;
-  }
-
   const trimmedName = String(name || '').trim();
   const trimmedTag = String(tag || '').trim();
   const inStock = !!trimmedName && (Array.isArray(props.taskStock) ? props.taskStock : []).includes(trimmedName);
   const effectiveTagStock = Array.isArray(props.tagStock) ? props.tagStock : [];
   const defaultIsTracked = props.getDefaultIsTracked(trimmedName);
   const effectiveIsTracked = typeof trackedOverride === 'boolean' ? trackedOverride : defaultIsTracked;
+  const isDirty =
+    name !== initialRef.current.name ||
+    tag !== initialRef.current.tag ||
+    startTime !== initialRef.current.startTime ||
+    endTime !== initialRef.current.endTime ||
+    memo !== initialRef.current.memo ||
+    url !== initialRef.current.url ||
+    trackedOverride !== initialRef.current.trackedOverride;
 
   return (
-    <div className={`edit-dialog ${props.open ? 'show' : ''}`} id="edit-dialog" aria-hidden={!props.open}>
-      <div className="edit-content">
+    <ModalShell
+      open={props.open}
+      overlayClassName="edit-dialog"
+      overlayId="edit-dialog"
+      contentClassName="edit-content"
+      preventClose={isDirty}
+      onClose={props.onClose}
+      contentProps={{ role: 'dialog', 'aria-modal': true, 'aria-label': 'タスク編集' }}
+    >
         <div className="edit-header">
           <h3>✏️ タスク編集</h3>
           <button className="edit-close" id="edit-close" title="閉じる" aria-label="閉じる" type="button" onClick={props.onClose}>
@@ -11076,8 +11089,7 @@ function TaskEditDialog(props: {
             <span className="material-icons">delete</span>
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
