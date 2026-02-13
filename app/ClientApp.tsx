@@ -7792,6 +7792,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <div
                 className="taskline-scroll"
                 ref={taskLineBoardRef}
+                onDoubleClick={(ev) => {
+                  if (busy) return;
+                  // If we are already editing, ignore.
+                  if (taskLineEditingId) return;
+
+                  // In some browsers, pointer capture / drag interactions can cause dblclick to target
+                  // the scroll container instead of the card. Use the coordinates to find the card.
+                  try {
+                    const hit = typeof document !== 'undefined' ? document.elementFromPoint(ev.clientX, ev.clientY) : null;
+                    const cardEl = hit instanceof HTMLElement ? hit.closest<HTMLElement>('.taskline-card[data-taskline-cardid]') : null;
+                    const id = String(cardEl?.getAttribute('data-taskline-cardid') || '').trim();
+                    if (!id) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openTaskLineEditModalForCard(id);
+                  } catch {
+                    // ignore
+                  }
+                }}
                 onPointerDown={(ev) => {
                   if (busy) return;
                   if (taskLineEditingId) return;
