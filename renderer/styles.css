@@ -857,6 +857,38 @@ input[type='number']::-webkit-inner-spin-button {
   color: var(--accent);
 }
 
+/* お知らせバー（Danger時の注目アニメーション） */
+@media (prefers-reduced-motion: no-preference) {
+  .notice-danger-attention {
+    animation: noticeDangerAttention 1.1s ease-in-out infinite;
+    will-change: transform, filter;
+  }
+}
+
+@keyframes noticeDangerAttention {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+    filter: none;
+  }
+  12% {
+    transform: translate3d(-2px, 0, 0);
+  }
+  24% {
+    transform: translate3d(2px, 0, 0);
+  }
+  36% {
+    transform: translate3d(-1px, 0, 0);
+    filter: drop-shadow(0 0 10px var(--error));
+  }
+  48% {
+    transform: translate3d(1px, 0, 0);
+  }
+  60% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 /* タスクライン（付箋レーン） */
 .taskline-section {
   margin-bottom: 18px;

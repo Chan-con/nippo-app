@@ -7468,8 +7468,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   const s = isEmpty
                     ? { icon: 'campaign', bg: 'bg-white/5', border: 'border-white/10' }
                     : toneStyles[(tone as NoticeTone) || 'default'] || toneStyles.default;
+
+                  const attentionCls = !isEmpty && tone === 'danger' ? ' notice-danger-attention' : '';
                   return (
-                    <div className={`w-full rounded-xl border ${s.border} ${s.bg} px-4 py-3 mb-3`}>
+                    <div className={`w-full rounded-xl border ${s.border} ${s.bg} px-4 py-3 mb-3${attentionCls}`}>
                       <div className="flex items-start gap-3">
                         <span className="material-icons" style={{ fontSize: 18, marginTop: 2, color: 'var(--text-secondary)' }} aria-hidden="true">
                           {s.icon}
