@@ -3797,7 +3797,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 .notes-modal-textarea {
   width: 100%;
-  min-height: 240px;
+  min-height: 420px;
   max-height: none;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
@@ -3808,11 +3808,16 @@ input[type='number']::-webkit-inner-spin-button {
   line-height: 1.55;
   resize: none;
   flex: 1;
-  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   outline: none;
   box-sizing: border-box;
+}
+
+@media (max-width: 520px) {
+  .notes-modal-textarea {
+    min-height: 280px;
+  }
 }
 
 /* カスタムスクロールバー（他要素: tag-tasks と同系） */
