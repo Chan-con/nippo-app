@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
+import ModalShell from '../ModalShell';
 import { isHoliday } from '@holiday-jp/holiday_jp';
 
 type CalendarEvent = {
@@ -589,6 +590,7 @@ export default function CalendarBoard(props: {
   const [modalTitle, setModalTitle] = useState('');
   const [modalStartTime, setModalStartTime] = useState('');
   const [modalMemo, setModalMemo] = useState('');
+  const modalInitialRef = useRef<{ baseDate: string; title: string; startTime: string; memo: string }>({ baseDate: '', title: '', startTime: '', memo: '' });
   const titleRef = useRef<HTMLInputElement | null>(null);
 
   const disabled = !!props.disabled;
@@ -637,6 +639,7 @@ export default function CalendarBoard(props: {
     setModalTitle('');
     setModalStartTime('');
     setModalMemo('');
+    modalInitialRef.current = { baseDate: String(dateYmd || '').slice(0, 10), title: '', startTime: '', memo: '' };
     setModalOpen(true);
   }
 
@@ -649,6 +652,7 @@ export default function CalendarBoard(props: {
     setModalTitle(found.title);
     setModalStartTime(found.allDay ? '' : found.startTime || '');
     setModalMemo(found.memo || '');
+    modalInitialRef.current = { baseDate: found.date, title: found.title, startTime: found.allDay ? '' : found.startTime || '', memo: found.memo || '' };
     setModalOpen(true);
   }
 
@@ -1376,16 +1380,21 @@ export default function CalendarBoard(props: {
           )
         : null}
 
-      <div
-        className={`edit-dialog ${modalOpen ? 'show' : ''}`}
-        id="calendar-event-dialog"
-        aria-hidden={!modalOpen}
-        role="presentation"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) setModalOpen(false);
-        }}
+      <ModalShell
+        open={modalOpen}
+        overlayClassName="edit-dialog"
+        overlayId="calendar-event-dialog"
+        overlayRole="presentation"
+        contentClassName="edit-content"
+        preventClose={
+          modalBaseDate !== modalInitialRef.current.baseDate ||
+          modalTitle !== modalInitialRef.current.title ||
+          modalStartTime !== modalInitialRef.current.startTime ||
+          modalMemo !== modalInitialRef.current.memo
+        }
+        onClose={() => setModalOpen(false)}
+        contentProps={{ role: 'dialog', 'aria-modal': true, 'aria-label': '予定の編集' }}
       >
-        <div className="edit-content" role="dialog" aria-modal="true" aria-label="予定の編集" onMouseDown={(e) => e.stopPropagation()}>
           <div className="edit-body">
             <div className="edit-field">
               <label>タイトル</label>
@@ -1458,8 +1467,7 @@ export default function CalendarBoard(props: {
               <span className="material-icons">delete</span>
             </button>
           </div>
-        </div>
-      </div>
+      </ModalShell>
     </div>
   );
 }

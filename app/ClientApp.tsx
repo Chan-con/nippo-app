@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FloatingNotices, { type FloatingNoticeItem } from './_components/FloatingNotices';
 import { useFloatingNotices } from './_components/FloatingNoticesProvider';
+import ModalShell from './_components/ModalShell';
 import CalendarBoard from './_components/calendar/CalendarBoard';
 import GanttBoard from './_components/gantt/GanttBoard';
 import GanttDrawer from './_components/gantt/GanttDrawer';
@@ -8140,15 +8141,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   disabled={busy}
                 />
 
-                <div
-                  className={`edit-dialog ${ganttBulkDeleteOpen ? 'show' : ''}`}
-                  id="gantt-bulk-delete-dialog"
-                  aria-hidden={!ganttBulkDeleteOpen}
-                  onMouseDown={(e) => {
-                    if (e.target === e.currentTarget) closeGanttBulkDelete();
-                  }}
+                <ModalShell
+                  open={ganttBulkDeleteOpen}
+                  overlayClassName="edit-dialog"
+                  overlayId="gantt-bulk-delete-dialog"
+                  contentClassName="edit-content"
+                  onClose={() => closeGanttBulkDelete()}
                 >
-                  <div className="edit-content" onMouseDown={(e) => e.stopPropagation()}>
                     <div className="edit-header">
                       <h3>🗑️ 一括削除</h3>
                       <button
@@ -8201,8 +8200,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         <span className="material-icons">delete</span>
                       </button>
                     </div>
-                  </div>
-                </div>
+                </ModalShell>
               </div>
             ) : null}
 
@@ -8415,9 +8413,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                 return (
                                   <button
                                     key={opt.d}
-                                    type="button"
                                     className={`alerts-weekday-btn ${active ? 'active' : ''}`}
-                                    aria-pressed={active}
                                     onClick={() => {
                                       const cur = new Set(days);
                                       if (cur.has(opt.d)) cur.delete(opt.d);
@@ -8963,15 +8959,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         onDelete={() => deleteTaskLineFromModal()}
       />
 
-      <div
-        className={`edit-dialog ${shortcutModalOpen ? 'show' : ''}`}
-        id="shortcut-add-dialog"
-        aria-hidden={!shortcutModalOpen}
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) closeShortcutModal();
-        }}
+      <ModalShell
+        open={shortcutModalOpen}
+        overlayClassName="edit-dialog"
+        overlayId="shortcut-add-dialog"
+        contentClassName="edit-content shortcut-edit-content"
+        onClose={() => closeShortcutModal()}
       >
-        <div className="edit-content shortcut-edit-content" onMouseDown={(e) => e.stopPropagation()}>
           <div className="edit-body">
             <div className="edit-field">
               <label htmlFor="shortcut-add-url">URL</label>
@@ -9026,8 +9020,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <span className="material-icons">done</span>
             </button>
           </div>
-        </div>
-      </div>
+      </ModalShell>
 
       <div className={`report-dialog ${reportOpen ? 'show' : ''}`} id="report-dialog" aria-hidden={!reportOpen}>
         <div className="report-content">
@@ -11087,10 +11080,12 @@ function TaskLineEditDialog(props: {
 }) {
   const [text, setText] = useState(String(props.initial.text || ''));
   const [weekday, setWeekday] = useState<TaskLineWeekday | ''>(props.initial.weekday);
+  const initialRef = useRef<{ text: string; weekday: TaskLineWeekday | '' }>({ text: String(props.initial.text || ''), weekday: props.initial.weekday });
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!props.open) return;
+    initialRef.current = { text: String(props.initial.text || ''), weekday: props.initial.weekday };
     setText(String(props.initial.text || ''));
     setWeekday(props.initial.weekday);
     const t = window.setTimeout(() => {
@@ -11107,17 +11102,18 @@ function TaskLineEditDialog(props: {
 
   const trimmed = String(text || '').trim();
   const canSave = !!trimmed;
+  const isDirty = text !== initialRef.current.text || weekday !== initialRef.current.weekday;
 
   return (
-    <div
-      className={`edit-dialog ${props.open ? 'show' : ''}`}
-      id="taskline-edit-dialog"
-      aria-hidden={!props.open}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
-      }}
+    <ModalShell
+      open={props.open}
+      overlayClassName="edit-dialog"
+      overlayId="taskline-edit-dialog"
+      contentClassName="edit-content"
+      preventClose={isDirty}
+      onClose={props.onClose}
+      contentProps={{ role: 'dialog', 'aria-modal': true, 'aria-label': '付箋の編集' }}
     >
-      <div className="edit-content" role="dialog" aria-modal="true" aria-label="付箋の編集" onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-body">
           <div className="edit-field">
             <label>テキスト</label>
@@ -11193,8 +11189,7 @@ function TaskLineEditDialog(props: {
             <span className="material-icons">delete</span>
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -11210,9 +11205,7 @@ function NotesEditDialog(props: {
   const [body, setBody] = useState(props.initialBody);
   const initialBodyRef = useRef<string>(props.initialBody);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [shake, setShake] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
-  const shakeTimerRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -11220,7 +11213,6 @@ function NotesEditDialog(props: {
     initialBodyRef.current = props.initialBody;
     setBody(props.initialBody);
     setLinkCopied(false);
-    setShake(false);
     if (copiedTimerRef.current != null) {
       try {
         window.clearTimeout(copiedTimerRef.current);
@@ -11249,57 +11241,23 @@ function NotesEditDialog(props: {
         }
         copiedTimerRef.current = null;
       }
-
-      if (shakeTimerRef.current != null) {
-        try {
-          window.clearTimeout(shakeTimerRef.current);
-        } catch {
-          // ignore
-        }
-        shakeTimerRef.current = null;
-      }
     };
   }, []);
 
   const isDirty = body !== initialBodyRef.current;
 
-  function triggerShake() {
-    setShake(false);
-    if (shakeTimerRef.current != null) {
-      try {
-        window.clearTimeout(shakeTimerRef.current);
-      } catch {
-        // ignore
-      }
-      shakeTimerRef.current = null;
-    }
-    window.requestAnimationFrame(() => {
-      setShake(true);
-      shakeTimerRef.current = window.setTimeout(() => {
-        setShake(false);
-        shakeTimerRef.current = null;
-      }, 260);
-    });
-  }
-
   const trimmed = String(body || '').trim();
   const willDelete = !!props.noteId && !trimmed;
 
   return (
-    <div
-      className={`edit-dialog ${props.open ? 'show' : ''}`}
-      id="notes-edit-dialog"
-      aria-hidden={!props.open}
-      onMouseDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (isDirty) {
-          triggerShake();
-          return;
-        }
-        props.onClose();
-      }}
+    <ModalShell
+      open={props.open}
+      overlayClassName="edit-dialog"
+      overlayId="notes-edit-dialog"
+      contentClassName="edit-content notes-edit-content"
+      preventClose={isDirty}
+      onClose={props.onClose}
     >
-      <div className={`edit-content notes-edit-content${shake ? ' shake' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-body">
           <textarea
             ref={textareaRef}
@@ -11365,8 +11323,7 @@ function NotesEditDialog(props: {
             <span className="material-icons">{willDelete ? 'close' : 'done'}</span>
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -11379,24 +11336,27 @@ function NoticeEditDialog(props: {
 }) {
   const [text, setText] = useState(String(props.initial.text || ''));
   const [tone, setTone] = useState(props.initial.tone);
+  const initialRef = useRef<{ text: string; tone: any }>({ text: String(props.initial.text || ''), tone: props.initial.tone });
 
   useEffect(() => {
     if (!props.open) return;
+    initialRef.current = { text: String(props.initial.text || ''), tone: props.initial.tone };
     setText(String(props.initial.text || ''));
     setTone(props.initial.tone);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.open, props.initial.text, props.initial.tone]);
 
+  const isDirty = text !== initialRef.current.text || tone !== initialRef.current.tone;
+
   return (
-    <div
-      className={`edit-dialog ${props.open ? 'show' : ''}`}
-      id="notice-edit-dialog"
-      aria-hidden={!props.open}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
-      }}
+    <ModalShell
+      open={props.open}
+      overlayClassName="edit-dialog"
+      overlayId="notice-edit-dialog"
+      contentClassName="edit-content"
+      preventClose={isDirty}
+      onClose={props.onClose}
     >
-      <div className="edit-content" onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-body">
           <div className="edit-field">
             <label htmlFor="notice-text">お知らせ</label>
@@ -11464,7 +11424,6 @@ function NoticeEditDialog(props: {
             <span className="material-icons">done</span>
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

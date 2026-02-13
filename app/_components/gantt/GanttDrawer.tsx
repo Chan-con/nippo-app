@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { GanttTask } from './types';
+import ModalShell from '../ModalShell';
 
 type GanttTone = 'info' | 'danger' | 'success' | 'warning' | 'default';
 
@@ -18,11 +19,18 @@ export default function GanttDrawer(props: {
   disabled?: boolean;
 }) {
   const [draft, setDraft] = useState<GanttTask | null>(props.task ? { ...props.task, color: normalizeGanttTone((props.task as any)?.color) } : props.task);
+  const initialSnapshotRef = useRef<string>('');
   const titleRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setDraft(props.task ? { ...props.task, color: normalizeGanttTone((props.task as any)?.color) } : props.task);
   }, [props.task]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    const base = props.task ? { ...props.task, color: normalizeGanttTone((props.task as any)?.color) } : null;
+    initialSnapshotRef.current = base ? JSON.stringify(base) : '';
+  }, [props.open, props.task]);
 
   useEffect(() => {
     if (!props.open) return;
@@ -50,17 +58,18 @@ export default function GanttDrawer(props: {
   const trimmedTitle = String(task.title || '').trim();
   const canSave = trimmedTitle.length > 0 && String(task.startDate || '').length === 10 && String(task.endDate || '').length === 10;
   const tone = normalizeGanttTone((task as any)?.color);
+  const isDirty = JSON.stringify({ ...task, color: tone }) !== initialSnapshotRef.current;
 
   return (
-    <div
-      className={`edit-dialog ${props.open ? 'show' : ''}`}
-      aria-hidden={!props.open}
-      role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
-      }}
+    <ModalShell
+      open={props.open}
+      overlayClassName="edit-dialog"
+      overlayRole="presentation"
+      contentClassName="edit-content"
+      preventClose={isDirty}
+      onClose={props.onClose}
+      contentProps={{ role: 'dialog', 'aria-modal': true, 'aria-label': 'ガントタスクの編集' }}
     >
-      <div className="edit-content" role="dialog" aria-modal="true" aria-label="ガントタスクの編集" onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-body">
           <div className="edit-field">
             <label>タイトル</label>
@@ -150,7 +159,6 @@ export default function GanttDrawer(props: {
             <span className="material-icons">delete</span>
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
