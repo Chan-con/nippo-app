@@ -8165,18 +8165,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   contentClassName="edit-content"
                   onClose={() => closeGanttBulkDelete()}
                 >
-                    <div className="edit-header">
-                      <h3>🗑️ 一括削除</h3>
-                      <button
-                        className="edit-close"
-                        title="閉じる"
-                        aria-label="閉じる"
-                        type="button"
-                        onClick={() => closeGanttBulkDelete()}
-                      >
-                        <span className="material-icons">close</span>
-                      </button>
-                    </div>
                     <div className="edit-body">
                       <div className="edit-field">
                         <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-primary)' }}>
@@ -10923,13 +10911,6 @@ function TaskEditDialog(props: {
       onClose={props.onClose}
       contentProps={{ role: 'dialog', 'aria-modal': true, 'aria-label': 'タスク編集' }}
     >
-        <div className="edit-header">
-          <h3>✏️ タスク編集</h3>
-          <button className="edit-close" id="edit-close" title="閉じる" aria-label="閉じる" type="button" onClick={props.onClose}>
-            <span className="material-icons">close</span>
-          </button>
-        </div>
-
         <div className="edit-body">
           <div className="edit-field">
             <label htmlFor="edit-task-name">作業内容</label>

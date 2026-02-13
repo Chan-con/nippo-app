@@ -2774,9 +2774,9 @@ input[type='number']::-webkit-inner-spin-button {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-medium);
-  width: 90%;
-  max-width: 550px;
-  max-height: calc(var(--app-height) - var(--app-offset-top) - 48px);
+  width: calc(100% - 24px);
+  max-width: 720px;
+  max-height: calc(var(--app-height) - var(--app-offset-top) - 24px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -3752,7 +3752,11 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .notes-edit-content {
-  max-width: 800px;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
 }
 
 @keyframes modal-shake-x {
@@ -3788,16 +3792,7 @@ input[type='number']::-webkit-inner-spin-button {
   flex: 1;
 }
 
-/* 画面が十分広い場合は、縦方向の余白を最大限使う */
-@media (min-width: 640px) {
-  .notes-edit-content {
-    height: calc(var(--app-height) - var(--app-offset-top) - 48px);
-  }
-
-  .notes-modal-textarea {
-    max-height: none;
-  }
-}
+/* ノート編集は縦横100%（特例） */
 
 .notes-modal-textarea {
   width: 100%;
