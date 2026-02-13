@@ -11208,14 +11208,19 @@ function NotesEditDialog(props: {
   onCopyLink: (noteId: string) => Promise<boolean>;
 }) {
   const [body, setBody] = useState(props.initialBody);
+  const initialBodyRef = useRef<string>(props.initialBody);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [shake, setShake] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
+  const shakeTimerRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!props.open) return;
+    initialBodyRef.current = props.initialBody;
     setBody(props.initialBody);
     setLinkCopied(false);
+    setShake(false);
     if (copiedTimerRef.current != null) {
       try {
         window.clearTimeout(copiedTimerRef.current);
@@ -11244,8 +11249,38 @@ function NotesEditDialog(props: {
         }
         copiedTimerRef.current = null;
       }
+
+      if (shakeTimerRef.current != null) {
+        try {
+          window.clearTimeout(shakeTimerRef.current);
+        } catch {
+          // ignore
+        }
+        shakeTimerRef.current = null;
+      }
     };
   }, []);
+
+  const isDirty = body !== initialBodyRef.current;
+
+  function triggerShake() {
+    setShake(false);
+    if (shakeTimerRef.current != null) {
+      try {
+        window.clearTimeout(shakeTimerRef.current);
+      } catch {
+        // ignore
+      }
+      shakeTimerRef.current = null;
+    }
+    window.requestAnimationFrame(() => {
+      setShake(true);
+      shakeTimerRef.current = window.setTimeout(() => {
+        setShake(false);
+        shakeTimerRef.current = null;
+      }, 260);
+    });
+  }
 
   const trimmed = String(body || '').trim();
   const willDelete = !!props.noteId && !trimmed;
@@ -11256,10 +11291,15 @@ function NotesEditDialog(props: {
       id="notes-edit-dialog"
       aria-hidden={!props.open}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
+        if (e.target !== e.currentTarget) return;
+        if (isDirty) {
+          triggerShake();
+          return;
+        }
+        props.onClose();
       }}
     >
-      <div className="edit-content notes-edit-content" onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`edit-content notes-edit-content${shake ? ' shake' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-body">
           <textarea
             ref={textareaRef}
