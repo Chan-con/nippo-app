@@ -1714,10 +1714,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [alertEditingId, setAlertEditingId] = useState<string | null>(null);
   const [alertDraft, setAlertDraft] = useState<AlertItem | null>(null);
+  const alertModalInitialSnapshotRef = useRef<string>('');
   const [alertMonthlyDayPickerOpen, setAlertMonthlyDayPickerOpen] = useState(false);
   const alertMonthlyDayPickerRef = useRef<HTMLDivElement | null>(null);
   const alertMonthlyDayPopoverRef = useRef<HTMLDivElement | null>(null);
   const [alertMonthlyDayPopoverPos, setAlertMonthlyDayPopoverPos] = useState<{ top: number; left: number } | null>(null);
+
+  function alertModalSnapshot(draft: AlertItem | null): string {
+    if (!draft) return '';
+    const weeklyDays = (Array.isArray((draft as any)?.weeklyDays) ? (draft as any).weeklyDays : []).slice().sort((a: any, b: any) => Number(a) - Number(b));
+    return JSON.stringify({
+      title: String((draft as any)?.title ?? ''),
+      kind: (draft as any)?.kind,
+      onceAt: String((draft as any)?.onceAt ?? ''),
+      time: String((draft as any)?.time ?? ''),
+      monthlyDay: (draft as any)?.monthlyDay ?? null,
+      weeklyDays,
+    });
+  }
 
   useEffect(() => {
     if (!alertModalOpen) {
@@ -1925,6 +1939,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     // タイトルは空欄がデフォルト（保存時にデフォルト名へ補完）
     next.title = '';
     setAlertEditingId(null);
+    alertModalInitialSnapshotRef.current = alertModalSnapshot(next);
     setAlertDraft(next);
     setAlertModalOpen(true);
   }
@@ -1934,6 +1949,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const found = (Array.isArray(alerts) ? alerts : []).find((a) => a.id === id) ?? null;
     if (!found) return;
     setAlertEditingId(id);
+    alertModalInitialSnapshotRef.current = alertModalSnapshot(found);
     setAlertDraft({ ...found });
     setAlertModalOpen(true);
   }
@@ -1942,6 +1958,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setAlertModalOpen(false);
     setAlertEditingId(null);
     setAlertDraft(null);
+    alertModalInitialSnapshotRef.current = '';
   }
 
   function upsertAlertFromDraft(draft: AlertItem) {
@@ -8321,21 +8338,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   })()}
                 </div>
 
-                <div
-                  className={`edit-dialog ${alertModalOpen ? 'show' : ''}`}
-                  aria-hidden={!alertModalOpen}
-                  onMouseDown={(e) => {
-                    if (e.target === e.currentTarget) closeAlertModal();
-                  }}
+                <ModalShell
+                  open={alertModalOpen && !!alertDraft}
+                  overlayClassName="edit-dialog"
+                  contentClassName="edit-content"
+                  preventClose={!!alertDraft && alertModalSnapshot(alertDraft) !== alertModalInitialSnapshotRef.current}
+                  onClose={() => closeAlertModal()}
+                  contentProps={{ role: 'dialog', 'aria-modal': true, 'aria-label': alertEditingId ? 'アラート編集' : 'アラート追加' }}
                 >
-                  {alertModalOpen && alertDraft ? (
-                    <div
-                      className="edit-content"
-                      role="dialog"
-                      aria-modal="true"
-                      aria-label={alertEditingId ? 'アラート編集' : 'アラート追加'}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    >
+                  {alertDraft ? (
+                    <>
                       <div className="edit-body">
                         <div className="edit-field">
                           <label>タイトル</label>
@@ -8593,9 +8605,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           </button>
                         ) : null}
                       </div>
-                    </div>
+                    </>
                   ) : null}
-                </div>
+                </ModalShell>
               </div>
             ) : null}
 
