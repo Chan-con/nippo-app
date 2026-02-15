@@ -1126,6 +1126,33 @@ export default function CalendarBoard(props: {
         className="calendar-scroll"
         ref={scrollRef}
         onScroll={handleScroll}
+        onDoubleClick={(ev) => {
+          if (disabled) return;
+          if (modalOpen) return;
+          if (pointerDragRef.current) return;
+          if (selectingRef.current) return;
+
+          // pointer capture / drag interactions can cause dblclick to target the scroll container.
+          // Use the coordinates to resolve the actual cell under the cursor.
+          try {
+            const hit = typeof document !== 'undefined' ? document.elementFromPoint(ev.clientX, ev.clientY) : null;
+            const hitEl = hit instanceof HTMLElement ? hit : null;
+            if (!hitEl) return;
+
+            // If the dblclick is on an existing event chip, let the chip handler open edit modal.
+            if (hitEl.closest('[data-cal-event-id], .calendar-event-chip')) return;
+
+            const cellEl = hitEl.closest<HTMLElement>('.calendar-cell[data-cal-drop-date]');
+            const ymd = String(cellEl?.getAttribute('data-cal-drop-date') || '').slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return;
+
+            ev.preventDefault();
+            ev.stopPropagation();
+            openNewEventModal(ymd);
+          } catch {
+            // ignore
+          }
+        }}
         onPointerDown={(ev) => {
           if (disabled) return;
           if (pointerDragRef.current) return;
@@ -1241,8 +1268,16 @@ export default function CalendarBoard(props: {
                       data-cal-drop-date={cell.ymd}
                       data-cal-drop-before=""
                       data-cal-drop-key={dropKey}
-                      onDoubleClick={() => {
+                      onDoubleClick={(ev) => {
                         if (disabled) return;
+                        // Prevent bubbling to .calendar-scroll's dblclick fallback handler.
+                        // (Some browsers may deliver dblclick to the scroll container when pointer capture is involved.)
+                        try {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                        } catch {
+                          // ignore
+                        }
                         openNewEventModal(cell.ymd);
                       }}
                     >
