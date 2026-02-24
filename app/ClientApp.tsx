@@ -874,6 +874,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [holidayCalendarCopiedToast, setHolidayCalendarCopiedToast] = useState(false);
   const [holidayCalendarCopyError, setHolidayCalendarCopyError] = useState<string | null>(null);
   const holidayCalendarToastTimerRef = useRef<number | null>(null);
+  const [holidayCalendarShaking, setHolidayCalendarShaking] = useState(false);
+  const holidayCalendarShakeTimerRef = useRef<number | null>(null);
 
   // billing
   const [billingOpen, setBillingOpen] = useState(false);
@@ -4018,12 +4020,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
   }, [sidebarDesktopCollapsed]);
 
-  function holidayCalendarSnapshot(monthDate: Date, holidays: Set<string>) {
-    const y = monthDate.getFullYear();
-    const m = String(monthDate.getMonth() + 1).padStart(2, '0');
-    const monthKey = `${y}-${m}-01`;
+  function holidayCalendarSnapshot(holidays: Set<string>) {
     const list = Array.from(holidays).slice().sort();
-    return JSON.stringify({ month: monthKey, holidays: list });
+    return JSON.stringify({ holidays: list });
   }
 
   function readHolidayCalendarDraft() {
@@ -4077,12 +4076,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           if (!Number.isNaN(y) && !Number.isNaN(m0)) setHolidayCalendarMonth(new Date(y, m0, 1));
         }
 
-        const snapshot = holidayCalendarSnapshot(
-          monthStr && /^\d{4}-\d{2}-\d{2}$/.test(monthStr)
-            ? new Date(parseInt(monthStr.slice(0, 4), 10), parseInt(monthStr.slice(5, 7), 10) - 1, 1)
-            : holidayCalendarMonth,
-          new Set(holidays)
-        );
+        const snapshot = holidayCalendarSnapshot(new Set(holidays));
         setHolidayCalendarLastSavedSnapshot(snapshot);
         setHolidayCalendarDirty(false);
         setHolidayCalendarHasSaved(true);
@@ -4132,7 +4126,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const body = await res.json();
       if (!res.ok || !body?.success) throw new Error(body?.error || '保存に失敗しました');
 
-      const snapshot = holidayCalendarSnapshot(holidayCalendarMonth, holidayCalendarHolidays);
+      const snapshot = holidayCalendarSnapshot(holidayCalendarHolidays);
       setHolidayCalendarLastSavedSnapshot(snapshot);
       setHolidayCalendarDirty(false);
       setHolidayCalendarHasSaved(true);
@@ -4141,6 +4135,26 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     } finally {
       setHolidayCalendarSyncing(false);
     }
+  }
+
+  function triggerHolidayCalendarShake() {
+    setHolidayCalendarShaking(false);
+    if (holidayCalendarShakeTimerRef.current != null) {
+      try {
+        window.clearTimeout(holidayCalendarShakeTimerRef.current);
+      } catch {
+        // ignore
+      }
+      holidayCalendarShakeTimerRef.current = null;
+    }
+
+    window.requestAnimationFrame(() => {
+      setHolidayCalendarShaking(true);
+      holidayCalendarShakeTimerRef.current = window.setTimeout(() => {
+        setHolidayCalendarShaking(false);
+        holidayCalendarShakeTimerRef.current = null;
+      }, 260);
+    });
   }
 
   async function requestCloseHolidayCalendar() {
@@ -4152,11 +4166,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
 
     if (!holidayCalendarHasSaved || holidayCalendarDirty) {
-      const ok = window.confirm('保存していない変更があります。閉じますか？');
-      if (!ok) return;
-      await saveHolidayCalendarToServer();
-      // 保存に失敗した場合はエラー文言が入るので閉じない
-      if (holidayCalendarCopyError) return;
+      triggerHolidayCalendarShake();
+      return;
     }
 
     setHolidayCalendarOpen(false);
@@ -4180,7 +4191,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!holidayCalendarLoaded) return;
     writeHolidayCalendarDraft(holidayCalendarMonth, holidayCalendarHolidays);
 
-    const snap = holidayCalendarSnapshot(holidayCalendarMonth, holidayCalendarHolidays);
+    const snap = holidayCalendarSnapshot(holidayCalendarHolidays);
     if (accessToken) {
       const saved = holidayCalendarLastSavedSnapshot;
       if (!holidayCalendarHasSaved) {
@@ -4197,6 +4208,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (holidayCalendarToastTimerRef.current != null) {
         window.clearTimeout(holidayCalendarToastTimerRef.current);
         holidayCalendarToastTimerRef.current = null;
+      }
+      if (holidayCalendarShakeTimerRef.current != null) {
+        window.clearTimeout(holidayCalendarShakeTimerRef.current);
+        holidayCalendarShakeTimerRef.current = null;
       }
     };
   }, []);
@@ -10389,7 +10404,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         id="holiday-calendar-dialog"
         aria-hidden={!holidayCalendarOpen}
       >
-        <div className="task-stock-content holiday-cal-content">
+        <div className={`modal-shake-wrap${holidayCalendarShaking ? ' is-shaking' : ''}`}>
+          <div className="task-stock-content holiday-cal-content">
           <div className="task-stock-body">
             <div className="holiday-cal-header">
               <button
@@ -10541,6 +10557,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <span className="material-icons">save</span>
               </button>
             </div>
+          </div>
           </div>
         </div>
       </div>
