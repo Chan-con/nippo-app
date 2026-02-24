@@ -896,6 +896,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return fixed.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
   }
 
+  function formatMinutesAsHHMM(totalMinutes: number) {
+    const m = Number(totalMinutes);
+    if (!Number.isFinite(m) || m <= 0) return '00:00';
+    const rounded = Math.max(0, Math.round(m));
+    const hh = Math.floor(rounded / 60);
+    const mm = rounded % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+
   function normalizeYmd(input: unknown) {
     const s = String(input ?? '').trim();
     const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -10911,13 +10920,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                                       <div className="billing-cal-day-date">{c.inMonth ? c.day : ''}</div>
                                       <div className="billing-cal-day-hours">
                                         {hasData
-                                          ? `${formatDurationJa(row.totalMinutes)} / ${formatDurationJa(row.billedMinutes)}`
+                                          ? formatMinutesAsHHMM(row.billedMinutes)
                                           : c.inMonth
                                             ? '—'
                                             : ''}
                                       </div>
                                       <div className="billing-cal-day-amount">
-                                        {hasData ? `${Number(row.amount || 0).toLocaleString('ja-JP')}円` : c.inMonth ? '—' : ''}
+                                        {hasData ? Number(row.amount || 0).toLocaleString('ja-JP') : c.inMonth ? '—' : ''}
                                       </div>
                                     </div>
                                   );
