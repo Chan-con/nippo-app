@@ -903,6 +903,39 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
   }
 
+  function parseYmdParts(input: unknown) {
+    const s = normalizeYmd(input);
+    const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const year = Number(m[1]);
+    const month0 = Number(m[2]) - 1;
+    const day = Number(m[3]);
+    if (!Number.isFinite(year) || !Number.isFinite(month0) || !Number.isFinite(day)) return null;
+    return { year, month0, day, ymd: `${m[1]}-${m[2]}-${m[3]}` };
+  }
+
+  function monthFirstFromYmd(input: unknown) {
+    const p = parseYmdParts(input);
+    if (!p) return '';
+    return ymdKeyFromParts(p.year, p.month0, 1);
+  }
+
+  function addMonthsMonthFirst(monthFirstYmd: string, deltaMonths: number) {
+    const p = parseYmdParts(monthFirstYmd);
+    if (!p) return monthFirstYmd;
+    const baseM = p.year * 12 + p.month0;
+    const nextM = baseM + Math.trunc(deltaMonths || 0);
+    const year = Math.floor(nextM / 12);
+    const month0 = ((nextM % 12) + 12) % 12;
+    return ymdKeyFromParts(year, month0, 1);
+  }
+
+  function formatMonthTitleJa(monthFirstYmd: string) {
+    const p = parseYmdParts(monthFirstYmd);
+    if (!p) return '';
+    return `${p.year}年${p.month0 + 1}月`;
+  }
+
   const [gptReportRangeStart, setGptReportRangeStart] = useState(() => todayYmd);
   const [gptReportRangeEnd, setGptReportRangeEnd] = useState(() => todayYmd);
 
@@ -10661,127 +10694,67 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               {billingLoading ? <div className="sub-text">読み込み中...</div> : null}
               {billingError ? <div style={{ color: 'var(--error)', fontSize: 12 }}>{billingError}</div> : null}
               {billingSummary ? (
-                <div className="holiday-cal-counters" aria-label="請求集計">
-                  <div className="holiday-cal-counter">
-                    <div className="holiday-cal-counter-label">期間</div>
-                    <div className="holiday-cal-counter-value" style={{ fontSize: 14, fontWeight: 800 }}>
-                      <button
-                        type="button"
-                        className="billing-copy-number"
-                        title="開始日（yyyy-mm-dd）をコピー"
-                        aria-label="開始日（yyyy-mm-dd）をコピー"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(normalizeYmd(billingSummary.periodStart));
-                          } catch {
-                            // ignore
-                          }
-                        }}
-                      >
-                        {normalizeYmd(billingSummary.periodStart)}
-                      </button>
-                      <span className="billing-copy-sep"> / </span>
-                      <button
-                        type="button"
-                        className="billing-copy-number"
-                        title="終了日（yyyy-mm-dd）をコピー"
-                        aria-label="終了日（yyyy-mm-dd）をコピー"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(normalizeYmd(billingSummary.periodEnd));
-                          } catch {
-                            // ignore
-                          }
-                        }}
-                      >
-                        {normalizeYmd(billingSummary.periodEnd)}
-                      </button>
+                <>
+                  <div className="holiday-cal-counters" aria-label="請求集計">
+                    <div className="holiday-cal-counter">
+                      <div className="holiday-cal-counter-label">期間</div>
+                      <div className="holiday-cal-counter-value" style={{ fontSize: 14, fontWeight: 800 }}>
+                        <button
+                          type="button"
+                          className="billing-copy-number"
+                          title="開始日（yyyy-mm-dd）をコピー"
+                          aria-label="開始日（yyyy-mm-dd）をコピー"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(normalizeYmd(billingSummary.periodStart));
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                        >
+                          {normalizeYmd(billingSummary.periodStart)}
+                        </button>
+                        <span className="billing-copy-sep"> / </span>
+                        <button
+                          type="button"
+                          className="billing-copy-number"
+                          title="終了日（yyyy-mm-dd）をコピー"
+                          aria-label="終了日（yyyy-mm-dd）をコピー"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(normalizeYmd(billingSummary.periodEnd));
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                        >
+                          {normalizeYmd(billingSummary.periodEnd)}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="holiday-cal-counter">
-                    <div className="holiday-cal-counter-label">請求額</div>
-                    <div className="holiday-cal-counter-value">
-                      <button
-                        type="button"
-                        className="billing-copy-number"
-                        title="請求額（数値）をコピー"
-                        aria-label="請求額（数値）をコピー"
-                        onClick={async () => {
-                          try {
-                            const v = Number(billingSummary.amount || 0);
-                            await navigator.clipboard.writeText(String(Number.isFinite(v) ? v : 0));
-                          } catch {
-                            // ignore
-                          }
-                        }}
-                      >
-                        {Number(billingSummary.amount || 0).toLocaleString('ja-JP')}円
-                      </button>
-                    </div>
-                  </div>
-                  {billingSummary.mode === 'daily' ? (
-                    <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
-                      <div className="holiday-cal-counter-label">稼働日数</div>
+                    <div className="holiday-cal-counter">
+                      <div className="holiday-cal-counter-label">請求額</div>
                       <div className="holiday-cal-counter-value">
                         <button
                           type="button"
                           className="billing-copy-number"
-                          title="稼働日数（数値）をコピー"
-                          aria-label="稼働日数（数値）をコピー"
+                          title="請求額（数値）をコピー"
+                          aria-label="請求額（数値）をコピー"
                           onClick={async () => {
                             try {
-                              const v = Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0);
+                              const v = Number(billingSummary.amount || 0);
                               await navigator.clipboard.writeText(String(Number.isFinite(v) ? v : 0));
                             } catch {
                               // ignore
                             }
                           }}
                         >
-                          {Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0)}日
+                          {Number(billingSummary.amount || 0).toLocaleString('ja-JP')}円
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      <div className="holiday-cal-counter">
-                        <div className="holiday-cal-counter-label">時間（合計 / 上限反映後）</div>
-                        <div className="holiday-cal-counter-value" style={{ fontSize: 16 }}>
-                          <button
-                            type="button"
-                            className="billing-copy-number"
-                            title="合計時間（数値）をコピー"
-                            aria-label="合計時間（数値）をコピー"
-                            onClick={async () => {
-                              try {
-                                const m = Number(billingSummary.totalMinutes || 0);
-                                await navigator.clipboard.writeText(formatHoursNumber(m));
-                              } catch {
-                                // ignore
-                              }
-                            }}
-                          >
-                            {formatDurationJa(Number(billingSummary.totalMinutes || 0))}
-                          </button>
-                          <span className="billing-copy-sep"> / </span>
-                          <button
-                            type="button"
-                            className="billing-copy-number"
-                            title="上限反映後時間（数値）をコピー"
-                            aria-label="上限反映後時間（数値）をコピー"
-                            onClick={async () => {
-                              try {
-                                const m = Number(billingSummary.billedMinutes || 0);
-                                await navigator.clipboard.writeText(formatHoursNumber(m));
-                              } catch {
-                                // ignore
-                              }
-                            }}
-                          >
-                            {formatDurationJa(Number(billingSummary.billedMinutes || 0))}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="holiday-cal-counter">
+                    {billingSummary.mode === 'daily' ? (
+                      <div className="holiday-cal-counter" style={{ gridColumn: '1 / -1' }}>
                         <div className="holiday-cal-counter-label">稼働日数</div>
                         <div className="holiday-cal-counter-value">
                           <button
@@ -10791,20 +10764,172 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             aria-label="稼働日数（数値）をコピー"
                             onClick={async () => {
                               try {
-                                const v = Number(billingSummary.workedDays ?? 0);
+                                const v = Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0);
                                 await navigator.clipboard.writeText(String(Number.isFinite(v) ? v : 0));
                               } catch {
                                 // ignore
                               }
                             }}
                           >
-                            {Number(billingSummary.workedDays ?? 0)}日
+                            {Number(billingSummary.workedDays ?? billingSummary.workDays ?? 0)}日
                           </button>
                         </div>
                       </div>
-                    </>
-                  )}
-                </div>
+                    ) : (
+                      <>
+                        <div className="holiday-cal-counter">
+                          <div className="holiday-cal-counter-label">時間（合計 / 上限反映後）</div>
+                          <div className="holiday-cal-counter-value" style={{ fontSize: 16 }}>
+                            <button
+                              type="button"
+                              className="billing-copy-number"
+                              title="合計時間（数値）をコピー"
+                              aria-label="合計時間（数値）をコピー"
+                              onClick={async () => {
+                                try {
+                                  const m = Number(billingSummary.totalMinutes || 0);
+                                  await navigator.clipboard.writeText(formatHoursNumber(m));
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                            >
+                              {formatDurationJa(Number(billingSummary.totalMinutes || 0))}
+                            </button>
+                            <span className="billing-copy-sep"> / </span>
+                            <button
+                              type="button"
+                              className="billing-copy-number"
+                              title="上限反映後時間（数値）をコピー"
+                              aria-label="上限反映後時間（数値）をコピー"
+                              onClick={async () => {
+                                try {
+                                  const m = Number(billingSummary.billedMinutes || 0);
+                                  await navigator.clipboard.writeText(formatHoursNumber(m));
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                            >
+                              {formatDurationJa(Number(billingSummary.billedMinutes || 0))}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="holiday-cal-counter">
+                          <div className="holiday-cal-counter-label">稼働日数</div>
+                          <div className="holiday-cal-counter-value">
+                            <button
+                              type="button"
+                              className="billing-copy-number"
+                              title="稼働日数（数値）をコピー"
+                              aria-label="稼働日数（数値）をコピー"
+                              onClick={async () => {
+                                try {
+                                  const v = Number(billingSummary.workedDays ?? 0);
+                                  await navigator.clipboard.writeText(String(Number.isFinite(v) ? v : 0));
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                            >
+                              {Number(billingSummary.workedDays ?? 0)}日
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const startKey = monthFirstFromYmd(billingSummary.periodStart);
+                    const endKeyRaw = monthFirstFromYmd(billingSummary.periodEnd);
+                    if (!startKey) return null;
+                    const endKey = endKeyRaw || addMonthsMonthFirst(startKey, 1);
+                    const monthKeys =
+                      startKey === endKey
+                        ? [startKey, addMonthsMonthFirst(startKey, 1)]
+                        : [startKey, endKey];
+
+                    const rawDaily = Array.isArray(billingSummary.dailyBreakdown) ? billingSummary.dailyBreakdown : [];
+                    const byDate = new Map<
+                      string,
+                      {
+                        totalMinutes: number;
+                        billedMinutes: number;
+                        amount: number;
+                      }
+                    >();
+                    for (const row of rawDaily) {
+                      const key = normalizeYmd((row as any)?.date);
+                      if (!key) continue;
+                      byDate.set(key, {
+                        totalMinutes: Number((row as any)?.totalMinutes || 0),
+                        billedMinutes: Number((row as any)?.billedMinutes || 0),
+                        amount: Number((row as any)?.amount || 0),
+                      });
+                    }
+
+                    return (
+                      <div className="billing-calendars" aria-label="日別集計カレンダー">
+                        {monthKeys.map((monthFirst) => {
+                          const monthParts = parseYmdParts(monthFirst);
+                          if (!monthParts) return null;
+                          const monthDate = new Date(monthParts.year, monthParts.month0, 1);
+                          const cells = getHolidayCalendarCells(monthDate, activeTimeZone);
+
+                          return (
+                            <div key={monthFirst} className="billing-cal-month-card">
+                              <div className="billing-cal-month-title">{formatMonthTitleJa(monthFirst)}</div>
+                              <div className="billing-cal-weekdays">
+                                {['月', '火', '水', '木', '金', '土', '日'].map((d) => (
+                                  <div key={d} className="billing-cal-weekday">
+                                    {d}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="billing-cal-grid" role="grid" aria-label={`${formatMonthTitleJa(monthFirst)}の日別集計`}>
+                                {cells.map((c, idx) => {
+                                  const isSat = c.weekday0 === 6;
+                                  const isSun = c.weekday0 === 0;
+                                  const isJpHoliday = c.inMonth && isJpPublicHolidayYmd(c.ymd);
+                                  const isHoliday = c.inMonth && holidayCalendarHolidays.has(c.ymd);
+                                  const row = c.inMonth ? byDate.get(c.ymd) : undefined;
+                                  const hasData = c.inMonth && !!row;
+                                  const cls = [
+                                    'billing-cal-day',
+                                    c.inMonth ? '' : 'inactive',
+                                    isSat ? 'saturday' : '',
+                                    isSun ? 'sunday' : '',
+                                    isJpHoliday ? 'jp-holiday' : '',
+                                    isHoliday ? 'holiday' : '',
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' ');
+
+                                  return (
+                                    <div key={`${c.ymd}:${idx}`} className={cls} role="gridcell" aria-label={`${c.ymd} の日別集計`}>
+                                      <div className="billing-cal-day-date">{c.inMonth ? c.day : ''}</div>
+                                      <div className="billing-cal-day-hours">
+                                        {hasData
+                                          ? `${formatDurationJa(row.totalMinutes)} / ${formatDurationJa(row.billedMinutes)}`
+                                          : c.inMonth
+                                            ? '—'
+                                            : ''}
+                                      </div>
+                                      <div className="billing-cal-day-amount">
+                                        {hasData ? `${Number(row.amount || 0).toLocaleString('ja-JP')}円` : c.inMonth ? '—' : ''}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </>
               ) : null}
             </div>
           </div>

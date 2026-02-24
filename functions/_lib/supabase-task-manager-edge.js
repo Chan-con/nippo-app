@@ -906,56 +906,71 @@ export class SupabaseTaskManagerEdge {
         : []
     );
 
-    if (mode === 'daily') {
-      const rows = await this.loadTasksRange(period.startKey, period.endKey, userId);
-      const countableDays = new Set();
-      for (const row of rows) {
-        const dateKey = String(row?.doc_key || '');
-        if (!dateKey) continue;
-        const tasks = Array.isArray(row?.content?.tasks) ? row.content.tasks : [];
-        let hasCountable = false;
-        for (const t of tasks) {
-          if (!t) continue;
-          if (t.status === 'reserved') continue;
-          const name = String(t.name ?? '').trim();
-          const explicitTracked = t?.isTracked;
-          if (typeof explicitTracked === 'boolean') {
-            if (!explicitTracked) continue;
-          } else {
-            if (name && exclude.has(name)) continue;
-          }
-          const minutes = calcDurationMinutes(t.startTime, t.endTime);
-          if (minutes == null || minutes <= 0) continue;
-          hasCountable = true;
-          break;
+    const parseYmdUtc = (ymd) => {
+      const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return null;
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      const d = Number(m[3]);
+      if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+      const dt = new Date(Date.UTC(y, mo - 1, d, 0, 0, 0, 0));
+      if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+      return dt;
+    };
+
+    const listDatesInclusive = (startYmd, endYmd) => {
+      const start = parseYmdUtc(startYmd);
+      const end = parseYmdUtc(endYmd);
+      if (!start || !end) return [];
+      const out = [];
+      const cur = new Date(start.getTime());
+      while (cur.getTime() <= end.getTime()) {
+        const y = cur.getUTCFullYear();
+        const m = String(cur.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(cur.getUTCDate()).padStart(2, '0');
+        out.push(`${y}-${m}-${d}`);
+        cur.setUTCDate(cur.getUTCDate() + 1);
+        if (out.length > 370) break;
+      }
+      return out;
+    };
+
+    const allocateRoundedToTotal = (rawAmounts, totalAmount) => {
+      const values = Array.isArray(rawAmounts)
+        ? rawAmounts.map((v) => {
+            const n = Number(v);
+            return Number.isFinite(n) && n > 0 ? n : 0;
+          })
+        : [];
+      const target = Number.isFinite(totalAmount) ? Math.trunc(totalAmount) : 0;
+      if (values.length === 0) return [];
+
+      const floors = values.map((v) => Math.floor(v));
+      const fractions = values.map((v, i) => ({ i, frac: v - floors[i], raw: v }));
+      const out = floors.slice();
+      let diff = target - floors.reduce((sum, v) => sum + v, 0);
+
+      if (diff > 0) {
+        fractions.sort((a, b) => b.frac - a.frac || b.raw - a.raw || a.i - b.i);
+        for (let k = 0; k < diff; k += 1) {
+          out[fractions[k % fractions.length].i] += 1;
         }
-        if (hasCountable) countableDays.add(dateKey);
+      } else if (diff < 0) {
+        fractions.sort((a, b) => a.frac - b.frac || a.raw - b.raw || a.i - b.i);
+        for (let k = 0; k < Math.abs(diff); k += 1) {
+          const idx = fractions[k % fractions.length].i;
+          if (out[idx] > 0) out[idx] -= 1;
+        }
       }
 
-      const workDays = countableDays.size;
-      const workedDays = workDays;
-      const rate = Number.isFinite(dailyRate) ? dailyRate : 0;
-      const amount = Math.round(workDays * rate);
-      return {
-        mode,
-        closingDay: Number.isFinite(closingDay) ? Math.trunc(closingDay) : 31,
-        periodStart: period.startKey,
-        periodEnd: period.endKey,
-        workDays,
-        workedDays,
-        dailyRate: Number.isFinite(dailyRate) ? dailyRate : 0,
-        amount,
-      };
-    }
+      return out;
+    };
 
-    // hourly
     const rows = await this.loadTasksRange(period.startKey, period.endKey, userId);
-    const capMin = Number.isFinite(hourlyCapHours) && hourlyCapHours > 0 ? Math.round(hourlyCapHours * 60) : 0;
     const byDate = new Map();
-    const workedDaySet = new Set();
-
     for (const row of rows) {
       const dateKey = String(row?.doc_key || '');
+      if (!dateKey) continue;
       const tasks = Array.isArray(row?.content?.tasks) ? row.content.tasks : [];
       let total = 0;
       for (const t of tasks) {
@@ -972,20 +987,80 @@ export class SupabaseTaskManagerEdge {
         if (minutes == null) continue;
         total += minutes;
       }
-      if (!dateKey) continue;
       byDate.set(dateKey, (byDate.get(dateKey) || 0) + total);
-      if (total > 0) workedDaySet.add(dateKey);
     }
+
+    const capMin = Number.isFinite(hourlyCapHours) && hourlyCapHours > 0 ? Math.round(hourlyCapHours * 60) : 0;
+    const allDates = listDatesInclusive(period.startKey, period.endKey);
+
+    if (mode === 'daily') {
+      const rate = Number.isFinite(dailyRate) ? dailyRate : 0;
+      const rawAmounts = [];
+      const baseRows = [];
+      let workDays = 0;
+      for (const dateKey of allDates) {
+        const total = Number(byDate.get(dateKey) || 0);
+        const billed = capMin > 0 ? Math.min(total, capMin) : total;
+        const worked = total > 0;
+        if (worked) workDays += 1;
+        const rawAmount = worked ? rate : 0;
+        rawAmounts.push(rawAmount);
+        baseRows.push({
+          date: dateKey,
+          totalMinutes: total,
+          billedMinutes: billed,
+          amount: 0,
+          worked,
+        });
+      }
+
+      const workedDays = workDays;
+      const amount = Math.round(workDays * rate);
+      const allocatedAmounts = allocateRoundedToTotal(rawAmounts, amount);
+      const dailyBreakdown = baseRows.map((row, i) => ({ ...row, amount: Number(allocatedAmounts[i] || 0) }));
+      return {
+        mode,
+        closingDay: Number.isFinite(closingDay) ? Math.trunc(closingDay) : 31,
+        periodStart: period.startKey,
+        periodEnd: period.endKey,
+        workDays,
+        workedDays,
+        dailyRate: Number.isFinite(dailyRate) ? dailyRate : 0,
+        dailyBreakdown,
+        amount,
+      };
+    }
+
+    // hourly
+    const workedDaySet = new Set();
 
     let totalMinutes = 0;
     let billedMinutes = 0;
-    for (const m of byDate.values()) {
+    for (const [dateKey, m] of byDate.entries()) {
       totalMinutes += m;
       billedMinutes += capMin > 0 ? Math.min(m, capMin) : m;
+      if (m > 0) workedDaySet.add(dateKey);
     }
 
     const rate = Number.isFinite(hourlyRate) ? hourlyRate : 0;
     const amount = Math.round((billedMinutes / 60) * rate);
+    const rawAmounts = allDates.map((dateKey) => {
+      const total = Number(byDate.get(dateKey) || 0);
+      const billed = capMin > 0 ? Math.min(total, capMin) : total;
+      return (billed / 60) * rate;
+    });
+    const allocatedAmounts = allocateRoundedToTotal(rawAmounts, amount);
+    const dailyBreakdown = allDates.map((dateKey, i) => {
+      const total = Number(byDate.get(dateKey) || 0);
+      const billed = capMin > 0 ? Math.min(total, capMin) : total;
+      return {
+        date: dateKey,
+        totalMinutes: total,
+        billedMinutes: billed,
+        amount: Number(allocatedAmounts[i] || 0),
+        worked: total > 0,
+      };
+    });
 
     return {
       mode,
@@ -996,6 +1071,7 @@ export class SupabaseTaskManagerEdge {
       hourlyCapHours: capMin > 0 ? capMin / 60 : 0,
       totalMinutes,
       billedMinutes,
+      dailyBreakdown,
       workedDays: workedDaySet.size,
       amount,
     };
