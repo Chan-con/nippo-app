@@ -7240,253 +7240,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
 
           <div className="sidebar-content">
-            <div className="task-input-section">
-              <div className="task-add-tabs" role="tablist" aria-label="タスク追加モード">
-                <button
-                  id="task-add-tab-now"
-                  className={`task-add-tab ${addMode === 'now' ? 'active' : ''}`}
-                  role="tab"
-                  aria-selected={addMode === 'now'}
-                  type="button"
-                  title="今すぐ"
-                  aria-label="今すぐ"
-                  onClick={() => setAddMode('now')}
-                >
-                  <span className="material-icons">play_arrow</span>
-                </button>
-                <button
-                  id="task-add-tab-reserve"
-                  className={`task-add-tab ${addMode === 'reserve' ? 'active' : ''}`}
-                  role="tab"
-                  aria-selected={addMode === 'reserve'}
-                  type="button"
-                  title="予約"
-                  aria-label="予約"
-                  onClick={() => setAddMode('reserve')}
-                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
-                >
-                  <span className="material-icons">schedule</span>
-                </button>
-              </div>
-
-              <div className="tag-select-group">
-                <select
-                  id="task-tag-select"
-                  className="tag-select"
-                  aria-label="タグを選択"
-                  value={selectedTag}
-                  onChange={(e) => setSelectedTag(e.target.value)}
-                  disabled={!accessToken || busy}
-                >
-                  <option value="">タグを選択</option>
-                  {tagStock.map((t) => (
-                    <option key={`${t.id ?? ''}:${t.name}`} value={t.name}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div id="reserve-time-row" className="reserve-time-row" hidden={addMode !== 'reserve'}>
-                <input
-                  type="time"
-                  id="reserve-time-input"
-                  className="reserve-time-input"
-                  aria-label="開始時刻"
-                  value={reserveStartTime}
-                  onChange={(e) => setReserveStartTime(e.target.value)}
-                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < todayYmd))}
-                />
-              </div>
-
-              <div className="task-name-row input-with-button relative">
-                <input
-                  type="text"
-                  id="task-input"
-                  name="task-input"
-                  autoComplete="off"
-                  placeholder="新しいタスクを入力..."
-                  className="task-input"
-                  ref={taskInputRef}
-                  value={newTaskName}
-                  onChange={(e) => {
-                    setNewTaskName(e.target.value);
-                    setTaskSuggestOpen(true);
-                  }}
-                  onFocus={() => {
-                    if (taskSuggestCloseTimerRef.current != null) {
-                      window.clearTimeout(taskSuggestCloseTimerRef.current);
-                      taskSuggestCloseTimerRef.current = null;
-                    }
-                    setTaskInputFocused(true);
-                    setTaskSuggestOpen(true);
-                  }}
-                  onBlur={() => {
-                    setTaskInputFocused(false);
-                    if (taskSuggestCloseTimerRef.current != null) window.clearTimeout(taskSuggestCloseTimerRef.current);
-                    taskSuggestCloseTimerRef.current = window.setTimeout(() => {
-                      setTaskSuggestOpen(false);
-                      taskSuggestCloseTimerRef.current = null;
-                    }, 120);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      setTaskSuggestOpen(false);
-                      setTaskSuggestActiveIndex(-1);
-                      return;
-                    }
-
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      setTaskSuggestOpen(true);
-                      setTaskSuggestActiveIndex((idx) => {
-                        if (!taskNameSuggestions.length) return -1;
-                        const next = Math.min(idx + 1, taskNameSuggestions.length - 1);
-                        return next < 0 ? 0 : next;
-                      });
-                      return;
-                    }
-
-                    if (e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      setTaskSuggestOpen(true);
-                      setTaskSuggestActiveIndex((idx) => {
-                        if (!taskNameSuggestions.length) return -1;
-                        if (idx <= 0) return 0;
-                        return idx - 1;
-                      });
-                      return;
-                    }
-
-                    if (e.key === 'Enter' && taskSuggestOpen && taskSuggestActiveIndex >= 0) {
-                      const picked = taskNameSuggestions[taskSuggestActiveIndex];
-                      if (picked) {
-                        e.preventDefault();
-                        setNewTaskNamePlain(picked);
-                        setTaskSuggestOpen(false);
-                        setTaskSuggestActiveIndex(-1);
-                        window.requestAnimationFrame(() => {
-                          taskInputRef.current?.focus();
-                          try {
-                            taskInputRef.current?.setSelectionRange(picked.length, picked.length);
-                          } catch {
-                            // ignore
-                          }
-                        });
-                        return;
-                      }
-                    }
-
-                    if (e.key === 'Enter' && String(newTaskName || '').trim()) void addTask();
-                  }}
-                  disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
-                />
-
-                {newTaskCarryMemoUrlEnabled ? (
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    title="メモ/URLを引き継ぎ中（クリックで解除）"
-                    aria-label="メモ/URLを引き継ぎ中（クリックで解除）"
-                    onClick={() => {
-                      clearNewTaskCarryMemoUrl();
-                      try {
-                        taskInputRef.current?.focus();
-                      } catch {
-                        // ignore
-                      }
-                    }}
-                    disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
-                  >
-                    <span className="material-icons" aria-hidden="true">
-                      sticky_note_2
-                    </span>
-                  </button>
-                ) : null}
-
-                {taskInputFocused && taskSuggestOpen && accessToken && !busy ? (
-                  <div
-                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-primary)]"
-                    role="listbox"
-                    aria-label="タスク候補"
-                  >
-                    {taskNameSuggestions.length ? (
-                      taskNameSuggestions.map((name, idx) => (
-                        <button
-                          key={name}
-                          type="button"
-                          role="option"
-                          aria-selected={idx === taskSuggestActiveIndex}
-                          className={`block w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] ${
-                            idx === taskSuggestActiveIndex ? 'bg-[var(--bg-secondary)]' : ''
-                          }`}
-                          onMouseEnter={() => setTaskSuggestActiveIndex(idx)}
-                          onMouseDown={(ev) => {
-                            ev.preventDefault();
-                            if (taskSuggestCloseTimerRef.current != null) {
-                              window.clearTimeout(taskSuggestCloseTimerRef.current);
-                              taskSuggestCloseTimerRef.current = null;
-                            }
-                            setNewTaskNamePlain(name);
-                            setTaskSuggestOpen(false);
-                            setTaskSuggestActiveIndex(-1);
-                            window.requestAnimationFrame(() => {
-                              taskInputRef.current?.focus();
-                              try {
-                                taskInputRef.current?.setSelectionRange(name.length, name.length);
-                              } catch {
-                                // ignore
-                              }
-                            });
-                          }}
-                        >
-                          {name}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-2 text-sm text-[var(--text-secondary)]">候補なし</div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="task-add-actions">
-                <button
-                  id="add-task-btn"
-                  className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
-                  type="button"
-                  title={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
-                  aria-label={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
-                  onClick={addTask}
-                  disabled={
-                    !accessToken ||
-                    busy ||
-                    !String(newTaskName || '').trim() ||
-                    (effectiveViewMode === 'history' && !historyDate) ||
-                    (effectiveViewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < todayYmd)
-                  }
-                >
-                  <span className="material-icons">
-                    {effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
-                  </span>
-                </button>
-
-                {effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? (
-                  <button
-                    id="end-task-btn"
-                    className="btn-primary btn-end-task btn-end-task-small"
-                    type="button"
-                    title="タスク終了"
-                    aria-label="タスク終了"
-                    onClick={endTask}
-                    disabled={!accessToken || busy}
-                  >
-                    <span className="material-icons">stop_circle</span>
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
             <div className="action-buttons">
               <button
                 id="create-report-btn"
@@ -7865,6 +7618,255 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 >
                   {formatTimeHHMMSS(now)}
                 </p>
+
+                {accessToken && todayMainTab === 'timeline' ? (
+                  <div className="task-input-section task-input-section-compact mt-2">
+                    <div className="task-add-tabs" role="tablist" aria-label="タスク追加モード">
+                      <button
+                        id="task-add-tab-now"
+                        className={`task-add-tab ${addMode === 'now' ? 'active' : ''}`}
+                        role="tab"
+                        aria-selected={addMode === 'now'}
+                        type="button"
+                        title="今すぐ"
+                        aria-label="今すぐ"
+                        onClick={() => setAddMode('now')}
+                      >
+                        <span className="material-icons">play_arrow</span>
+                      </button>
+                      <button
+                        id="task-add-tab-reserve"
+                        className={`task-add-tab ${addMode === 'reserve' ? 'active' : ''}`}
+                        role="tab"
+                        aria-selected={addMode === 'reserve'}
+                        type="button"
+                        title="予約"
+                        aria-label="予約"
+                        onClick={() => setAddMode('reserve')}
+                        disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
+                      >
+                        <span className="material-icons">schedule</span>
+                      </button>
+                    </div>
+
+                    <div className="tag-select-group">
+                      <select
+                        id="task-tag-select"
+                        className="tag-select"
+                        aria-label="タグを選択"
+                        value={selectedTag}
+                        onChange={(e) => setSelectedTag(e.target.value)}
+                        disabled={!accessToken || busy}
+                      >
+                        <option value="">タグを選択</option>
+                        {tagStock.map((t) => (
+                          <option key={`${t.id ?? ''}:${t.name}`} value={t.name}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div id="reserve-time-row" className="reserve-time-row" hidden={addMode !== 'reserve'}>
+                      <input
+                        type="time"
+                        id="reserve-time-input"
+                        className="reserve-time-input"
+                        aria-label="開始時刻"
+                        value={reserveStartTime}
+                        onChange={(e) => setReserveStartTime(e.target.value)}
+                        disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < todayYmd))}
+                      />
+                    </div>
+
+                    <div className="task-name-row input-with-button relative">
+                      <input
+                        type="text"
+                        id="task-input"
+                        name="task-input"
+                        autoComplete="off"
+                        placeholder="新しいタスクを入力..."
+                        className="task-input"
+                        ref={taskInputRef}
+                        value={newTaskName}
+                        onChange={(e) => {
+                          setNewTaskName(e.target.value);
+                          setTaskSuggestOpen(true);
+                        }}
+                        onFocus={() => {
+                          if (taskSuggestCloseTimerRef.current != null) {
+                            window.clearTimeout(taskSuggestCloseTimerRef.current);
+                            taskSuggestCloseTimerRef.current = null;
+                          }
+                          setTaskInputFocused(true);
+                          setTaskSuggestOpen(true);
+                        }}
+                        onBlur={() => {
+                          setTaskInputFocused(false);
+                          if (taskSuggestCloseTimerRef.current != null) window.clearTimeout(taskSuggestCloseTimerRef.current);
+                          taskSuggestCloseTimerRef.current = window.setTimeout(() => {
+                            setTaskSuggestOpen(false);
+                            taskSuggestCloseTimerRef.current = null;
+                          }, 120);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setTaskSuggestOpen(false);
+                            setTaskSuggestActiveIndex(-1);
+                            return;
+                          }
+
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setTaskSuggestOpen(true);
+                            setTaskSuggestActiveIndex((idx) => {
+                              if (!taskNameSuggestions.length) return -1;
+                              const next = Math.min(idx + 1, taskNameSuggestions.length - 1);
+                              return next < 0 ? 0 : next;
+                            });
+                            return;
+                          }
+
+                          if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setTaskSuggestOpen(true);
+                            setTaskSuggestActiveIndex((idx) => {
+                              if (!taskNameSuggestions.length) return -1;
+                              if (idx <= 0) return 0;
+                              return idx - 1;
+                            });
+                            return;
+                          }
+
+                          if (e.key === 'Enter' && taskSuggestOpen && taskSuggestActiveIndex >= 0) {
+                            const picked = taskNameSuggestions[taskSuggestActiveIndex];
+                            if (picked) {
+                              e.preventDefault();
+                              setNewTaskNamePlain(picked);
+                              setTaskSuggestOpen(false);
+                              setTaskSuggestActiveIndex(-1);
+                              window.requestAnimationFrame(() => {
+                                taskInputRef.current?.focus();
+                                try {
+                                  taskInputRef.current?.setSelectionRange(picked.length, picked.length);
+                                } catch {
+                                  // ignore
+                                }
+                              });
+                              return;
+                            }
+                          }
+
+                          if (e.key === 'Enter' && String(newTaskName || '').trim()) void addTask();
+                        }}
+                        disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
+                      />
+
+                      {newTaskCarryMemoUrlEnabled ? (
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="メモ/URLを引き継ぎ中（クリックで解除）"
+                          aria-label="メモ/URLを引き継ぎ中（クリックで解除）"
+                          onClick={() => {
+                            clearNewTaskCarryMemoUrl();
+                            try {
+                              taskInputRef.current?.focus();
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
+                        >
+                          <span className="material-icons" aria-hidden="true">
+                            sticky_note_2
+                          </span>
+                        </button>
+                      ) : null}
+
+                      {taskInputFocused && taskSuggestOpen && accessToken && !busy ? (
+                        <div
+                          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-primary)]"
+                          role="listbox"
+                          aria-label="タスク候補"
+                        >
+                          {taskNameSuggestions.length ? (
+                            taskNameSuggestions.map((name, idx) => (
+                              <button
+                                key={name}
+                                type="button"
+                                role="option"
+                                aria-selected={idx === taskSuggestActiveIndex}
+                                className={`block w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] ${
+                                  idx === taskSuggestActiveIndex ? 'bg-[var(--bg-secondary)]' : ''
+                                }`}
+                                onMouseEnter={() => setTaskSuggestActiveIndex(idx)}
+                                onMouseDown={(ev) => {
+                                  ev.preventDefault();
+                                  if (taskSuggestCloseTimerRef.current != null) {
+                                    window.clearTimeout(taskSuggestCloseTimerRef.current);
+                                    taskSuggestCloseTimerRef.current = null;
+                                  }
+                                  setNewTaskNamePlain(name);
+                                  setTaskSuggestOpen(false);
+                                  setTaskSuggestActiveIndex(-1);
+                                  window.requestAnimationFrame(() => {
+                                    taskInputRef.current?.focus();
+                                    try {
+                                      taskInputRef.current?.setSelectionRange(name.length, name.length);
+                                    } catch {
+                                      // ignore
+                                    }
+                                  });
+                                }}
+                              >
+                                {name}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-sm text-[var(--text-secondary)]">候補なし</div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="task-add-actions">
+                      <button
+                        id="add-task-btn"
+                        className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
+                        type="button"
+                        title={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
+                        aria-label={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
+                        onClick={addTask}
+                        disabled={
+                          !accessToken ||
+                          busy ||
+                          !String(newTaskName || '').trim() ||
+                          (effectiveViewMode === 'history' && !historyDate) ||
+                          (effectiveViewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < todayYmd)
+                        }
+                      >
+                        <span className="material-icons">
+                          {effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
+                        </span>
+                      </button>
+
+                      {effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? (
+                        <button
+                          id="end-task-btn"
+                          className="btn-primary btn-end-task btn-end-task-small"
+                          type="button"
+                          title="タスク終了"
+                          aria-label="タスク終了"
+                          onClick={endTask}
+                          disabled={!accessToken || busy}
+                        >
+                          <span className="material-icons">stop_circle</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <div className="history-controls">
                 <div className="view-mode-toggle">

@@ -342,6 +342,43 @@ input[type='number']::-webkit-inner-spin-button {
   border: 1px solid var(--border);
 }
 
+.task-input-section.task-input-section-compact {
+  padding: 10px;
+  max-width: min(360px, 100%);
+}
+
+.task-input-section.task-input-section-compact .task-add-tabs {
+  margin-bottom: 8px;
+  gap: 6px;
+}
+
+.task-input-section.task-input-section-compact .task-add-tab {
+  padding: 6px 8px;
+}
+
+.task-input-section.task-input-section-compact .tag-select-group {
+  margin-bottom: 8px;
+}
+
+.task-input-section.task-input-section-compact .reserve-time-row {
+  margin-bottom: 6px;
+}
+
+.task-input-section.task-input-section-compact .task-name-row {
+  margin-bottom: 8px;
+}
+
+.task-input-section.task-input-section-compact .task-input,
+.task-input-section.task-input-section-compact .tag-select,
+.task-input-section.task-input-section-compact .reserve-time-input {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.task-input-section.task-input-section-compact .btn-add-task {
+  min-height: 30px;
+}
+
 .task-add-tabs {
   display: flex;
   gap: 8px;
