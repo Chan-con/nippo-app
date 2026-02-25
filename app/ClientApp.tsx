@@ -94,6 +94,8 @@ type NoticeData = {
   tone: NoticeTone;
 };
 
+type ShakeableModalKey = 'report' | 'tagWorkReport' | 'goalStock' | 'taskStock' | 'tagStock' | 'holidayCalendar' | 'billing' | 'settings';
+
 function parseHHMMToParts(v: unknown) {
   const m = String(v ?? '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!m) return null;
@@ -852,6 +854,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [tagWorkReportActiveTag, setTagWorkReportActiveTag] = useState<string>('');
   const [tagWorkReportLoading, setTagWorkReportLoading] = useState(false);
   const [tagWorkReportError, setTagWorkReportError] = useState<string | null>(null);
+  const tagWorkReportInitialRangeRef = useRef<{ start: string; end: string }>({ start: '', end: '' });
 
   // holiday calendar
   const [holidayCalendarOpen, setHolidayCalendarOpen] = useState(false);
@@ -874,8 +877,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [holidayCalendarCopiedToast, setHolidayCalendarCopiedToast] = useState(false);
   const [holidayCalendarCopyError, setHolidayCalendarCopyError] = useState<string | null>(null);
   const holidayCalendarToastTimerRef = useRef<number | null>(null);
-  const [holidayCalendarShaking, setHolidayCalendarShaking] = useState(false);
-  const holidayCalendarShakeTimerRef = useRef<number | null>(null);
 
   // billing
   const [billingOpen, setBillingOpen] = useState(false);
@@ -954,6 +955,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!reportOpen) return;
     setGptReportRangeStart(todayYmd);
     setGptReportRangeEnd(todayYmd);
+    setReportDirty(false);
   }, [reportOpen, todayYmd]);
 
   useEffect(() => {
@@ -961,6 +963,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setTagWorkReportRangeStart(todayYmd);
     setTagWorkReportRangeEnd(todayYmd);
   }, [tagWorkReportOpen, todayYmd]);
+
+  useEffect(() => {
+    if (!tagWorkReportOpen) return;
+    tagWorkReportInitialRangeRef.current = {
+      start: normalizeYmd(tagWorkReportRangeStart),
+      end: normalizeYmd(tagWorkReportRangeEnd),
+    };
+  }, [tagWorkReportOpen]);
 
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
@@ -1000,6 +1010,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [activeReportTabId, setActiveReportTabId] = useState<string | null>(null);
   const [reportSingleContent, setReportSingleContent] = useState('');
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
+  const [reportDirty, setReportDirty] = useState(false);
+
+  const [shakingModal, setShakingModal] = useState<ShakeableModalKey | null>(null);
+  const modalShakeTimerRef = useRef<number | null>(null);
 
   const timelineOpenUrlTimerRef = useRef<number | null>(null);
 
@@ -4137,24 +4151,83 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
   }
 
-  function triggerHolidayCalendarShake() {
-    setHolidayCalendarShaking(false);
-    if (holidayCalendarShakeTimerRef.current != null) {
+  function triggerModalShake(key: ShakeableModalKey) {
+    setShakingModal(null);
+    if (modalShakeTimerRef.current != null) {
       try {
-        window.clearTimeout(holidayCalendarShakeTimerRef.current);
+        window.clearTimeout(modalShakeTimerRef.current);
       } catch {
         // ignore
       }
-      holidayCalendarShakeTimerRef.current = null;
+      modalShakeTimerRef.current = null;
     }
 
     window.requestAnimationFrame(() => {
-      setHolidayCalendarShaking(true);
-      holidayCalendarShakeTimerRef.current = window.setTimeout(() => {
-        setHolidayCalendarShaking(false);
-        holidayCalendarShakeTimerRef.current = null;
+      setShakingModal(key);
+      modalShakeTimerRef.current = window.setTimeout(() => {
+        setShakingModal((cur) => (cur === key ? null : cur));
+        modalShakeTimerRef.current = null;
       }, 260);
     });
+  }
+
+  function requestCloseReportModal() {
+    if (reportDirty) {
+      triggerModalShake('report');
+      return;
+    }
+    setReportOpen(false);
+  }
+
+  function requestCloseTagWorkReportModal() {
+    const dirty =
+      normalizeYmd(tagWorkReportRangeStart) !== tagWorkReportInitialRangeRef.current.start ||
+      normalizeYmd(tagWorkReportRangeEnd) !== tagWorkReportInitialRangeRef.current.end;
+    if (dirty) {
+      triggerModalShake('tagWorkReport');
+      return;
+    }
+    setTagWorkReportOpen(false);
+  }
+
+  function requestCloseSettingsModal() {
+    if (settingsDirty) {
+      triggerModalShake('settings');
+      return;
+    }
+    setSettingsOpen(false);
+  }
+
+  function requestCloseGoalStockModal() {
+    if (goalDirty) {
+      triggerModalShake('goalStock');
+      return;
+    }
+    setGoalStockOpen(false);
+  }
+
+  function requestCloseTaskStockModal() {
+    if (taskStockDirty) {
+      triggerModalShake('taskStock');
+      return;
+    }
+    setTaskStockOpen(false);
+  }
+
+  function requestCloseTagStockModal() {
+    if (tagDirty) {
+      triggerModalShake('tagStock');
+      return;
+    }
+    setTagStockOpen(false);
+  }
+
+  function requestCloseBillingModal() {
+    if (billingDirty) {
+      triggerModalShake('billing');
+      return;
+    }
+    setBillingOpen(false);
   }
 
   async function requestCloseHolidayCalendar() {
@@ -4166,7 +4239,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     }
 
     if (!holidayCalendarHasSaved || holidayCalendarDirty) {
-      triggerHolidayCalendarShake();
+      triggerModalShake('holidayCalendar');
       return;
     }
 
@@ -4209,9 +4282,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         window.clearTimeout(holidayCalendarToastTimerRef.current);
         holidayCalendarToastTimerRef.current = null;
       }
-      if (holidayCalendarShakeTimerRef.current != null) {
-        window.clearTimeout(holidayCalendarShakeTimerRef.current);
-        holidayCalendarShakeTimerRef.current = null;
+      if (modalShakeTimerRef.current != null) {
+        window.clearTimeout(modalShakeTimerRef.current);
+        modalShakeTimerRef.current = null;
       }
     };
   }, []);
@@ -5479,6 +5552,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         });
         const body = await res.json();
         if (!res.ok || !body?.success) throw new Error(body?.error || '保存に失敗しました');
+        setReportDirty(false);
         return;
       }
 
@@ -5492,6 +5566,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       });
       const body = await res.json();
       if (!res.ok || !body?.success) throw new Error(body?.error || '保存に失敗しました');
+      setReportDirty(false);
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -9079,7 +9154,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
       </ModalShell>
 
-      <div className={`report-dialog ${reportOpen ? 'show' : ''}`} id="report-dialog" aria-hidden={!reportOpen}>
+      <div
+        className={`report-dialog ${reportOpen ? 'show' : ''}`}
+        id="report-dialog"
+        aria-hidden={!reportOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          requestCloseReportModal();
+        }}
+      >
+        <div className={`modal-shake-wrap${shakingModal === 'report' ? ' is-shaking' : ''}`}>
         <div className="report-content">
           <div className="report-body">
             <div className="report-section">
@@ -9181,6 +9265,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     value={activeReportTabId ? reportTabContent[activeReportTabId] ?? '' : reportSingleContent}
                     onChange={(e) => {
                       const v = e.target.value;
+                      setReportDirty(true);
                       if (activeReportTabId) {
                         setReportTabContent((p) => ({ ...p, [activeReportTabId]: v }));
                       } else {
@@ -9227,7 +9312,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
           <div className="report-footer">
-            <button className="btn-cancel" id="report-cancel" title="戻る" aria-label="戻る" type="button" onClick={() => setReportOpen(false)}>
+            <button className="btn-cancel" id="report-cancel" title="戻る" aria-label="戻る" type="button" onClick={requestCloseReportModal}>
               <span className="material-icons">arrow_back</span>
             </button>
             <button
@@ -9323,9 +9408,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </button>
           </div>
         </div>
+        </div>
       </div>
 
-      <div className={`report-dialog ${tagWorkReportOpen ? 'show' : ''}`} id="tag-work-report-dialog" aria-hidden={!tagWorkReportOpen}>
+      <div
+        className={`report-dialog ${tagWorkReportOpen ? 'show' : ''}`}
+        id="tag-work-report-dialog"
+        aria-hidden={!tagWorkReportOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          requestCloseTagWorkReportModal();
+        }}
+      >
+        <div className={`modal-shake-wrap${shakingModal === 'tagWorkReport' ? ' is-shaking' : ''}`}>
         <div className="report-content">
           <div className="report-body">
             <div className="report-section">
@@ -9566,15 +9661,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               title="戻る"
               aria-label="戻る"
               type="button"
-              onClick={() => setTagWorkReportOpen(false)}
+              onClick={requestCloseTagWorkReportModal}
             >
               <span className="material-icons">arrow_back</span>
             </button>
           </div>
         </div>
+        </div>
       </div>
 
-      <div className={`settings-dialog ${settingsOpen ? 'show' : ''}`} id="settings-dialog" aria-hidden={!settingsOpen}>
+      <div
+        className={`settings-dialog ${settingsOpen ? 'show' : ''}`}
+        id="settings-dialog"
+        aria-hidden={!settingsOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          requestCloseSettingsModal();
+        }}
+      >
+        <div className={`modal-shake-wrap${shakingModal === 'settings' ? ' is-shaking' : ''}`}>
         <div className="settings-content">
           <div className="settings-body">
             {error ? (
@@ -9974,7 +10079,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
           <div className="settings-footer">
-            <button className="btn-cancel" id="settings-cancel" title="戻る" aria-label="戻る" type="button" onClick={() => setSettingsOpen(false)}>
+            <button className="btn-cancel" id="settings-cancel" title="戻る" aria-label="戻る" type="button" onClick={requestCloseSettingsModal}>
               <span className="material-icons">arrow_back</span>
             </button>
             <button
@@ -9990,9 +10095,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </button>
           </div>
         </div>
+        </div>
       </div>
 
-      <div className={`task-stock-dialog ${goalStockOpen ? 'show' : ''}`} id="goal-stock-dialog" aria-hidden={!goalStockOpen}>
+      <div
+        className={`task-stock-dialog ${goalStockOpen ? 'show' : ''}`}
+        id="goal-stock-dialog"
+        aria-hidden={!goalStockOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          requestCloseGoalStockModal();
+        }}
+      >
+        <div className={`modal-shake-wrap${shakingModal === 'goalStock' ? ' is-shaking' : ''}`}>
         <div className="task-stock-content">
           <div className="task-stock-body">
             <div className="task-stock-section">
@@ -10104,7 +10219,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
           <div className="task-stock-footer">
             <div className="task-stock-footer-buttons">
-              <button className="btn-cancel" id="goal-stock-cancel" title="戻る" aria-label="戻る" type="button" onClick={() => setGoalStockOpen(false)}>
+              <button className="btn-cancel" id="goal-stock-cancel" title="戻る" aria-label="戻る" type="button" onClick={requestCloseGoalStockModal}>
                 <span className="material-icons">arrow_back</span>
               </button>
               <button
@@ -10119,9 +10234,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
         </div>
+        </div>
       </div>
 
-      <div className={`task-stock-dialog ${taskStockOpen ? 'show' : ''}`} id="task-stock-dialog" aria-hidden={!taskStockOpen}>
+      <div
+        className={`task-stock-dialog ${taskStockOpen ? 'show' : ''}`}
+        id="task-stock-dialog"
+        aria-hidden={!taskStockOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          requestCloseTaskStockModal();
+        }}
+      >
+        <div className={`modal-shake-wrap${shakingModal === 'taskStock' ? ' is-shaking' : ''}`}>
         <div className="task-stock-content">
           <div className="task-stock-body">
             <div className="task-stock-section">
@@ -10246,7 +10371,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
           <div className="task-stock-footer">
             <div className="task-stock-footer-buttons">
-              <button className="btn-cancel" id="task-stock-cancel" title="戻る" aria-label="戻る" type="button" onClick={() => setTaskStockOpen(false)}>
+              <button className="btn-cancel" id="task-stock-cancel" title="戻る" aria-label="戻る" type="button" onClick={requestCloseTaskStockModal}>
                 <span className="material-icons">arrow_back</span>
               </button>
               <button
@@ -10261,9 +10386,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
         </div>
+        </div>
       </div>
 
-      <div className={`task-stock-dialog ${tagStockOpen ? 'show' : ''}`} id="tag-stock-dialog" aria-hidden={!tagStockOpen}>
+      <div
+        className={`task-stock-dialog ${tagStockOpen ? 'show' : ''}`}
+        id="tag-stock-dialog"
+        aria-hidden={!tagStockOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          requestCloseTagStockModal();
+        }}
+      >
+        <div className={`modal-shake-wrap${shakingModal === 'tagStock' ? ' is-shaking' : ''}`}>
         <div className="task-stock-content">
           <div className="task-stock-body">
             <div className="task-stock-section">
@@ -10382,7 +10517,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
           <div className="task-stock-footer">
             <div className="task-stock-footer-buttons">
-              <button className="btn-cancel" id="tag-stock-cancel" title="戻る" aria-label="戻る" type="button" onClick={() => setTagStockOpen(false)}>
+              <button className="btn-cancel" id="tag-stock-cancel" title="戻る" aria-label="戻る" type="button" onClick={requestCloseTagStockModal}>
                 <span className="material-icons">arrow_back</span>
               </button>
               <button
@@ -10397,14 +10532,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       <div
         className={`task-stock-dialog ${holidayCalendarOpen ? 'show' : ''}`}
         id="holiday-calendar-dialog"
         aria-hidden={!holidayCalendarOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          void requestCloseHolidayCalendar();
+        }}
       >
-        <div className={`modal-shake-wrap${holidayCalendarShaking ? ' is-shaking' : ''}`}>
+        <div className={`modal-shake-wrap${shakingModal === 'holidayCalendar' ? ' is-shaking' : ''}`}>
           <div className="task-stock-content holiday-cal-content">
           <div className="task-stock-body">
             <div className="holiday-cal-header">
@@ -10562,7 +10702,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         </div>
       </div>
 
-      <div className={`task-stock-dialog ${billingOpen ? 'show' : ''}`} id="billing-dialog" aria-hidden={!billingOpen}>
+      <div
+        className={`task-stock-dialog ${billingOpen ? 'show' : ''}`}
+        id="billing-dialog"
+        aria-hidden={!billingOpen}
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          requestCloseBillingModal();
+        }}
+      >
+        <div className={`modal-shake-wrap${shakingModal === 'billing' ? ' is-shaking' : ''}`}>
         <div className="task-stock-content billing-content">
           <div className="task-stock-body">
             {billingRemoteUpdatePending ? (
@@ -10962,7 +11111,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
           <div className="task-stock-footer">
             <div className="task-stock-footer-buttons">
-              <button className="btn-cancel" id="billing-cancel" title="戻る" aria-label="戻る" type="button" onClick={() => setBillingOpen(false)}>
+              <button className="btn-cancel" id="billing-cancel" title="戻る" aria-label="戻る" type="button" onClick={requestCloseBillingModal}>
                 <span className="material-icons">arrow_back</span>
               </button>
               <button
@@ -10987,6 +11136,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </button>
             </div>
           </div>
+        </div>
         </div>
       </div>
 
