@@ -7604,7 +7604,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
           {showMainHeader ? (
             <div
-              className={`main-header ${effectiveViewMode === 'history' ? 'history-mode' : ''}${effectiveViewMode === 'today' && accessToken ? ' with-tabs' : ''}${accessToken && todayMainTab === 'timeline' ? ' with-task-add-inline' : ''}`}
+              className={`main-header ${effectiveViewMode === 'history' ? 'history-mode' : ''}${accessToken ? ' with-tabs' : ''}${accessToken && todayMainTab === 'timeline' ? ' with-task-add-inline' : ''}`}
             >
               <div className="date-display">
                 <h1 id="current-date">
