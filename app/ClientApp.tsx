@@ -7932,7 +7932,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           ) : null}
 
           <div
-            className={`main-body${showMainHeader ? '' : ' no-header'}${todayMainTab === 'calendar' ? ' is-calendar-tab' : ''}`}
+            className={`main-body${showMainHeader ? '' : ' no-header'}${todayMainTab === 'calendar' ? ' is-calendar-tab' : ''}${accessToken && todayMainTab === 'timeline' ? ' has-inline-task-add' : ''}${effectiveViewMode === 'history' ? ' is-history-mode' : ''}`}
             ref={mainBodyRef}
           >
             {effectiveViewMode === 'today' && accessToken ? (
@@ -8806,7 +8806,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {(effectiveViewMode === 'history' || !(effectiveViewMode === 'today' && accessToken) || todayMainTab === 'timeline') ? (
               <div className={`timeline-section ${effectiveViewMode === 'history' ? 'history-mode' : ''}`}>
-                {effectiveViewMode === 'today' && accessToken ? null : <h3>📈 タイムライン</h3>}
                 <div className="timeline-container" id="timeline-container">
                   {sortedTimelineTasks.length === 0 ? (
                     <div className="timeline-empty">

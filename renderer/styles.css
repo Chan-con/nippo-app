@@ -835,6 +835,16 @@ input[type='number']::-webkit-inner-spin-button {
   padding-bottom: 24px;
 }
 
+.main-body.has-inline-task-add {
+  margin-top: -14px;
+  padding-top: 14px;
+}
+
+.main-body.is-history-mode {
+  margin-top: -16px;
+  padding-top: 16px;
+}
+
 /* カレンダータブは「外側」をスクロールさせず、カレンダー内部だけスクロールさせる */
 .main-body.is-calendar-tab {
   overflow-y: hidden;
@@ -843,7 +853,11 @@ input[type='number']::-webkit-inner-spin-button {
 /* タイムライン以外でヘッダーを非表示にする場合の補正 */
 .main-body.no-header {
   margin-top: 0;
-  padding-top: 12px;
+  padding-top: 6px;
+}
+
+.main-body.no-header.is-calendar-tab {
+  padding-top: 0;
 }
 
 /* 履歴モードでは日付入力をヘッダー中央に配置 */
@@ -929,7 +943,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* タイムライン */
 .timeline-section {
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   min-width: 0;
 }
 
