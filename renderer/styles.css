@@ -3793,6 +3793,17 @@ input[type='number']::-webkit-inner-spin-button {
   }
 }
 
+.modal-shake-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.modal-shake-wrap > * {
+  pointer-events: auto;
+}
+
 .modal-shake-wrap.is-shaking {
   animation: modal-shake-x 220ms ease-in-out;
 }
