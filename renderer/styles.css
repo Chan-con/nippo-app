@@ -811,8 +811,8 @@ input[type='number']::-webkit-inner-spin-button {
   grid-area: task;
   min-width: 0;
   border-top: 1px solid var(--border);
-  margin-top: 4px;
-  padding-top: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
 }
 
 .main-header.with-task-add-inline .timeline-task-add-slot .task-input-section-compact {
@@ -836,8 +836,8 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .main-body.has-inline-task-add {
-  margin-top: -8px;
-  padding-top: 8px;
+  margin-top: -4px;
+  padding-top: 4px;
 }
 
 .main-body.is-history-mode {
@@ -2204,7 +2204,7 @@ input[type='number']::-webkit-inner-spin-button {
 .timeline-container {
   background: var(--bg-secondary);
   border-radius: var(--radius-medium);
-  padding: 16px;
+  padding: 12px;
   min-height: 220px;
 }
 
