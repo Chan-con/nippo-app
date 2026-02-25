@@ -96,6 +96,19 @@ type NoticeData = {
 
 type ShakeableModalKey = 'report' | 'tagWorkReport' | 'goalStock' | 'taskStock' | 'tagStock' | 'holidayCalendar' | 'billing' | 'settings';
 
+function createModalShakeNonceMap(): Record<ShakeableModalKey, number> {
+  return {
+    report: 0,
+    tagWorkReport: 0,
+    goalStock: 0,
+    taskStock: 0,
+    tagStock: 0,
+    holidayCalendar: 0,
+    billing: 0,
+    settings: 0,
+  };
+}
+
 function parseHHMMToParts(v: unknown) {
   const m = String(v ?? '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!m) return null;
@@ -1011,9 +1024,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [reportSingleContent, setReportSingleContent] = useState('');
   const [reportTabContent, setReportTabContent] = useState<Record<string, string>>({});
   const [reportDirty, setReportDirty] = useState(false);
-
-  const [shakingModal, setShakingModal] = useState<ShakeableModalKey | null>(null);
-  const modalShakeTimerRef = useRef<number | null>(null);
+  const [modalShakeNonce, setModalShakeNonce] = useState<Record<ShakeableModalKey, number>>(createModalShakeNonceMap);
 
   const timelineOpenUrlTimerRef = useRef<number | null>(null);
 
@@ -4152,23 +4163,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   }
 
   function triggerModalShake(key: ShakeableModalKey) {
-    setShakingModal(null);
-    if (modalShakeTimerRef.current != null) {
-      try {
-        window.clearTimeout(modalShakeTimerRef.current);
-      } catch {
-        // ignore
-      }
-      modalShakeTimerRef.current = null;
-    }
-
-    window.requestAnimationFrame(() => {
-      setShakingModal(key);
-      modalShakeTimerRef.current = window.setTimeout(() => {
-        setShakingModal((cur) => (cur === key ? null : cur));
-        modalShakeTimerRef.current = null;
-      }, 260);
-    });
+    setModalShakeNonce((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
   }
 
   function requestCloseReportModal() {
@@ -4281,10 +4276,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       if (holidayCalendarToastTimerRef.current != null) {
         window.clearTimeout(holidayCalendarToastTimerRef.current);
         holidayCalendarToastTimerRef.current = null;
-      }
-      if (modalShakeTimerRef.current != null) {
-        window.clearTimeout(modalShakeTimerRef.current);
-        modalShakeTimerRef.current = null;
       }
     };
   }, []);
@@ -9154,17 +9145,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           </div>
       </ModalShell>
 
-      <div
-        className={`report-dialog ${reportOpen ? 'show' : ''}`}
-        id="report-dialog"
-        aria-hidden={!reportOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          requestCloseReportModal();
-        }}
+      <ModalShell
+        open={reportOpen}
+        overlayClassName="report-dialog"
+        overlayId="report-dialog"
+        overlayRole="presentation"
+        contentClassName="report-content"
+        preventClose={reportDirty}
+        shakeNonce={modalShakeNonce.report}
+        onClose={requestCloseReportModal}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'report' ? ' is-shaking' : ''}`}>
-        <div className="report-content">
           <div className="report-body">
             <div className="report-section">
               <h4>🎯 目標</h4>
@@ -9407,21 +9397,21 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <span className="material-icons">save</span>
             </button>
           </div>
-        </div>
-        </div>
-      </div>
+      </ModalShell>
 
-      <div
-        className={`report-dialog ${tagWorkReportOpen ? 'show' : ''}`}
-        id="tag-work-report-dialog"
-        aria-hidden={!tagWorkReportOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          requestCloseTagWorkReportModal();
-        }}
+      <ModalShell
+        open={tagWorkReportOpen}
+        overlayClassName="report-dialog"
+        overlayId="tag-work-report-dialog"
+        overlayRole="presentation"
+        contentClassName="report-content"
+        preventClose={
+          normalizeYmd(tagWorkReportRangeStart) !== tagWorkReportInitialRangeRef.current.start ||
+          normalizeYmd(tagWorkReportRangeEnd) !== tagWorkReportInitialRangeRef.current.end
+        }
+        shakeNonce={modalShakeNonce.tagWorkReport}
+        onClose={requestCloseTagWorkReportModal}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'tagWorkReport' ? ' is-shaking' : ''}`}>
-        <div className="report-content">
           <div className="report-body">
             <div className="report-section">
               <h4>🗓️ 対象期間</h4>
@@ -9666,21 +9656,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <span className="material-icons">arrow_back</span>
             </button>
           </div>
-        </div>
-        </div>
-      </div>
+      </ModalShell>
 
-      <div
-        className={`settings-dialog ${settingsOpen ? 'show' : ''}`}
-        id="settings-dialog"
-        aria-hidden={!settingsOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          requestCloseSettingsModal();
-        }}
+      <ModalShell
+        open={settingsOpen}
+        overlayClassName="settings-dialog"
+        overlayId="settings-dialog"
+        overlayRole="presentation"
+        contentClassName="settings-content"
+        preventClose={settingsDirty}
+        shakeNonce={modalShakeNonce.settings}
+        onClose={requestCloseSettingsModal}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'settings' ? ' is-shaking' : ''}`}>
-        <div className="settings-content">
           <div className="settings-body">
             {error ? (
               <div className="settings-section">
@@ -10094,21 +10081,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               <span className="material-icons">save</span>
             </button>
           </div>
-        </div>
-        </div>
-      </div>
+      </ModalShell>
 
-      <div
-        className={`task-stock-dialog ${goalStockOpen ? 'show' : ''}`}
-        id="goal-stock-dialog"
-        aria-hidden={!goalStockOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          requestCloseGoalStockModal();
-        }}
+      <ModalShell
+        open={goalStockOpen}
+        overlayClassName="task-stock-dialog"
+        overlayId="goal-stock-dialog"
+        overlayRole="presentation"
+        contentClassName="task-stock-content"
+        preventClose={goalDirty}
+        shakeNonce={modalShakeNonce.goalStock}
+        onClose={requestCloseGoalStockModal}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'goalStock' ? ' is-shaking' : ''}`}>
-        <div className="task-stock-content">
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>🎯 保存済み目標</h4>
@@ -10233,21 +10217,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </button>
             </div>
           </div>
-        </div>
-        </div>
-      </div>
+      </ModalShell>
 
-      <div
-        className={`task-stock-dialog ${taskStockOpen ? 'show' : ''}`}
-        id="task-stock-dialog"
-        aria-hidden={!taskStockOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          requestCloseTaskStockModal();
-        }}
+      <ModalShell
+        open={taskStockOpen}
+        overlayClassName="task-stock-dialog"
+        overlayId="task-stock-dialog"
+        overlayRole="presentation"
+        contentClassName="task-stock-content"
+        preventClose={taskStockDirty}
+        shakeNonce={modalShakeNonce.taskStock}
+        onClose={requestCloseTaskStockModal}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'taskStock' ? ' is-shaking' : ''}`}>
-        <div className="task-stock-content">
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>💾 保存済みタスク</h4>
@@ -10385,21 +10366,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </button>
             </div>
           </div>
-        </div>
-        </div>
-      </div>
+      </ModalShell>
 
-      <div
-        className={`task-stock-dialog ${tagStockOpen ? 'show' : ''}`}
-        id="tag-stock-dialog"
-        aria-hidden={!tagStockOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          requestCloseTagStockModal();
-        }}
+      <ModalShell
+        open={tagStockOpen}
+        overlayClassName="task-stock-dialog"
+        overlayId="tag-stock-dialog"
+        overlayRole="presentation"
+        contentClassName="task-stock-content"
+        preventClose={tagDirty}
+        shakeNonce={modalShakeNonce.tagStock}
+        onClose={requestCloseTagStockModal}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'tagStock' ? ' is-shaking' : ''}`}>
-        <div className="task-stock-content">
           <div className="task-stock-body">
             <div className="task-stock-section">
               <h4>🏷️ 保存済みタグ</h4>
@@ -10531,21 +10509,23 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </button>
             </div>
           </div>
-        </div>
-        </div>
-      </div>
+      </ModalShell>
 
-      <div
-        className={`task-stock-dialog ${holidayCalendarOpen ? 'show' : ''}`}
-        id="holiday-calendar-dialog"
-        aria-hidden={!holidayCalendarOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          void requestCloseHolidayCalendar();
-        }}
+      <ModalShell
+        open={holidayCalendarOpen}
+        overlayClassName="task-stock-dialog"
+        overlayId="holiday-calendar-dialog"
+        overlayRole="presentation"
+        contentClassName="task-stock-content holiday-cal-content"
+        preventClose={
+          !!accessToken &&
+          !holidayCalendarExporting &&
+          !holidayCalendarSyncing &&
+          (!holidayCalendarHasSaved || holidayCalendarDirty)
+        }
+        shakeNonce={modalShakeNonce.holidayCalendar}
+        onClose={() => void requestCloseHolidayCalendar()}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'holidayCalendar' ? ' is-shaking' : ''}`}>
-          <div className="task-stock-content holiday-cal-content">
           <div className="task-stock-body">
             <div className="holiday-cal-header">
               <button
@@ -10698,21 +10678,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </button>
             </div>
           </div>
-          </div>
-        </div>
-      </div>
+      </ModalShell>
 
-      <div
-        className={`task-stock-dialog ${billingOpen ? 'show' : ''}`}
-        id="billing-dialog"
-        aria-hidden={!billingOpen}
-        onMouseDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          requestCloseBillingModal();
-        }}
+      <ModalShell
+        open={billingOpen}
+        overlayClassName="task-stock-dialog"
+        overlayId="billing-dialog"
+        overlayRole="presentation"
+        contentClassName="task-stock-content billing-content"
+        preventClose={billingDirty}
+        shakeNonce={modalShakeNonce.billing}
+        onClose={requestCloseBillingModal}
       >
-        <div className={`modal-shake-wrap${shakingModal === 'billing' ? ' is-shaking' : ''}`}>
-        <div className="task-stock-content billing-content">
           <div className="task-stock-body">
             {billingRemoteUpdatePending ? (
               <div className="task-stock-section">
@@ -11136,9 +11113,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </button>
             </div>
           </div>
-        </div>
-        </div>
-      </div>
+      </ModalShell>
 
       <FloatingNotices items={floatingNotices} />
     </div>

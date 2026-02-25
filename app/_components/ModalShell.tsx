@@ -11,6 +11,7 @@ type ModalShellProps = {
   overlayAriaHidden?: boolean;
   closeOnBackdrop?: boolean;
   preventClose?: boolean;
+  shakeNonce?: number;
   onClose: () => void;
   contentProps?: React.HTMLAttributes<HTMLDivElement>;
   children?: React.ReactNode;
@@ -48,6 +49,13 @@ export default function ModalShell(props: ModalShellProps) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!props.open) return;
+    if (props.shakeNonce == null) return;
+    triggerShake();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.shakeNonce]);
 
   function triggerShake() {
     setShaking(false);
