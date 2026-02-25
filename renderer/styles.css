@@ -836,8 +836,8 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .main-body.has-inline-task-add {
-  margin-top: -4px;
-  padding-top: 4px;
+  margin-top: -32px;
+  padding-top: 32px;
 }
 
 .main-body.is-history-mode {
