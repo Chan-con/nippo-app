@@ -343,12 +343,21 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .task-input-section.task-input-section-compact {
-  padding: 10px;
-  max-width: min(360px, 100%);
+  padding: 8px;
+  width: min(920px, 100%);
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: 110px 150px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'tabs tag input actions'
+    'reserve reserve reserve reserve';
+  gap: 6px 8px;
+  align-items: center;
 }
 
 .task-input-section.task-input-section-compact .task-add-tabs {
-  margin-bottom: 8px;
+  grid-area: tabs;
+  margin-bottom: 0;
   gap: 6px;
 }
 
@@ -357,26 +366,66 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .task-input-section.task-input-section-compact .tag-select-group {
-  margin-bottom: 8px;
+  grid-area: tag;
+  margin-bottom: 0;
 }
 
 .task-input-section.task-input-section-compact .reserve-time-row {
-  margin-bottom: 6px;
+  grid-area: reserve;
+  margin-bottom: 0;
+  width: min(180px, 100%);
 }
 
 .task-input-section.task-input-section-compact .task-name-row {
-  margin-bottom: 8px;
+  grid-area: input;
+  margin-bottom: 0;
 }
 
 .task-input-section.task-input-section-compact .task-input,
 .task-input-section.task-input-section-compact .tag-select,
 .task-input-section.task-input-section-compact .reserve-time-input {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
-.task-input-section.task-input-section-compact .btn-add-task {
-  min-height: 30px;
+.task-input-section.task-input-section-compact .task-add-actions {
+  grid-area: actions;
+  gap: 6px;
+}
+
+.task-input-section.task-input-section-compact .task-add-actions .btn-add-task,
+.task-input-section.task-input-section-compact .task-add-actions .btn-end-task {
+  flex: 0 0 auto;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.task-input-section.task-input-section-compact .task-add-actions .btn-add-task .material-icons,
+.task-input-section.task-input-section-compact .task-add-actions .btn-end-task .material-icons {
+  font-size: 18px;
+}
+
+@media (max-width: 1200px) {
+  .task-input-section.task-input-section-compact {
+    grid-template-columns: 110px minmax(130px, 180px) minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .task-input-section.task-input-section-compact {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'tabs tag'
+      'input actions'
+      'reserve reserve';
+  }
+
+  .task-input-section.task-input-section-compact .reserve-time-row {
+    width: 100%;
+  }
 }
 
 .task-add-tabs {
