@@ -811,8 +811,8 @@ input[type='number']::-webkit-inner-spin-button {
   grid-area: task;
   min-width: 0;
   border-top: 1px solid var(--border);
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 4px;
+  padding-top: 4px;
 }
 
 .main-header.with-task-add-inline .timeline-task-add-slot .task-input-section-compact {
@@ -836,13 +836,13 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .main-body.has-inline-task-add {
-  margin-top: -14px;
-  padding-top: 14px;
+  margin-top: -8px;
+  padding-top: 8px;
 }
 
 .main-body.is-history-mode {
-  margin-top: -16px;
-  padding-top: 16px;
+  margin-top: -10px;
+  padding-top: 10px;
 }
 
 /* カレンダータブは「外側」をスクロールさせず、カレンダー内部だけスクロールさせる */
@@ -943,7 +943,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* タイムライン */
 .timeline-section {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   min-width: 0;
 }
 
@@ -2204,8 +2204,8 @@ input[type='number']::-webkit-inner-spin-button {
 .timeline-container {
   background: var(--bg-secondary);
   border-radius: var(--radius-medium);
-  padding: 24px;
-  min-height: 300px;
+  padding: 16px;
+  min-height: 220px;
 }
 
 .timeline-empty {
@@ -2213,7 +2213,7 @@ input[type='number']::-webkit-inner-spin-button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 250px;
+  height: 180px;
   color: var(--text-muted);
   text-align: center;
 }
@@ -2236,8 +2236,8 @@ input[type='number']::-webkit-inner-spin-button {
 .timeline-item {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
-  padding: 16px 0;
+  gap: 12px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
   animation: slideIn 0.3s ease;
   border-radius: var(--radius-small);
