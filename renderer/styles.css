@@ -275,7 +275,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* サイドバー */
 .sidebar {
-  width: 340px;
+  width: 96px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   display: flex;
@@ -325,13 +325,26 @@ input[type='number']::-webkit-inner-spin-button {
 
 .sidebar-content {
   flex: 1;
-  padding: 20px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.sidebar .action-buttons .btn-secondary {
+  min-height: 48px;
+  padding: 10px 0;
+  justify-content: center;
+  gap: 0;
+  font-size: 0;
+  line-height: 0;
+}
+
+.sidebar .action-buttons .btn-secondary .material-icons {
+  font-size: 22px;
 }
 
 /* タスク入力 */
@@ -748,7 +761,7 @@ input[type='number']::-webkit-inner-spin-button {
 .action-buttons {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 /* メインコンテンツ */
@@ -4692,7 +4705,7 @@ input[type='number']::-webkit-inner-spin-button {
     top: var(--titlebar-total-height);
     left: 0;
     bottom: 0;
-    width: min(340px, 86vw);
+    width: min(96px, 86vw);
     height: auto;
     transform: translateX(-105%);
     transition: transform 0.2s ease;

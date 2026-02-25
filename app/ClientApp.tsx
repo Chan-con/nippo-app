@@ -7261,7 +7261,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 type="button"
                 onClick={() => setTagWorkReportOpen(true)}
                 disabled={!accessToken || busy}
-                style={{ paddingLeft: 32 }}
               >
                 <span className="material-icons">label</span>
                 タグ別作業報告
