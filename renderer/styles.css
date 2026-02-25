@@ -3119,6 +3119,18 @@ input[type='number']::-webkit-inner-spin-button {
   justify-content: center;
 }
 
+.tag-report-show-btn {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+}
+
+.report-timeline-generate-btn {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+}
+
 .report-date-input:hover:not(:disabled) {
   border-color: var(--accent);
 }

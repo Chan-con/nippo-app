@@ -9287,14 +9287,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     </div>
                     <button
                       type="button"
-                      className="btn-secondary report-gpt-generate-btn"
+                      className="btn-secondary report-gpt-generate-btn report-timeline-generate-btn"
                       title="タイムラインから生成"
                       aria-label="タイムラインから生成"
                       onClick={() => void gptGenerateReportFromTimeline()}
                       disabled={!accessToken || busy}
                     >
                       <span className="material-icons">auto_awesome</span>
-                      タイムラインから生成
                     </button>
                   </div>
                 </div>
@@ -9439,14 +9438,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   </div>
                   <button
                     type="button"
-                    className="btn-secondary report-gpt-generate-btn"
+                    className="btn-secondary report-gpt-generate-btn tag-report-show-btn"
                     title="表示"
                     aria-label="表示"
                     onClick={() => void loadTagWorkReportSummaryRange()}
                     disabled={!accessToken || tagWorkReportLoading}
                   >
                     <span className="material-icons">refresh</span>
-                    表示
                   </button>
                 </div>
               </div>
