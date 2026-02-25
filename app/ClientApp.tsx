@@ -7605,7 +7605,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
           {showMainHeader ? (
             <div
-              className={`main-header ${effectiveViewMode === 'history' ? 'history-mode' : ''}${effectiveViewMode === 'today' && accessToken ? ' with-tabs' : ''}`}
+              className={`main-header ${effectiveViewMode === 'history' ? 'history-mode' : ''}${effectiveViewMode === 'today' && accessToken ? ' with-tabs' : ''}${accessToken && todayMainTab === 'timeline' ? ' with-task-add-inline' : ''}`}
             >
               <div className="date-display">
                 <h1 id="current-date">
@@ -7618,9 +7618,59 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 >
                   {formatTimeHHMMSS(now)}
                 </p>
+              </div>
+              <div className="history-controls">
+                <div className="view-mode-toggle">
+                  <button
+                    id="today-btn"
+                    className={`mode-btn ${effectiveViewMode === 'today' ? 'active' : ''}`}
+                    title="今日"
+                    aria-label="今日"
+                    type="button"
+                    onClick={() => setViewMode('today')}
+                  >
+                    <span className="material-icons">today</span>
+                  </button>
+                  <button
+                    id="history-btn"
+                    className={`mode-btn ${effectiveViewMode === 'history' ? 'active' : ''}`}
+                    title="カレンダー"
+                    aria-label="カレンダー"
+                    type="button"
+                    onClick={() => {
+                      setTodayMainTab('timeline');
+                      setViewMode('history');
+                      if (!historyDate) {
+                        const todayIso = todayYmd;
+                        const defaultDate = historyDates.includes(todayIso) ? todayIso : (historyDates[0] ?? todayIso);
+                        setHistoryDate(defaultDate);
+                        if (defaultDate) void loadHistory(defaultDate);
+                      }
+                    }}
+                  >
+                    <span className="material-icons">event</span>
+                  </button>
+                </div>
+                <div className="date-selector" id="date-selector" style={{ display: effectiveViewMode === 'history' ? 'flex' : 'none' }}>
+                  <div className={`date-input-wrap ${historyDate ? 'has-value' : ''}`} id="date-input-wrap">
+                    <input
+                      type="date"
+                      id="calendar-date-input"
+                      value={historyDate}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setHistoryDate(v);
+                        if (v) void loadHistory(v);
+                      }}
+                      disabled={!accessToken || busy}
+                    />
+                  </div>
+                </div>
+              </div>
 
-                {accessToken && todayMainTab === 'timeline' ? (
-                  <div className="task-input-section task-input-section-compact mt-2">
+              {accessToken && todayMainTab === 'timeline' ? (
+                <div className="timeline-task-add-slot">
+                  <div className="task-input-section task-input-section-compact">
                     <div className="task-add-tabs" role="tablist" aria-label="タスク追加モード">
                       <button
                         id="task-add-tab-now"
@@ -7866,56 +7916,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       ) : null}
                     </div>
                   </div>
-                ) : null}
-              </div>
-              <div className="history-controls">
-                <div className="view-mode-toggle">
-                  <button
-                    id="today-btn"
-                    className={`mode-btn ${effectiveViewMode === 'today' ? 'active' : ''}`}
-                    title="今日"
-                    aria-label="今日"
-                    type="button"
-                    onClick={() => setViewMode('today')}
-                  >
-                    <span className="material-icons">today</span>
-                  </button>
-                  <button
-                    id="history-btn"
-                    className={`mode-btn ${effectiveViewMode === 'history' ? 'active' : ''}`}
-                    title="カレンダー"
-                    aria-label="カレンダー"
-                    type="button"
-                    onClick={() => {
-                      setTodayMainTab('timeline');
-                      setViewMode('history');
-                      if (!historyDate) {
-                        const todayIso = todayYmd;
-                        const defaultDate = historyDates.includes(todayIso) ? todayIso : (historyDates[0] ?? todayIso);
-                        setHistoryDate(defaultDate);
-                        if (defaultDate) void loadHistory(defaultDate);
-                      }
-                    }}
-                  >
-                    <span className="material-icons">event</span>
-                  </button>
                 </div>
-                <div className="date-selector" id="date-selector" style={{ display: effectiveViewMode === 'history' ? 'flex' : 'none' }}>
-                  <div className={`date-input-wrap ${historyDate ? 'has-value' : ''}`} id="date-input-wrap">
-                    <input
-                      type="date"
-                      id="calendar-date-input"
-                      value={historyDate}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setHistoryDate(v);
-                        if (v) void loadHistory(v);
-                      }}
-                      disabled={!accessToken || busy}
-                    />
-                  </div>
-                </div>
-              </div>
+              ) : null}
+
               <div className="status-indicators">
                 <div className="status-card">
                   <span className="material-icons">access_time</span>
