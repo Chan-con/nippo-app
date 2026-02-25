@@ -7262,7 +7262,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 onClick={() => setTagWorkReportOpen(true)}
                 disabled={!accessToken || busy}
               >
-                <span className="material-icons">label</span>
+                <span className="material-icons">analytics</span>
                 タグ別作業報告
               </button>
               <button
@@ -7298,7 +7298,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 onClick={() => setTagStockOpen(true)}
                 disabled={!accessToken || busy}
               >
-                <span className="material-icons">label</span>
+                <span className="material-icons">sell</span>
                 タグ
               </button>
               <button
