@@ -794,7 +794,7 @@ input[type='number']::-webkit-inner-spin-button {
   row-gap: 0;
   align-items: start;
   border-bottom: none;
-  padding-bottom: 10px;
+  padding-bottom: 2px;
 }
 
 .main-header.with-task-add-inline .date-display {
@@ -837,12 +837,17 @@ input[type='number']::-webkit-inner-spin-button {
 
 .main-body.has-inline-task-add {
   margin-top: -32px;
-  padding-top: 32px;
+  padding-top: 0;
 }
 
 .main-body.is-history-mode {
   margin-top: -10px;
   padding-top: 10px;
+}
+
+.main-body.has-inline-task-add.is-history-mode {
+  margin-top: -32px;
+  padding-top: 0;
 }
 
 /* カレンダータブは「外側」をスクロールさせず、カレンダー内部だけスクロールさせる */
