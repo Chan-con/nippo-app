@@ -275,7 +275,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* サイドバー */
 .sidebar {
-  width: 96px;
+  width: 76px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   display: flex;
@@ -325,26 +325,34 @@ input[type='number']::-webkit-inner-spin-button {
 
 .sidebar-content {
   flex: 1;
-  padding: 12px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
 .sidebar .action-buttons .btn-secondary {
-  min-height: 48px;
-  padding: 10px 0;
+  min-height: 44px;
+  padding: 0;
   justify-content: center;
   gap: 0;
-  font-size: 0;
-  line-height: 0;
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  text-indent: -9999px;
 }
 
 .sidebar .action-buttons .btn-secondary .material-icons {
-  font-size: 22px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-indent: 0;
+  font-size: 20px;
+  line-height: 1;
 }
 
 /* タスク入力 */
@@ -761,7 +769,7 @@ input[type='number']::-webkit-inner-spin-button {
 .action-buttons {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* メインコンテンツ */
@@ -4705,7 +4713,7 @@ input[type='number']::-webkit-inner-spin-button {
     top: var(--titlebar-total-height);
     left: 0;
     bottom: 0;
-    width: min(96px, 86vw);
+    width: min(76px, 86vw);
     height: auto;
     transform: translateX(-105%);
     transition: transform 0.2s ease;
