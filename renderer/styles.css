@@ -3064,10 +3064,10 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .report-date-range {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   min-width: 0;
 }
 
@@ -3090,8 +3090,8 @@ input[type='number']::-webkit-inner-spin-button {
   transition: all 0.2s ease;
   height: 36px;
   box-sizing: border-box;
-  width: 130px;
-  min-width: 120px;
+  width: 100%;
+  min-width: 0;
 }
 
 .report-gpt-controls {
