@@ -7852,30 +7852,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         />
                       </div>
                       {effectiveViewMode === 'today' ? (
-                        <div className="task-run-toggle" role="group" aria-label="タスク開始/停止">
-                          <button
-                            id="add-task-btn"
-                            className={`btn-primary btn-run-toggle-btn is-play ${!runningTask ? 'active' : ''}`}
-                            type="button"
-                            title="タスク開始"
-                            aria-label="タスク開始"
-                            onClick={addTask}
-                            disabled={!accessToken || busy || !String(newTaskName || '').trim()}
-                          >
-                            <span className="material-icons">play_arrow</span>
-                          </button>
-                          <button
-                            id="end-task-btn"
-                            className={`btn-primary btn-run-toggle-btn is-stop ${runningTask ? 'active' : ''}`}
-                            type="button"
-                            title="タスク終了"
-                            aria-label="タスク終了"
-                            onClick={endTask}
-                            disabled={!accessToken || busy || !runningTask}
-                          >
-                            <span className="material-icons">stop_circle</span>
-                          </button>
-                        </div>
+                        <button
+                          id="add-task-btn"
+                          className={`btn-primary btn-add-task ${runningTask ? 'btn-end-task' : ''}`}
+                          type="button"
+                          title={runningTask ? 'タスク終了' : 'タスク開始'}
+                          aria-label={runningTask ? 'タスク終了' : 'タスク開始'}
+                          onClick={runningTask ? endTask : addTask}
+                          disabled={runningTask ? (!accessToken || busy) : (!accessToken || busy || !String(newTaskName || '').trim())}
+                        >
+                          <span className="material-icons">{runningTask ? 'stop_circle' : 'play_arrow'}</span>
+                        </button>
                       ) : (
                         <button
                           id="add-task-btn"
