@@ -564,6 +564,52 @@ input[type='number']::-webkit-inner-spin-button {
   align-items: center;
 }
 
+.task-run-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg-tertiary);
+}
+
+.task-run-toggle .btn-run-toggle-btn {
+  width: 34px;
+  min-width: 34px;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: calc(var(--radius-small) - 2px);
+  transform: none;
+  box-shadow: none;
+}
+
+.task-run-toggle .btn-run-toggle-btn .material-icons {
+  font-size: 18px;
+}
+
+.task-run-toggle .btn-run-toggle-btn:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.task-run-toggle .btn-run-toggle-btn.active.is-play {
+  background: var(--accent);
+  color: white;
+}
+
+.task-run-toggle .btn-run-toggle-btn.active.is-stop {
+  background: var(--error);
+  color: white;
+}
+
+.task-run-toggle .btn-run-toggle-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .task-add-actions .btn-add-task {
   flex: 1;
 }

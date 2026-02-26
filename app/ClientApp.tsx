@@ -7851,40 +7851,52 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < todayYmd))}
                         />
                       </div>
-
-                      <button
-                        id="add-task-btn"
-                        className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && !isReserveMode && runningTask ? 'btn-add-task-big' : ''}`}
-                        type="button"
-                        title={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
-                        aria-label={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
-                        onClick={addTask}
-                        disabled={
-                          !accessToken ||
-                          busy ||
-                          !String(newTaskName || '').trim() ||
-                          (effectiveViewMode === 'history' && !historyDate) ||
-                          (effectiveViewMode === 'history' && isReserveMode && !!historyDate && historyDate < todayYmd)
-                        }
-                      >
-                        <span className="material-icons">
-                          {effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
-                        </span>
-                      </button>
-
-                      {effectiveViewMode === 'today' && !isReserveMode && runningTask ? (
+                      {effectiveViewMode === 'today' ? (
+                        <div className="task-run-toggle" role="group" aria-label="タスク開始/停止">
+                          <button
+                            id="add-task-btn"
+                            className={`btn-primary btn-run-toggle-btn is-play ${!runningTask ? 'active' : ''}`}
+                            type="button"
+                            title="タスク開始"
+                            aria-label="タスク開始"
+                            onClick={addTask}
+                            disabled={!accessToken || busy || !String(newTaskName || '').trim()}
+                          >
+                            <span className="material-icons">play_arrow</span>
+                          </button>
+                          <button
+                            id="end-task-btn"
+                            className={`btn-primary btn-run-toggle-btn is-stop ${runningTask ? 'active' : ''}`}
+                            type="button"
+                            title="タスク終了"
+                            aria-label="タスク終了"
+                            onClick={endTask}
+                            disabled={!accessToken || busy || !runningTask}
+                          >
+                            <span className="material-icons">stop_circle</span>
+                          </button>
+                        </div>
+                      ) : (
                         <button
-                          id="end-task-btn"
-                          className="btn-primary btn-end-task btn-end-task-small"
+                          id="add-task-btn"
+                          className="btn-primary btn-add-task"
                           type="button"
-                          title="タスク終了"
-                          aria-label="タスク終了"
-                          onClick={endTask}
-                          disabled={!accessToken || busy}
+                          title={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
+                          aria-label={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
+                          onClick={addTask}
+                          disabled={
+                            !accessToken ||
+                            busy ||
+                            !String(newTaskName || '').trim() ||
+                            (effectiveViewMode === 'history' && !historyDate) ||
+                            (effectiveViewMode === 'history' && isReserveMode && !!historyDate && historyDate < todayYmd)
+                          }
                         >
-                          <span className="material-icons">stop_circle</span>
+                          <span className="material-icons">
+                            {effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
+                          </span>
                         </button>
-                      ) : null}
+                      )}
                     </div>
                   </div>
                 </div>
