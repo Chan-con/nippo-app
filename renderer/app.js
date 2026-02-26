@@ -4773,11 +4773,12 @@ class NippoApp {
         this.currentMode = 'history';
         this.setTaskAddMode('reserve');
         
-        // 履歴モードに切り替え時に日付入力フィールドをクリア（フレッシュスタート）
+        // 履歴モードに切り替え時は「今日」を自動選択して即操作可能にする
         const calendarInput = document.getElementById('calendar-date-input');
+        const todayString = this.getTokyoTodayYmd();
         if (calendarInput) {
-            calendarInput.value = '';
-            console.log('履歴モード切り替え時に日付入力フィールドをクリアしました');
+            calendarInput.value = todayString;
+            console.log('履歴モード切り替え時に今日の日付を自動選択しました:', todayString);
             this.syncCalendarInputHint();
         }
         
@@ -4802,10 +4803,9 @@ class NippoApp {
         // 内部状態をクリア
         this.currentDate = null;
         this.selectedDate = null;
-        
-        console.log('履歴モード切り替え時に選択された過去日付なし - 空の状態を表示');
-        // 履歴が選択されていない状態のUI
-        this.clearHistoryView();
+
+        // 今日を自動選択して履歴データを表示
+        this.onDateSelected(todayString);
     }
     
     clearHistoryView() {
@@ -4856,28 +4856,6 @@ class NippoApp {
         // 履歴モードでない場合は処理をスキップ
         if (this.currentMode !== 'history') {
             console.log('履歴モードでないため、日付選択処理をスキップ');
-            return;
-        }
-        
-        // 今日の日付が選択された場合は今日モードに戻す
-        const todayString = this.getTokyoTodayYmd();
-        
-        if (dateString === todayString) {
-            console.log('履歴モードで今日が選択されました（iOSの自動選択を含む可能性あり）');
-            this.showToast('今日のデータは「今日」モードでご確認ください', 'warning');
-
-            // 履歴モードは維持したまま、未選択状態に戻す
-            this.currentDate = null;
-            this.selectedDate = null;
-
-            const calendarInput = document.getElementById('calendar-date-input');
-            if (calendarInput) {
-                calendarInput.value = '';
-            }
-
-            this.syncCalendarInputHint();
-
-            this.clearHistoryView();
             return;
         }
         
