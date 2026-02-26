@@ -1112,14 +1112,6 @@ class NippoApp {
             if (!mq || !mq.matches) closeSidebar();
         });
 
-        // タスク追加モード切替
-        const tabNow = document.getElementById('task-add-tab-now');
-        const tabReserve = document.getElementById('task-add-tab-reserve');
-        if (tabNow && tabReserve) {
-            tabNow.addEventListener('click', () => this.setTaskAddMode('now'));
-            tabReserve.addEventListener('click', () => this.setTaskAddMode('reserve'));
-        }
-
         // タスク追加
         const addBtn = document.getElementById('add-task-btn');
         const taskInput = document.getElementById('task-input');
@@ -1318,6 +1310,7 @@ class NippoApp {
         const reserveTimeRow = document.getElementById('reserve-time-row');
         const reserveTimeInput = document.getElementById('reserve-time-input');
         const taskInput = document.getElementById('task-input');
+        const addTaskBtn = document.getElementById('add-task-btn');
 
         if (tabNow && tabReserve) {
             const isReserve = this.taskAddMode === 'reserve';
@@ -1333,6 +1326,12 @@ class NippoApp {
 
         if (taskInput) {
             taskInput.placeholder = this.taskAddMode === 'reserve' ? '予約するタスク名を入力...' : '新しいタスクを入力...';
+        }
+
+        if (addTaskBtn) {
+            const addLabel = this.taskAddMode === 'reserve' ? '予約を追加' : '今すぐ追加';
+            addTaskBtn.setAttribute('title', addLabel);
+            addTaskBtn.setAttribute('aria-label', addLabel);
         }
 
         if (this.taskAddMode === 'reserve') {
@@ -3185,9 +3184,11 @@ class NippoApp {
     }
 
     async addReservation() {
-        // 予約は今日モードのみ
-        if (this.currentMode === 'history' || this.currentDate) {
-            this.showToast('予約は今日モードでのみ利用できます', 'warning');
+        const targetDate = this.currentMode === 'history' ? this.currentDate : null;
+
+        // カレンダータブでは日付選択を必須にする
+        if (this.currentMode === 'history' && !targetDate) {
+            this.showToast('カレンダーで日付を選択してから予約してください', 'warning');
             return;
         }
 
@@ -3218,7 +3219,8 @@ class NippoApp {
             const requestData = {
                 name: taskName,
                 tag: selectedTag || null,
-                startTime: startTime
+                startTime: startTime,
+                dateString: targetDate
             };
 
             const response = await fetch(`${this.apiBaseUrl}/api/tasks/reserve`, {
@@ -3239,7 +3241,11 @@ class NippoApp {
             if (taskInput) taskInput.value = '';
             if (taskTagSelect) taskTagSelect.selectedIndex = 0;
 
-            await this.loadTasks();
+            if (targetDate) {
+                await this.loadHistoryData(targetDate);
+            } else {
+                await this.loadTasks();
+            }
             this.showToast(`${startTime} に「${taskName}」を予約しました`);
         } catch (error) {
             console.error('予約追加エラー:', error);
@@ -4722,6 +4728,7 @@ class NippoApp {
     switchToTodayMode() {
         console.log('今日モードに切り替え中...');
         this.currentMode = 'today';
+        this.setTaskAddMode('now');
         this.currentDate = null; // 今日の日付を示す
         
         // 日付検知を再初期化
@@ -4764,6 +4771,7 @@ class NippoApp {
     switchToHistoryMode() {
         console.log('履歴モードに切り替え中...');
         this.currentMode = 'history';
+        this.setTaskAddMode('reserve');
         
         // 履歴モードに切り替え時に日付入力フィールドをクリア（フレッシュスタート）
         const calendarInput = document.getElementById('calendar-date-input');
