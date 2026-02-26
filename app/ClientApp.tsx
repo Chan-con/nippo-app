@@ -7688,18 +7688,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       </select>
                     </div>
 
-                    <div id="reserve-time-row" className="reserve-time-row" hidden={!isReserveMode}>
-                      <input
-                        type="time"
-                        id="reserve-time-input"
-                        className="reserve-time-input"
-                        aria-label="開始時刻"
-                        value={reserveStartTime}
-                        onChange={(e) => setReserveStartTime(e.target.value)}
-                        disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < todayYmd))}
-                      />
-                    </div>
-
                     <div className="task-name-row input-with-button relative">
                       <input
                         type="text"
@@ -7852,6 +7840,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     </div>
 
                     <div className="task-add-actions">
+                      <div id="reserve-time-row" className="reserve-time-row" hidden={!isReserveMode}>
+                        <input
+                          type="time"
+                          id="reserve-time-input"
+                          className="reserve-time-input"
+                          aria-label="開始時刻"
+                          value={reserveStartTime}
+                          onChange={(e) => setReserveStartTime(e.target.value)}
+                          disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < todayYmd))}
+                        />
+                      </div>
+
                       <button
                         id="add-task-btn"
                         className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && !isReserveMode && runningTask ? 'btn-add-task-big' : ''}`}

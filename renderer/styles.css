@@ -370,8 +370,7 @@ input[type='number']::-webkit-inner-spin-button {
   display: grid;
   grid-template-columns: minmax(130px, 180px) minmax(0, 1fr) auto;
   grid-template-areas:
-    'tag input actions'
-    'reserve reserve reserve';
+    'tag input actions';
   gap: 6px 10px;
   align-items: center;
 }
@@ -392,13 +391,14 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .task-input-section.task-input-section-compact .reserve-time-row {
-  grid-area: reserve;
   margin-bottom: 0;
-  width: 100%;
+  width: auto;
+  flex: 0 0 auto;
 }
 
 .task-input-section.task-input-section-compact .reserve-time-input {
-  width: min(220px, 100%);
+  width: 132px;
+  min-width: 132px;
 }
 
 .task-input-section.task-input-section-compact .task-name-row {
@@ -445,8 +445,7 @@ input[type='number']::-webkit-inner-spin-button {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       'tag tag'
-      'input actions'
-      'reserve reserve';
+      'input actions';
   }
 
   .task-input-section.task-input-section-compact .task-add-tabs,
@@ -456,11 +455,12 @@ input[type='number']::-webkit-inner-spin-button {
   }
 
   .task-input-section.task-input-section-compact .reserve-time-row {
-    width: 100%;
+    width: auto;
   }
 
   .task-input-section.task-input-section-compact .reserve-time-input {
-    width: 100%;
+    width: 122px;
+    min-width: 122px;
   }
 }
 
