@@ -397,8 +397,8 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .task-input-section.task-input-section-compact .reserve-time-input {
-  width: 132px;
-  min-width: 132px;
+  width: 10.5ch;
+  min-width: 10.5ch;
 }
 
 .task-input-section.task-input-section-compact .task-name-row {
@@ -459,8 +459,8 @@ input[type='number']::-webkit-inner-spin-button {
   }
 
   .task-input-section.task-input-section-compact .reserve-time-input {
-    width: 122px;
-    min-width: 122px;
+    width: 10.5ch;
+    min-width: 10.5ch;
   }
 }
 
