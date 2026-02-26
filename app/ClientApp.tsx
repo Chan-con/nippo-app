@@ -1048,7 +1048,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   // タイムライン以外（カンバン/ガント/ノート）では独立して動けるように、
   // それらのUI/副作用では常に「今日」として扱う。
   const effectiveViewMode: 'today' | 'history' = todayMainTab === 'timeline' ? viewMode : 'today';
-  const isReserveMode = effectiveViewMode === 'history';
+  const isPastHistoryMode = effectiveViewMode === 'history' && !!historyDate && historyDate < todayYmd;
+  const isReserveMode = effectiveViewMode === 'history' && !isPastHistoryMode;
+  const needsHistoryTimeInput = effectiveViewMode === 'history';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -6285,16 +6287,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
     const todayIso = todayYmd;
     const isHistoryTarget = effectiveViewMode === 'history' && !!historyDate;
-    const isReserve = isReserveMode;
-    const isPastReservationInCalendar = isHistoryTarget && isReserve && historyDate < todayIso;
+    const isPastHistoryTarget = isHistoryTarget && historyDate < todayIso;
+    const isReserve = isHistoryTarget ? !isPastHistoryTarget : false;
+    const isPastHistoryAdd = isHistoryTarget && isPastHistoryTarget;
     const reserveDateString = isHistoryTarget ? (historyDate === todayIso ? null : historyDate) : null;
 
-    if (isPastReservationInCalendar) {
-      setError('過去の日付には予約できません');
-      return;
-    }
-
-    if (isReserve && !reserveStartTime) {
+    if ((isReserve || isPastHistoryAdd) && !reserveStartTime) {
       setError('開始時刻が必要です');
       return;
     }
@@ -6328,6 +6326,10 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       } else if (isHistoryTarget) {
         const payload: any = { name };
         if (selectedTag) payload.tag = selectedTag;
+        if (isPastHistoryAdd && reserveStartTime) {
+          payload.startTime = reserveStartTime;
+          payload.endTime = reserveStartTime;
+        }
         if (carryMemoUrl) {
           if (carryMemo) payload.memo = carryMemo;
           if (carryUrl) payload.url = carryUrl;
@@ -7840,7 +7842,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     </div>
 
                     <div className="task-add-actions">
-                      <div id="reserve-time-row" className="reserve-time-row" hidden={!isReserveMode}>
+                      <div id="reserve-time-row" className="reserve-time-row" hidden={!needsHistoryTimeInput}>
                         <input
                           type="time"
                           id="reserve-time-input"
@@ -7848,7 +7850,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           aria-label="開始時刻"
                           value={reserveStartTime}
                           onChange={(e) => setReserveStartTime(e.target.value)}
-                          disabled={!accessToken || busy || (effectiveViewMode === 'history' && (!historyDate || historyDate < todayYmd))}
+                          disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
                         />
                       </div>
                       {effectiveViewMode === 'today' ? (
@@ -7868,20 +7870,17 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           id="add-task-btn"
                           className="btn-primary btn-add-task"
                           type="button"
-                          title={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
-                          aria-label={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
+                          title={isPastHistoryMode ? '過去追加' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
+                          aria-label={isPastHistoryMode ? '過去追加' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
                           onClick={addTask}
                           disabled={
                             !accessToken ||
                             busy ||
                             !String(newTaskName || '').trim() ||
-                            (effectiveViewMode === 'history' && !historyDate) ||
-                            (effectiveViewMode === 'history' && isReserveMode && !!historyDate && historyDate < todayYmd)
+                            (effectiveViewMode === 'history' && !historyDate)
                           }
                         >
-                          <span className="material-icons">
-                            {effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
-                          </span>
+                          <span className="material-icons">add</span>
                         </button>
                       )}
                     </div>
