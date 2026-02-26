@@ -637,7 +637,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskSuggestOpen, setTaskSuggestOpen] = useState(false);
   const [taskSuggestActiveIndex, setTaskSuggestActiveIndex] = useState(-1);
   const taskSuggestCloseTimerRef = useRef<number | null>(null);
-  const [addMode, setAddMode] = useState<'now' | 'reserve'>('now');
   const [selectedTag, setSelectedTag] = useState('');
   const [reserveStartTime, setReserveStartTime] = useState('');
   const [tagStock, setTagStock] = useState<TagStockItem[]>([]);
@@ -1049,6 +1048,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   // タイムライン以外（カンバン/ガント/ノート）では独立して動けるように、
   // それらのUI/副作用では常に「今日」として扱う。
   const effectiveViewMode: 'today' | 'history' = todayMainTab === 'timeline' ? viewMode : 'today';
+  const isReserveMode = effectiveViewMode === 'history';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -6285,7 +6285,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
     const todayIso = todayYmd;
     const isHistoryTarget = effectiveViewMode === 'history' && !!historyDate;
-    const isReserve = addMode === 'reserve';
+    const isReserve = isReserveMode;
     const isPastReservationInCalendar = isHistoryTarget && isReserve && historyDate < todayIso;
     const reserveDateString = isHistoryTarget ? (historyDate === todayIso ? null : historyDate) : null;
 
@@ -7670,34 +7670,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               {accessToken && todayMainTab === 'timeline' ? (
                 <div className="timeline-task-add-slot">
                   <div className="task-input-section task-input-section-compact">
-                    <div className="task-add-tabs" role="tablist" aria-label="タスク追加モード">
-                      <button
-                        id="task-add-tab-now"
-                        className={`task-add-tab ${addMode === 'now' ? 'active' : ''}`}
-                        role="tab"
-                        aria-selected={addMode === 'now'}
-                        type="button"
-                        title="今すぐ"
-                        aria-label="今すぐ"
-                        onClick={() => setAddMode('now')}
-                      >
-                        <span className="material-icons">play_arrow</span>
-                      </button>
-                      <button
-                        id="task-add-tab-reserve"
-                        className={`task-add-tab ${addMode === 'reserve' ? 'active' : ''}`}
-                        role="tab"
-                        aria-selected={addMode === 'reserve'}
-                        type="button"
-                        title="予約"
-                        aria-label="予約"
-                        onClick={() => setAddMode('reserve')}
-                        disabled={!accessToken || busy || (effectiveViewMode === 'history' && !historyDate)}
-                      >
-                        <span className="material-icons">schedule</span>
-                      </button>
-                    </div>
-
                     <div className="tag-select-group">
                       <select
                         id="task-tag-select"
@@ -7716,7 +7688,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       </select>
                     </div>
 
-                    <div id="reserve-time-row" className="reserve-time-row" hidden={addMode !== 'reserve'}>
+                    <div id="reserve-time-row" className="reserve-time-row" hidden={!isReserveMode}>
                       <input
                         type="time"
                         id="reserve-time-input"
@@ -7882,25 +7854,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     <div className="task-add-actions">
                       <button
                         id="add-task-btn"
-                        className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? 'btn-add-task-big' : ''}`}
+                        className={`btn-primary btn-add-task ${effectiveViewMode === 'today' && !isReserveMode && runningTask ? 'btn-add-task-big' : ''}`}
                         type="button"
-                        title={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
-                        aria-label={effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? '過去には予約できません' : '追加'}
+                        title={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
+                        aria-label={effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? '過去には予約できません' : (isReserveMode ? '予約を追加' : '今すぐ追加')}
                         onClick={addTask}
                         disabled={
                           !accessToken ||
                           busy ||
                           !String(newTaskName || '').trim() ||
                           (effectiveViewMode === 'history' && !historyDate) ||
-                          (effectiveViewMode === 'history' && addMode === 'reserve' && !!historyDate && historyDate < todayYmd)
+                          (effectiveViewMode === 'history' && isReserveMode && !!historyDate && historyDate < todayYmd)
                         }
                       >
                         <span className="material-icons">
-                          {effectiveViewMode === 'history' && addMode === 'reserve' && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
+                          {effectiveViewMode === 'history' && isReserveMode && historyDate && historyDate < todayYmd ? 'remove' : 'add'}
                         </span>
                       </button>
 
-                      {effectiveViewMode === 'today' && addMode !== 'reserve' && runningTask ? (
+                      {effectiveViewMode === 'today' && !isReserveMode && runningTask ? (
                         <button
                           id="end-task-btn"
                           className="btn-primary btn-end-task btn-end-task-small"
