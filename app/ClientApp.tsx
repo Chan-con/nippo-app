@@ -7593,7 +7593,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   aria-selected={todayMainTab === 'calendar'}
                   aria-label="カレンダー"
                   data-tooltip="カレンダー"
-                  onClick={() => setTodayMainTab('calendar')}
+                  onClick={() => {
+                    const wasCalendar = todayMainTab === 'calendar';
+                    setTodayMainTab('calendar');
+                    if (!wasCalendar) setCalendarJumpNonce((n) => n + 1);
+                  }}
                   onDoubleClick={() => {
                     setTodayMainTab('calendar');
                     setCalendarJumpNonce((n) => n + 1);
