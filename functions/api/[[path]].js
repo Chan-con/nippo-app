@@ -752,6 +752,7 @@ export async function onRequest(context) {
       if (!apiKey) return jsonResponse({ success: false, error: 'GPT APIキーの復号に失敗しました' }, 500);
 
       const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
+      const goals = Array.isArray(body?.goals) ? body.goals : [];
       const normalized = tasks
         .map((t) => ({
           name: String(t?.name || '').slice(0, 200),
@@ -786,7 +787,46 @@ export async function onRequest(context) {
         merged.push({ name: String(v?.name || '').slice(0, 200), memo: mergedMemo.slice(0, 4000) });
       }
 
-      const limited = merged.slice(0, 80);
+      const normalizedGoals = goals
+        .map((g, index) => {
+          const name = String(g || '').trim().slice(0, 200);
+          return {
+            index,
+            name,
+            norm: name.replace(/[\s\u3000]+/g, '').toLowerCase(),
+          };
+        })
+        .filter((g) => g.norm);
+
+      const normalizeForMatch = (input) => String(input || '').replace(/[\s\u3000]+/g, '').toLowerCase();
+
+      const goalBuckets = normalizedGoals.map(() => []);
+      const otherBucket = [];
+
+      for (const t of merged) {
+        const hay = normalizeForMatch(`${String(t?.name || '')}\n${String(t?.memo || '')}`);
+        let matchedIndex = -1;
+        for (let i = 0; i < normalizedGoals.length; i += 1) {
+          const g = normalizedGoals[i];
+          if (!g?.norm) continue;
+          if (hay.includes(g.norm)) {
+            matchedIndex = i;
+            break;
+          }
+        }
+        if (matchedIndex >= 0) goalBuckets[matchedIndex].push(t);
+        else otherBucket.push(t);
+      }
+
+      const ordered = [];
+      for (let i = 0; i < normalizedGoals.length; i += 1) {
+        const bucket = goalBuckets[i];
+        if (!Array.isArray(bucket) || bucket.length === 0) continue;
+        ordered.push(...bucket);
+      }
+      ordered.push(...otherBucket);
+
+      const limited = ordered.slice(0, 80);
       if (limited.length === 0) {
         return jsonResponse({ success: false, error: 'メモがあるタスクがありません' }, 400);
       }
@@ -800,29 +840,49 @@ export async function onRequest(context) {
       }
       const budget = decideKeyPieceBudget(totalMemoChars, totalPieces);
 
-      const timeline = limited
-        .map((t) => {
-          const title = String(t.name || '').trim();
-          const memo = String(t.memo || '').trim();
-          if (!memo) return '';
+      const formatTaskBlock = (t) => {
+        const title = String(t?.name || '').trim();
+        const memo = String(t?.memo || '').trim();
+        if (!memo) return '';
 
-          // Prefer newer side for picking, but keep chronological order in display.
-          const piecesChrono = splitMemoToPieces(memo);
-          const piecesForPick = piecesChrono.slice().reverse();
-          const pickedNewerFirst = pickKeyPieces(piecesForPick, budget);
-          const picked = pickedNewerFirst.slice().reverse();
-          const compact = picked
-            .map((s) => String(s || '').trim())
-            .filter(Boolean)
-            .map((s) => (s.length > 220 ? s.slice(0, 220) + '…' : s))
-            .join('\n');
+        // Prefer newer side for picking, but keep chronological order in display.
+        const piecesChrono = splitMemoToPieces(memo);
+        const piecesForPick = piecesChrono.slice().reverse();
+        const pickedNewerFirst = pickKeyPieces(piecesForPick, budget);
+        const picked = pickedNewerFirst.slice().reverse();
+        const compact = picked
+          .map((s) => String(s || '').trim())
+          .filter(Boolean)
+          .map((s) => (s.length > 220 ? s.slice(0, 220) + '…' : s))
+          .join('\n');
 
-          const body = compact || memo;
-          if (!title) return `【メモ】\n${body}`;
-          return `【${title}】\n${body}`;
-        })
+        const body = compact || memo;
+        if (!title) return `【メモ】\n${body}`;
+        return `【${title}】\n${body}`;
+      };
+
+      const goalTimelineSections = [];
+      for (let i = 0; i < normalizedGoals.length; i += 1) {
+        const bucket = goalBuckets[i]
+          .map((t) => formatTaskBlock(t))
+          .filter(Boolean)
+          .slice(0, 20);
+        if (bucket.length === 0) continue;
+        goalTimelineSections.push(`《優先まとまり:${normalizedGoals[i].name}》\n${bucket.join('\n\n')}`);
+      }
+      const otherTimelineTasks = otherBucket
+        .map((t) => formatTaskBlock(t))
         .filter(Boolean)
-        .join('\n\n');
+        .slice(0, 30);
+
+      const timelineSections = [...goalTimelineSections];
+      if (otherTimelineTasks.length > 0) {
+        timelineSections.push(`《その他の作業》\n${otherTimelineTasks.join('\n\n')}`);
+      }
+
+      const timeline = timelineSections.length > 0
+        ? timelineSections.join('\n\n')
+        : limited.map((t) => formatTaskBlock(t)).filter(Boolean).join('\n\n');
 
       const messages = [
         {
@@ -833,14 +893,14 @@ export async function onRequest(context) {
         {
           role: 'user',
           content:
-            '次の入力から「報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 文章は硬くしすぎない（自然でわかりやすい言葉を使う）\n- 難しい言い回し・過度にビジネスっぽい敬語・抽象語（例: 〜いたしました/〜させていただきました/推進/実施/対応 等）の多用は避ける\n- 箇条書きは使わず、読みやすい文章\n- 空行は入れない（連続改行は禁止）\n- 改行する場合は段落区切りのみ。段落間も改行1つだけ（文の途中で不自然に改行しない）\n- 全体は2〜4つのまとまりになるように（必要なら分ける）\n- 作業時間・工数・時間帯など時間情報には一切触れない（推測もしない）\n- 対象期間・日付・複数日にわたる継続など、期間に関する言及は一切しない（推測もしない）\n- 入力に無い事実は追加しない\n- メモがあれば自然に文章へ反映する\n- 入力にタグ名やカテゴリ名（例: [xxx] や接頭辞）が含まれていても、タグごとに章立て・見出し分けはしない\n- 似た内容や同一趣旨の作業は、言い換えて繰り返さず可能な限り統合して一度だけ述べる（冗長な重複を避ける）\n- 入力の情報量が多い場合、途中経過（調査中/確認中/対応中など）は省略し、完了・変更点・決定事項・課題の解消など「結果」を優先する\n- 入力の情報量が少ない場合は、途中経過も最大1点まで自然に拾ってよい\n- 専門用語は可能な範囲でわかりやすい言葉に置き換える（ただし解説は不要で、文章を長くしない）\n\n入力（作業タイトル/メモ）:\n' + timeline,
+            '次の入力から「報告内容」を作ってください。\n\n要件:\n- 日本語\n- 丁寧な文体(です/ます)\n- 文章は硬くしすぎない（自然でわかりやすい言葉を使う）\n- 難しい言い回し・過度にビジネスっぽい敬語・抽象語（例: 〜いたしました/〜させていただきました/推進/実施/対応 等）の多用は避ける\n- 箇条書きは使わず、読みやすい文章\n- 段落は2〜5個を目安にし、段落間は空行を1行だけ入れる（連続空行は禁止）\n- 文の途中で不自然に改行しない\n- 入力の並び順を優先してまとめる。先頭の《優先まとまり:...》は優先度順なので、該当内容を先に、該当しない内容は後ろに自然に含める\n- 入力に《優先まとまり:...》があっても、見出しや章タイトルは出力しない\n- 「〜について」「〜に関して」などの書き出しで段落を始めない\n- 作業時間・工数・時間帯など時間情報には一切触れない（推測もしない）\n- 対象期間・日付・複数日にわたる継続など、期間に関する言及は一切しない（推測もしない）\n- 入力に無い事実は追加しない\n- メモがあれば自然に文章へ反映する\n- 入力にタグ名やカテゴリ名（例: [xxx] や接頭辞）が含まれていても、タグごとに章立て・見出し分けはしない\n- 似た内容や同一趣旨の作業は、言い換えて繰り返さず可能な限り統合して一度だけ述べる（冗長な重複を避ける）\n- 入力の情報量が多い場合、途中経過（調査中/確認中/対応中など）は省略し、完了・変更点・決定事項・課題の解消など「結果」を優先する\n- 入力の情報量が少ない場合は、途中経過も最大1点まで自然に拾ってよい\n- 専門用語は可能な範囲でわかりやすい言葉に置き換える（ただし解説は不要で、文章を長くしない）\n\n入力（作業タイトル/メモ）:\n' + timeline,
         },
       ];
 
       const textRaw = await callOpenAiChat({ apiKey, messages, temperature: 0.1, maxTokens: 900 });
       const text = String(textRaw || '')
         .replace(/\r\n?/g, '\n')
-        .replace(/\n{2,}/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
       return jsonResponse({ success: true, text });
     }

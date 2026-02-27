@@ -4816,7 +4816,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const res = await apiFetch('/api/gpt/report-from-timeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tasks: payloadTasks }),
+        body: JSON.stringify({
+          tasks: payloadTasks,
+          goals: goalStock
+            .map((g) => String(g?.name || '').trim())
+            .filter((name) => name.length > 0),
+        }),
       });
       const body = await res.json().catch(() => null as any);
       if (!res.ok || !body?.success) throw new Error(body?.error || '生成に失敗しました');
