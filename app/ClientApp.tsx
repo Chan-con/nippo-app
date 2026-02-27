@@ -6502,6 +6502,49 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return list;
   }, [tasks]);
 
+  const alertsViewList = useMemo(() => {
+    const nowDate = new Date(nowMs);
+    const list = normalizeAlerts(alerts, activeTimeZone, nowMs).map((a) => ({
+      ...a,
+      nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowDate), activeTimeZone) || a.nextFireAt || '',
+    }));
+
+    return list
+      .slice()
+      .sort((a, b) => {
+        const am = Date.parse(String(a.nextFireAt || ''));
+        const bm = Date.parse(String(b.nextFireAt || ''));
+        const aOk = Number.isFinite(am);
+        const bOk = Number.isFinite(bm);
+        if (aOk && bOk && am !== bm) return am - bm;
+        if (aOk && !bOk) return -1;
+        if (!aOk && bOk) return 1;
+        return String(a.id).localeCompare(String(b.id));
+      });
+  }, [alerts, activeTimeZone, nowMs]);
+
+  const notesViewList = useMemo(() => {
+    const q = String(notesQuery || '').trim().toLowerCase();
+    const list = normalizeNotes(notes)
+      .filter((n) => {
+        if (!q) return true;
+        return String(n.body || '').toLowerCase().includes(q);
+      })
+      .slice();
+
+    list.sort((a, b) => {
+      const au = Date.parse(a.updatedAt || a.createdAt || '');
+      const bu = Date.parse(b.updatedAt || b.createdAt || '');
+      if (Number.isFinite(au) && Number.isFinite(bu) && au !== bu) return bu - au;
+      const ac = Date.parse(a.createdAt || '');
+      const bc = Date.parse(b.createdAt || '');
+      if (Number.isFinite(ac) && Number.isFinite(bc) && ac !== bc) return bc - ac;
+      return String(b.id).localeCompare(String(a.id));
+    });
+
+    return list;
+  }, [notes, notesQuery]);
+
   const reportTimelineCopyBlocked = (effectiveViewMode === 'today' ? tasks : historyTasks).some(
     (t) => t.status === 'reserved' || (!t.endTime && t.status !== 'reserved')
   );
@@ -8337,29 +8380,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                 <div className="alerts-list">
                   {(() => {
+                    if (alertsViewList.length === 0) return <div className="alerts-empty">アラートがありません</div>;
+
                     const nowDate = new Date(nowMs);
-                    const list = normalizeAlerts(alerts, activeTimeZone, nowMs).map((a) => ({
-                      ...a,
-                      nextFireAt: computeNextFireAt(a, getAlertComputeBase(a, nowDate), activeTimeZone) || a.nextFireAt || '',
-                    }));
-                    if (list.length === 0) return <div className="alerts-empty">アラートがありません</div>;
-
-                    const sorted = list
-                      .slice()
-                      .sort((a, b) => {
-                        const am = Date.parse(String(a.nextFireAt || ''));
-                        const bm = Date.parse(String(b.nextFireAt || ''));
-                        const aOk = Number.isFinite(am);
-                        const bOk = Number.isFinite(bm);
-                        if (aOk && bOk && am !== bm) return am - bm;
-                        if (aOk && !bOk) return -1;
-                        if (!aOk && bOk) return 1;
-                        return String(a.id).localeCompare(String(b.id));
-                      });
-
                     const weekdayLabel = (d: number) => (d === 0 ? '日' : d === 1 ? '月' : d === 2 ? '火' : d === 3 ? '水' : d === 4 ? '木' : d === 5 ? '金' : d === 6 ? '土' : '');
 
-                    return sorted.map((a) => {
+                    return alertsViewList.map((a) => {
                       const nextText = a.nextFireAt ? formatIsoToZonedYmdHm(a.nextFireAt, activeTimeZone) : '';
                       const nextMs = Date.parse(String(a.nextFireAt || ''));
                       const overdue = Number.isFinite(nextMs) && nextMs <= nowDate.getTime();
@@ -8738,29 +8764,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
                 <div className="notes-grid" ref={notesGridRef}>
                   {(() => {
-                    const q = String(notesQuery || '').trim().toLowerCase();
-                    const list = normalizeNotes(notes)
-                      .filter((n) => {
-                        if (!q) return true;
-                        return String(n.body || '').toLowerCase().includes(q);
-                      })
-                      .slice();
-
-                    list.sort((a, b) => {
-                      const au = Date.parse(a.updatedAt || a.createdAt || '');
-                      const bu = Date.parse(b.updatedAt || b.createdAt || '');
-                      if (Number.isFinite(au) && Number.isFinite(bu) && au !== bu) return bu - au;
-                      const ac = Date.parse(a.createdAt || '');
-                      const bc = Date.parse(b.createdAt || '');
-                      if (Number.isFinite(ac) && Number.isFinite(bc) && ac !== bc) return bc - ac;
-                      return String(b.id).localeCompare(String(a.id));
-                    });
-
-                    if (list.length === 0) {
+                    if (notesViewList.length === 0) {
                       return <div className="notes-empty">ノートがありません</div>;
                     }
 
-                    return list.map((note) => {
+                    return notesViewList.map((note) => {
                       return (
                         <button
                           key={note.id}
