@@ -6451,6 +6451,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     .slice()
     .reverse()
     .find((t) => !t.endTime && t.status !== 'reserved');
+  const hasNewTaskName = !!String(newTaskName || '').trim();
+  const showEndTaskButton = !!runningTask && !hasNewTaskName;
   const completedCount = effectiveTasks.filter((t) => !!t.endTime && t.status !== 'reserved').length;
   const dailyWorkCapMin = useMemo(() => {
     const h = Number(billingHourlyCapHours);
@@ -7856,14 +7858,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       {effectiveViewMode === 'today' ? (
                         <button
                           id="add-task-btn"
-                          className={`btn-primary btn-add-task ${runningTask ? 'btn-end-task' : ''}`}
+                          className={`btn-primary btn-add-task ${showEndTaskButton ? 'btn-end-task' : ''}`}
                           type="button"
-                          title={runningTask ? 'タスク終了' : 'タスク開始'}
-                          aria-label={runningTask ? 'タスク終了' : 'タスク開始'}
-                          onClick={runningTask ? endTask : addTask}
-                          disabled={runningTask ? (!accessToken || busy) : (!accessToken || busy || !String(newTaskName || '').trim())}
+                          title={showEndTaskButton ? 'タスク終了' : (runningTask ? '今すぐ追加' : 'タスク開始')}
+                          aria-label={showEndTaskButton ? 'タスク終了' : (runningTask ? '今すぐ追加' : 'タスク開始')}
+                          onClick={showEndTaskButton ? endTask : addTask}
+                          disabled={showEndTaskButton ? (!accessToken || busy) : (!accessToken || busy || !hasNewTaskName)}
                         >
-                          <span className="material-icons">{runningTask ? 'stop_circle' : 'play_arrow'}</span>
+                          <span className="material-icons">{showEndTaskButton ? 'stop_circle' : (runningTask ? 'add' : 'play_arrow')}</span>
                         </button>
                       ) : (
                         <button
