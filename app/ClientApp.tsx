@@ -7695,12 +7695,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     onClick={() => {
                       setTodayMainTab('timeline');
                       setViewMode('history');
-                      if (!historyDate) {
-                        const todayIso = todayYmd;
-                        const defaultDate = historyDates.includes(todayIso) ? todayIso : (historyDates[0] ?? todayIso);
-                        setHistoryDate(defaultDate);
-                        if (defaultDate) void loadHistory(defaultDate);
-                      }
+                      const todayIso = todayYmd;
+                      setHistoryDate(todayIso);
+                      void loadHistory(todayIso);
                     }}
                   >
                     <span className="material-icons">event</span>
