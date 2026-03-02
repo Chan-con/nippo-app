@@ -10632,7 +10632,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               </div>
             </div>
 
-            <div className="holiday-cal-hint">日付をクリックして「お休み」を切り替えできます</div>
             {holidayCalendarCopyError ? (
               <div className="holiday-cal-hint" style={{ color: 'var(--text-muted)' }}>
                 {holidayCalendarCopyError}
