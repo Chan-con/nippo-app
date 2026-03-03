@@ -5696,7 +5696,7 @@ input[type='number']::-webkit-inner-spin-button {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .view-mode-toggle {
@@ -5743,6 +5743,7 @@ input[type='number']::-webkit-inner-spin-button {
   margin-top: 8px;
   display: flex;
   flex-direction: row;
+  justify-content: flex-end;
   gap: 8px;
   align-items: center;
   min-width: 0;
