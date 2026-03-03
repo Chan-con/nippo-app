@@ -301,6 +301,7 @@ type TimelineTaskSearchEntry = {
   id: string;
   date: string;
   taskName: string;
+  memo: string;
   count: number;
 };
 
@@ -6671,22 +6672,24 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     try {
       const map = new Map<string, TimelineTaskSearchEntry>();
 
-      const addOne = (dateRaw: unknown, nameRaw: unknown) => {
+      const addOne = (dateRaw: unknown, nameRaw: unknown, memoRaw: unknown) => {
         const date = normalizeYmd(dateRaw);
         const taskName = String(nameRaw ?? '').trim();
+        const memo = String(memoRaw ?? '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
         if (!taskName) return;
         const key = `${date}::${taskName.toLowerCase()}`;
         const found = map.get(key);
         if (found) {
           found.count += 1;
+          if (!found.memo && memo) found.memo = memo;
           return;
         }
-        map.set(key, { id: safeRandomId('timeline-search'), date, taskName, count: 1 });
+        map.set(key, { id: safeRandomId('timeline-search'), date, taskName, memo, count: 1 });
       };
 
       for (const task of Array.isArray(tasks) ? tasks : []) {
-        addOne(todayYmd, task?.name);
+        addOne(todayYmd, task?.name, (task as any)?.memo);
       }
 
       const resDates = await apiFetch('/api/history/dates', { method: 'GET' });
@@ -6704,7 +6707,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         if (!res.ok) continue;
         const body = await res.json().catch(() => null as any);
         const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
-        for (const task of tasksInDay) addOne(ymd, task?.name ?? task?.title);
+        for (const task of tasksInDay) addOne(ymd, task?.name ?? task?.title, task?.memo);
       }
 
       const normalized = Array.from(map.values()).sort((a, b) => {
@@ -9403,6 +9406,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       }}
                     >
                       <span className="timeline-task-search-item-name">{item.taskName}</span>
+                      {item.memo ? <span className="timeline-task-search-item-memo">{item.memo}</span> : null}
                       <span className="timeline-task-search-item-meta">
                         {formatDateISOToJaLong(item.date)}
                         {item.count > 1 ? `（${item.count}件）` : ''}
