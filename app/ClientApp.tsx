@@ -297,6 +297,18 @@ type TagWorkSummary = {
   groups: TagWorkDateGroup[];
 };
 
+type TimelineTaskSearchEntry = {
+  id: string;
+  date: string;
+  taskName: string;
+  count: number;
+};
+
+type TimelineTaskSearchResult = TimelineTaskSearchEntry & {
+  score: number;
+  dateDistanceDays: number;
+};
+
 const jpPublicHolidayCache = new Map<number, Set<string>>();
 
 function ymdKeyFromParts(year: number, month0: number, day: number) {
@@ -1015,6 +1027,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     endTime: string;
     tag: string;
   } | null>(null);
+  const [timelineTaskSearchOpen, setTimelineTaskSearchOpen] = useState(false);
+  const [timelineTaskSearchQuery, setTimelineTaskSearchQuery] = useState('');
+  const [timelineTaskSearchLoading, setTimelineTaskSearchLoading] = useState(false);
+  const [timelineTaskSearchError, setTimelineTaskSearchError] = useState<string | null>(null);
+  const [timelineTaskSearchEntries, setTimelineTaskSearchEntries] = useState<TimelineTaskSearchEntry[]>([]);
+  const [timelineTaskSearchLoaded, setTimelineTaskSearchLoaded] = useState(false);
+  const timelineTaskSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   // report
   const [reportUrls, setReportUrls] = useState<ReportUrl[]>([]);
@@ -6561,6 +6580,184 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `${y}年${Number(m)}月${Number(d)}日`;
   }
 
+  function toYmdUtcDayMs(ymd: string) {
+    const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return Number.NaN;
+    return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+
+  function calcYmdDistanceDays(baseYmd: string, targetYmd: string) {
+    const a = toYmdUtcDayMs(baseYmd);
+    const b = toYmdUtcDayMs(targetYmd);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.MAX_SAFE_INTEGER;
+    return Math.abs(Math.round((b - a) / 86400000));
+  }
+
+  function normalizeSearchToken(input: string) {
+    return String(input || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  function computeTaskNameMatchScore(taskNameRaw: string, queryRaw: string) {
+    const taskName = normalizeSearchToken(taskNameRaw);
+    const query = normalizeSearchToken(queryRaw);
+    if (!query || !taskName) return 0;
+
+    if (taskName === query) return 1_000_000;
+
+    const compactName = taskName.replace(/\s+/g, '');
+    const compactQuery = query.replace(/\s+/g, '');
+
+    if (compactName === compactQuery) return 950_000;
+
+    const startsAt = taskName.indexOf(query);
+    if (startsAt === 0) return 900_000 + Math.max(0, 1000 - (taskName.length - query.length));
+
+    if (startsAt > 0) return 800_000 - Math.min(startsAt, 500) + Math.max(0, 500 - (taskName.length - query.length));
+
+    const tokenList = query.split(' ').filter(Boolean);
+    if (tokenList.length > 1) {
+      const allIncluded = tokenList.every((token) => taskName.includes(token));
+      if (allIncluded) {
+        const firstPos = Math.min(...tokenList.map((token) => taskName.indexOf(token)).filter((n) => n >= 0));
+        return 700_000 - Math.min(firstPos, 300);
+      }
+    }
+
+    let qi = 0;
+    let matched = 0;
+    let consecutiveBonus = 0;
+    let lastMatchIndex = -10;
+    for (let i = 0; i < compactName.length && qi < compactQuery.length; i += 1) {
+      if (compactName[i] !== compactQuery[qi]) continue;
+      matched += 1;
+      if (i === lastMatchIndex + 1) consecutiveBonus += 2;
+      lastMatchIndex = i;
+      qi += 1;
+    }
+    if (matched === compactQuery.length) {
+      return 500_000 + matched * 100 + consecutiveBonus;
+    }
+
+    return 0;
+  }
+
+  const timelineTaskSearchResults = useMemo<TimelineTaskSearchResult[]>(() => {
+    const query = String(timelineTaskSearchQuery || '').trim();
+    if (!query) return [];
+
+    return timelineTaskSearchEntries
+      .map((entry) => {
+        const score = computeTaskNameMatchScore(entry.taskName, query);
+        const dateDistanceDays = calcYmdDistanceDays(todayYmd, entry.date);
+        return { ...entry, score, dateDistanceDays };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.dateDistanceDays !== b.dateDistanceDays) return a.dateDistanceDays - b.dateDistanceDays;
+        if (a.date !== b.date) return a.date > b.date ? -1 : 1;
+        return a.taskName.localeCompare(b.taskName, 'ja');
+      });
+  }, [timelineTaskSearchEntries, timelineTaskSearchQuery, todayYmd]);
+
+  async function loadTimelineTaskSearchEntries(force = false) {
+    if (!accessToken) return;
+    if (timelineTaskSearchLoading) return;
+    if (!force && timelineTaskSearchLoaded && timelineTaskSearchEntries.length > 0) return;
+
+    setTimelineTaskSearchLoading(true);
+    setTimelineTaskSearchError(null);
+
+    try {
+      const map = new Map<string, TimelineTaskSearchEntry>();
+
+      const addOne = (dateRaw: unknown, nameRaw: unknown) => {
+        const date = normalizeYmd(dateRaw);
+        const taskName = String(nameRaw ?? '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+        if (!taskName) return;
+        const key = `${date}::${taskName.toLowerCase()}`;
+        const found = map.get(key);
+        if (found) {
+          found.count += 1;
+          return;
+        }
+        map.set(key, { id: safeRandomId('timeline-search'), date, taskName, count: 1 });
+      };
+
+      for (const task of Array.isArray(tasks) ? tasks : []) {
+        addOne(todayYmd, task?.name);
+      }
+
+      const resDates = await apiFetch('/api/history/dates', { method: 'GET' });
+      const bodyDates = await resDates.json().catch(() => null as any);
+      const dates: string[] = Array.isArray(bodyDates?.dates)
+        ? bodyDates.dates
+        : Array.isArray(bodyDates?.data)
+          ? bodyDates.data
+          : [];
+
+      for (const date of dates) {
+        const ymd = normalizeYmd(date);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) continue;
+        const res = await apiFetch(`/api/history/${encodeURIComponent(ymd)}`, { method: 'GET' });
+        if (!res.ok) continue;
+        const body = await res.json().catch(() => null as any);
+        const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
+        for (const task of tasksInDay) addOne(ymd, task?.name ?? task?.title);
+      }
+
+      const normalized = Array.from(map.values()).sort((a, b) => {
+        if (a.date !== b.date) return a.date > b.date ? -1 : 1;
+        return a.taskName.localeCompare(b.taskName, 'ja');
+      });
+
+      setTimelineTaskSearchEntries(normalized);
+      setTimelineTaskSearchLoaded(true);
+    } catch (e: any) {
+      setTimelineTaskSearchError(e?.message || 'タスク検索の読み込みに失敗しました');
+    } finally {
+      setTimelineTaskSearchLoading(false);
+    }
+  }
+
+  function openTimelineTaskSearchModal() {
+    if (!accessToken || busy) return;
+    setTimelineTaskSearchQuery('');
+    setTimelineTaskSearchError(null);
+    setTimelineTaskSearchOpen(true);
+    void loadTimelineTaskSearchEntries();
+  }
+
+  function closeTimelineTaskSearchModal() {
+    setTimelineTaskSearchOpen(false);
+    setTimelineTaskSearchQuery('');
+  }
+
+  async function jumpTimelineToDateFromSearch(dateRaw: string) {
+    const date = normalizeYmd(dateRaw);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    closeTimelineTaskSearchModal();
+    setTodayMainTab('timeline');
+    setViewMode('history');
+    setHistoryDate(date);
+    await loadHistory(date);
+  }
+
+  useEffect(() => {
+    if (!timelineTaskSearchOpen) return;
+    const t = window.setTimeout(() => {
+      try {
+        timelineTaskSearchInputRef.current?.focus();
+      } catch {
+        // ignore
+      }
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [timelineTaskSearchOpen]);
+
   function formatDateISOToSlash(date: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
     return date.replace(/-/g, '/');
@@ -7717,6 +7914,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       disabled={!accessToken || busy}
                     />
                   </div>
+                  <button
+                    type="button"
+                    className="icon-btn timeline-task-search-open-btn"
+                    title="タスク名で検索"
+                    aria-label="タスク名で検索"
+                    onClick={() => {
+                      openTimelineTaskSearchModal();
+                    }}
+                    disabled={!accessToken || busy}
+                  >
+                    <span className="material-icons">search</span>
+                  </button>
                 </div>
               </div>
 
@@ -9130,6 +9339,83 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               disabled={busy || shortcutModalSaving}
             >
               <span className="material-icons">done</span>
+            </button>
+          </div>
+      </ModalShell>
+
+      <ModalShell
+        open={timelineTaskSearchOpen}
+        overlayClassName="edit-dialog"
+        overlayId="timeline-task-search-dialog"
+        contentClassName="edit-content timeline-task-search-content"
+        onClose={closeTimelineTaskSearchModal}
+        contentProps={{ role: 'dialog', 'aria-modal': true, 'aria-label': 'タスク名検索' }}
+      >
+          <div className="edit-body timeline-task-search-body">
+            <div className="edit-field">
+              <label htmlFor="timeline-task-search-input">タスク名で検索</label>
+              <div className="timeline-task-search-input-wrap">
+                <span className="material-icons" aria-hidden="true">
+                  search
+                </span>
+                <input
+                  id="timeline-task-search-input"
+                  ref={timelineTaskSearchInputRef}
+                  className="edit-input"
+                  type="search"
+                  inputMode="search"
+                  autoComplete="off"
+                  placeholder="例: 打ち合わせ"
+                  value={timelineTaskSearchQuery}
+                  onChange={(e) => setTimelineTaskSearchQuery(e.target.value)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Escape') {
+                      ev.preventDefault();
+                      closeTimelineTaskSearchModal();
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {timelineTaskSearchError ? <div className="timeline-task-search-error">{timelineTaskSearchError}</div> : null}
+
+            <div className="timeline-task-search-results" role="listbox" aria-label="検索候補">
+              {timelineTaskSearchLoading ? <div className="timeline-task-search-empty">検索候補を読み込み中...</div> : null}
+
+              {!timelineTaskSearchLoading && !timelineTaskSearchQuery.trim() ? (
+                <div className="timeline-task-search-empty">タスク名を入力すると候補が表示されます</div>
+              ) : null}
+
+              {!timelineTaskSearchLoading && !!timelineTaskSearchQuery.trim() && timelineTaskSearchResults.length === 0 ? (
+                <div className="timeline-task-search-empty">一致する候補はありません</div>
+              ) : null}
+
+              {!timelineTaskSearchLoading &&
+                timelineTaskSearchResults.map((item) => {
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="timeline-task-search-item"
+                      onClick={() => {
+                        void jumpTimelineToDateFromSearch(item.date);
+                      }}
+                    >
+                      <span className="timeline-task-search-item-name">{item.taskName}</span>
+                      <span className="timeline-task-search-item-meta">
+                        {formatDateISOToJaLong(item.date)}
+                        {item.count > 1 ? `（${item.count}件）` : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+
+          <div className="edit-footer">
+            <button className="btn-cancel" type="button" title="閉じる" aria-label="閉じる" onClick={closeTimelineTaskSearchModal}>
+              <span className="material-icons">close</span>
             </button>
           </div>
       </ModalShell>
