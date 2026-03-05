@@ -3182,6 +3182,41 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return `https://${s.replace(/^\/+/, '')}`;
   }
 
+  function openExternalUrlInPopup(raw: string) {
+    if (typeof window === 'undefined') return;
+    const href = normalizeExternalUrl(raw);
+    if (!href) return;
+    try {
+      const width = Math.min(1280, Math.max(900, Math.floor(window.innerWidth * 0.9)));
+      const height = Math.min(900, Math.max(640, Math.floor(window.innerHeight * 0.9)));
+      const left = Math.max(0, Math.floor((window.screen.width - width) / 2));
+      const top = Math.max(0, Math.floor((window.screen.height - height) / 2));
+      const features = [
+        'popup=yes',
+        'noopener',
+        'noreferrer',
+        'resizable=yes',
+        'scrollbars=yes',
+        `width=${width}`,
+        `height=${height}`,
+        `left=${left}`,
+        `top=${top}`,
+      ].join(',');
+      const popup = window.open(href, '_blank', features);
+      if (popup) {
+        try {
+          popup.focus();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      window.open(href, '_blank', 'noopener,noreferrer');
+    } catch {
+      // ignore
+    }
+  }
+
   function scheduleOpenExternalUrl(raw: string) {
     if (typeof window === 'undefined') return;
     if (timelineOpenUrlTimerRef.current != null) {
@@ -6214,7 +6249,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <button
                   key={`open-${u.id}`}
                   className="rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm"
-                  onClick={() => window.open(u.url, '_blank', 'noopener,noreferrer')}
+                  onClick={() => openExternalUrlInPopup(u.url)}
                   disabled={!accessToken || busy}
                   title={u.url}
                   type="button"
@@ -9488,10 +9523,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   <div className="sub-text">未設定</div>
                 ) : (
                   reportUrls.map((u) => (
-                    <a key={u.id} href={u.url} target="_blank" rel="noopener noreferrer" className="report-link-btn">
+                    <button
+                      key={u.id}
+                      type="button"
+                      className="report-link-btn"
+                      title={u.url}
+                      onClick={() => openExternalUrlInPopup(u.url)}
+                    >
                       <span className="material-icons">open_in_new</span>
                       {u.name}
-                    </a>
+                    </button>
                   ))
                 )}
               </div>

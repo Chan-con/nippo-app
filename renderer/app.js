@@ -3781,7 +3781,15 @@ class NippoApp {
     async openReportUrl(url) {
         try {
             if (this.isWebMode()) {
-                window.open(url, '_blank', 'noopener,noreferrer');
+                const width = Math.min(1280, Math.max(900, Math.floor(window.innerWidth * 0.9)));
+                const height = Math.min(900, Math.max(640, Math.floor(window.innerHeight * 0.9)));
+                const left = Math.max(0, Math.floor((window.screen.width - width) / 2));
+                const top = Math.max(0, Math.floor((window.screen.height - height) / 2));
+                const features = `popup=yes,noopener,noreferrer,resizable=yes,scrollbars=yes,width=${width},height=${height},left=${left},top=${top}`;
+                const popup = window.open(url, '_blank', features);
+                if (!popup) {
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                }
                 this.showToast('ブラウザで開きました');
                 return;
             }
