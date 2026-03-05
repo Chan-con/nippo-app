@@ -6214,7 +6214,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 <button
                   key={`open-${u.id}`}
                   className="rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm"
-                  onClick={() => window.open(u.url, '_blank', 'noopener')}
+                  onClick={() => window.open(u.url, '_blank', 'noopener,noreferrer')}
                   disabled={!accessToken || busy}
                   title={u.url}
                   type="button"
@@ -9488,7 +9488,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   <div className="sub-text">未設定</div>
                 ) : (
                   reportUrls.map((u) => (
-                    <a key={u.id} href={u.url} target="_blank" rel="noreferrer" className="report-link-btn">
+                    <a key={u.id} href={u.url} target="_blank" rel="noopener noreferrer" className="report-link-btn">
                       <span className="material-icons">open_in_new</span>
                       {u.name}
                     </a>

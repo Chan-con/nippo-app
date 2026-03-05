@@ -3781,7 +3781,7 @@ class NippoApp {
     async openReportUrl(url) {
         try {
             if (this.isWebMode()) {
-                window.open(url, '_blank', 'noopener');
+                window.open(url, '_blank', 'noopener,noreferrer');
                 this.showToast('ブラウザで開きました');
                 return;
             }
