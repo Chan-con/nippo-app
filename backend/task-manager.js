@@ -2936,52 +2936,6 @@ function createApp(taskManagerInstance, options = {}) {
         }
     });
 
-    app.post('/api/voicevox/speak', async (req, res) => {
-        try {
-            if (typeof fetch !== 'function') {
-                return res.status(500).json({ success: false, error: 'fetch is not available in this Node runtime' });
-            }
-
-            const text = String(req.body?.text || '').trim();
-            if (!text) return res.status(400).json({ success: false, error: 'text is required' });
-
-            const speakerRaw = Number(req.body?.speaker);
-            const speaker = Number.isFinite(speakerRaw) ? Math.max(0, Math.trunc(speakerRaw)) : 14; // 冥鳴ひまり
-            const baseUrlRaw = String(process.env.VOICEVOX_BASE_URL || 'http://127.0.0.1:50021').trim();
-            const baseUrl = baseUrlRaw.replace(/\/+$/, '');
-
-            const queryUrl = `${baseUrl}/audio_query?text=${encodeURIComponent(text)}&speaker=${speaker}`;
-            const queryRes = await fetch(queryUrl, { method: 'POST' });
-            if (!queryRes.ok) {
-                const reason = await queryRes.text().catch(() => '');
-                return res.status(502).json({ success: false, error: `VOICEVOX audio_query failed: ${queryRes.status} ${reason}`.trim() });
-            }
-
-            const audioQuery = await queryRes.json().catch(() => null);
-            if (!audioQuery || typeof audioQuery !== 'object') {
-                return res.status(502).json({ success: false, error: 'VOICEVOX audio_query response is invalid' });
-            }
-
-            const synthUrl = `${baseUrl}/synthesis?speaker=${speaker}`;
-            const synthRes = await fetch(synthUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(audioQuery),
-            });
-            if (!synthRes.ok) {
-                const reason = await synthRes.text().catch(() => '');
-                return res.status(502).json({ success: false, error: `VOICEVOX synthesis failed: ${synthRes.status} ${reason}`.trim() });
-            }
-
-            const wav = Buffer.from(await synthRes.arrayBuffer());
-            res.setHeader('Content-Type', synthRes.headers.get('content-type') || 'audio/wav');
-            res.setHeader('Cache-Control', 'no-store');
-            return res.status(200).send(wav);
-        } catch (error) {
-            return res.status(500).json({ success: false, error: error.message });
-        }
-    });
-
     app.get('/api/health', (req, res) => {
         res.json({ status: 'healthy', timestamp: new Date().toISOString() });
     });

@@ -162,17 +162,6 @@ async function fetchWithRedirectLimit(startUrl, { maxRedirects = 6, headers = {}
   throw new Error('Too many redirects');
 }
 
-function getVoicevoxBaseUrl(env) {
-  const fallback = 'http://127.0.0.1:50021';
-  const raw = String(env?.VOICEVOX_BASE_URL || fallback).trim();
-  try {
-    const u = new URL(raw);
-    return u.toString().replace(/\/+$/, '');
-  } catch {
-    return fallback;
-  }
-}
-
 const TASKLINE_GLOBAL_KEY = 'global';
 
 const NOTES_GLOBAL_KEY = 'global';
@@ -726,48 +715,6 @@ export async function onRequest(context) {
         // On redirect loops / auth redirects, return fallback without failing the UX.
         return jsonResponse({ success: true, ...fallback, fetched: false });
       }
-    }
-
-    // VOICEVOX speech proxy
-    if (parts.length === 2 && parts[0] === 'voicevox' && parts[1] === 'speak' && request.method === 'POST') {
-      const text = String(body?.text || '').trim();
-      if (!text) return jsonResponse({ success: false, error: 'text is required' }, 400);
-
-      const speakerRaw = Number(body?.speaker);
-      const speaker = Number.isFinite(speakerRaw) ? Math.max(0, Math.trunc(speakerRaw)) : 14; // 冥鳴ひまり
-      const baseUrl = getVoicevoxBaseUrl(env);
-
-      const queryUrl = `${baseUrl}/audio_query?text=${encodeURIComponent(text)}&speaker=${speaker}`;
-      const queryRes = await fetch(queryUrl, { method: 'POST' });
-      if (!queryRes.ok) {
-        const reason = await queryRes.text().catch(() => '');
-        return jsonResponse({ success: false, error: `VOICEVOX audio_query failed: ${queryRes.status} ${reason}`.trim() }, 502);
-      }
-
-      const audioQuery = await queryRes.json().catch(() => null);
-      if (!audioQuery || typeof audioQuery !== 'object') {
-        return jsonResponse({ success: false, error: 'VOICEVOX audio_query response is invalid' }, 502);
-      }
-
-      const synthUrl = `${baseUrl}/synthesis?speaker=${speaker}`;
-      const synthRes = await fetch(synthUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(audioQuery),
-      });
-      if (!synthRes.ok) {
-        const reason = await synthRes.text().catch(() => '');
-        return jsonResponse({ success: false, error: `VOICEVOX synthesis failed: ${synthRes.status} ${reason}`.trim() }, 502);
-      }
-
-      const wav = await synthRes.arrayBuffer();
-      return new Response(wav, {
-        status: 200,
-        headers: withCors({
-          'Content-Type': String(synthRes.headers.get('content-type') || 'audio/wav'),
-          'Cache-Control': 'no-store',
-        }),
-      });
     }
 
     // GPT API key (encrypted)

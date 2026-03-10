@@ -571,20 +571,6 @@ function formatReservationStartOffset(minutesBefore: number) {
   return `あと${n}分`;
 }
 
-function normalizeVoiceVolumePercent(v: unknown, fallback = 100) {
-  const n = Math.trunc(Number(v));
-  if (!Number.isFinite(n)) return fallback;
-  if (n < 0) return 0;
-  if (n > 100) return 100;
-  return n;
-}
-
-function normalizeVoicevoxBaseUrl(v: unknown) {
-  const raw = String(v ?? '').trim();
-  if (!raw) return 'http://127.0.0.1:50021';
-  return raw.replace(/\/+$/, '');
-}
-
 function arrayMove<T>(arr: T[], fromIndex: number, toIndex: number) {
   const from = Math.max(0, Math.min(arr.length - 1, fromIndex));
   const to = Math.max(0, Math.min(arr.length - 1, toIndex));
@@ -726,13 +712,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsReservationNotifyEnabled, setSettingsReservationNotifyEnabled] = useState(false);
   const [settingsReservationNotifyMinutesBefore, setSettingsReservationNotifyMinutesBefore] = useState<number[]>([]);
   const [settingsReservationNotifyMinutesInput, setSettingsReservationNotifyMinutesInput] = useState('');
-  const [settingsReservationNotifyVoicevoxEnabled, setSettingsReservationNotifyVoicevoxEnabled] = useState(true);
-  const [settingsReservationNotifyVoicevoxDirect, setSettingsReservationNotifyVoicevoxDirect] = useState(true);
-  const [settingsReservationNotifyVoicevoxBaseUrl, setSettingsReservationNotifyVoicevoxBaseUrl] = useState('http://127.0.0.1:50021');
-  const [settingsReservationNotifyVoicevoxVolume, setSettingsReservationNotifyVoicevoxVolume] = useState(100);
-  const [settingsReservationNotifyVoicevoxTestText, setSettingsReservationNotifyVoicevoxTestText] = useState(
-    '予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。'
-  );
   const [settingsAutoShowTimelineOnIdle, setSettingsAutoShowTimelineOnIdle] = useState(false);
 
   const [settingsTimeZone, setSettingsTimeZone] = useState(() => {
@@ -777,26 +756,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   useEffect(() => {
     settingsReservationNotifyMinutesBeforeRef.current = settingsReservationNotifyMinutesBefore;
   }, [settingsReservationNotifyMinutesBefore]);
-
-  const settingsReservationNotifyVoicevoxEnabledRef = useRef(settingsReservationNotifyVoicevoxEnabled);
-  useEffect(() => {
-    settingsReservationNotifyVoicevoxEnabledRef.current = settingsReservationNotifyVoicevoxEnabled;
-  }, [settingsReservationNotifyVoicevoxEnabled]);
-
-  const settingsReservationNotifyVoicevoxDirectRef = useRef(settingsReservationNotifyVoicevoxDirect);
-  useEffect(() => {
-    settingsReservationNotifyVoicevoxDirectRef.current = settingsReservationNotifyVoicevoxDirect;
-  }, [settingsReservationNotifyVoicevoxDirect]);
-
-  const settingsReservationNotifyVoicevoxBaseUrlRef = useRef(settingsReservationNotifyVoicevoxBaseUrl);
-  useEffect(() => {
-    settingsReservationNotifyVoicevoxBaseUrlRef.current = settingsReservationNotifyVoicevoxBaseUrl;
-  }, [settingsReservationNotifyVoicevoxBaseUrl]);
-
-  const settingsReservationNotifyVoicevoxVolumeRef = useRef(settingsReservationNotifyVoicevoxVolume);
-  useEffect(() => {
-    settingsReservationNotifyVoicevoxVolumeRef.current = settingsReservationNotifyVoicevoxVolume;
-  }, [settingsReservationNotifyVoicevoxVolume]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -844,26 +803,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const reservationNotifyTimeoutsRef = useRef<Map<string, number>>(new Map());
   const reservationNotifyFiredRef = useRef<Set<string>>(new Set());
   const reservationNotifyIntervalRef = useRef<number | null>(null);
-  const reservationVoicevoxAudioRef = useRef<HTMLAudioElement | null>(null);
-  const reservationVoicevoxUrlRef = useRef<string | null>(null);
   const floating = useFloatingNotices();
-
-  useEffect(() => {
-    return () => {
-      try {
-        if (reservationVoicevoxAudioRef.current) {
-          reservationVoicevoxAudioRef.current.pause();
-          reservationVoicevoxAudioRef.current = null;
-        }
-        if (reservationVoicevoxUrlRef.current) {
-          URL.revokeObjectURL(reservationVoicevoxUrlRef.current);
-          reservationVoicevoxUrlRef.current = null;
-        }
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
 
   const [settingsGptApiKeyInput, setSettingsGptApiKeyInput] = useState('');
   const [settingsGptApiKeySaved, setSettingsGptApiKeySaved] = useState(false);
@@ -4471,11 +4411,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsReservationNotifyEnabled(false);
       setSettingsReservationNotifyMinutesBefore([]);
       setSettingsReservationNotifyMinutesInput('');
-      setSettingsReservationNotifyVoicevoxEnabled(true);
-      setSettingsReservationNotifyVoicevoxDirect(true);
-      setSettingsReservationNotifyVoicevoxBaseUrl('http://127.0.0.1:50021');
-      setSettingsReservationNotifyVoicevoxVolume(100);
-      setSettingsReservationNotifyVoicevoxTestText('予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。');
       setSettingsAutoShowTimelineOnIdle(false);
       setSettingsTimeZone(DEFAULT_TIME_ZONE);
       setSettingsDirty(false);
@@ -4750,17 +4685,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const n = s?.notifications?.reservations || {};
       const enabled = !!n?.enabled;
       const minutesBefore = normalizeNotifyMinutesBeforeList(n?.minutesBefore);
-      const voicevoxEnabled = n?.voicevox?.enabled !== false;
-      const voicevoxDirect = n?.voicevox?.direct !== false;
-      const voicevoxBaseUrl = normalizeVoicevoxBaseUrl(n?.voicevox?.baseUrl);
-      const voicevoxVolume = normalizeVoiceVolumePercent(n?.voicevox?.volume, 100);
       setSettingsReservationNotifyEnabled(enabled);
       setSettingsReservationNotifyMinutesBefore(minutesBefore);
       setSettingsReservationNotifyMinutesInput('');
-      setSettingsReservationNotifyVoicevoxEnabled(voicevoxEnabled);
-      setSettingsReservationNotifyVoicevoxDirect(voicevoxDirect);
-      setSettingsReservationNotifyVoicevoxBaseUrl(voicevoxBaseUrl);
-      setSettingsReservationNotifyVoicevoxVolume(voicevoxVolume);
 
       const ui = s?.ui || {};
       setSettingsAutoShowTimelineOnIdle(!!ui?.autoShowTimelineOnIdle);
@@ -4822,13 +4749,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               reservations: {
                 enabled: !!settingsReservationNotifyEnabled,
                 minutesBefore,
-                voicevox: {
-                  enabled: !!settingsReservationNotifyVoicevoxEnabled,
-                  direct: !!settingsReservationNotifyVoicevoxDirect,
-                  baseUrl: normalizeVoicevoxBaseUrl(settingsReservationNotifyVoicevoxBaseUrl),
-                  speaker: 14,
-                  volume: normalizeVoiceVolumePercent(settingsReservationNotifyVoicevoxVolume, 100),
-                },
               },
             },
             ui: {
@@ -5286,120 +5206,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     };
   }
 
-  async function speakByVoicevox(text: string) {
-    if (!settingsReservationNotifyVoicevoxEnabledRef.current) return;
-    const trimmed = String(text || '').trim();
-    if (!trimmed) return;
-
-    try {
-      const speaker = 14; // VOICEVOX: 冥鳴ひまり
-
-      const synthesizeDirect = async () => {
-        const baseUrl = normalizeVoicevoxBaseUrl(settingsReservationNotifyVoicevoxBaseUrlRef.current);
-        const queryUrl = `${baseUrl}/audio_query?text=${encodeURIComponent(trimmed)}&speaker=${speaker}`;
-        const queryRes = await fetch(queryUrl, { method: 'POST' });
-        if (!queryRes.ok) throw new Error('audio_query failed');
-        const audioQuery = await queryRes.json().catch(() => null as any);
-        if (!audioQuery || typeof audioQuery !== 'object') throw new Error('audio_query invalid');
-
-        const synthUrl = `${baseUrl}/synthesis?speaker=${speaker}`;
-        const synthRes = await fetch(synthUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(audioQuery),
-        });
-        if (!synthRes.ok) throw new Error('synthesis failed');
-
-        return {
-          buffer: await synthRes.arrayBuffer(),
-          contentType: String(synthRes.headers.get('content-type') || 'audio/wav').toLowerCase(),
-        };
-      };
-
-      const synthesizeViaApi = async () => {
-        const res = await apiFetch('/api/voicevox/speak', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: trimmed, speaker }),
-        });
-        if (!res.ok) throw new Error('api proxy failed');
-        return {
-          buffer: await res.arrayBuffer(),
-          contentType: String(res.headers.get('content-type') || 'audio/wav').toLowerCase(),
-        };
-      };
-
-      let audioData: ArrayBuffer | null = null;
-      let contentType = 'audio/wav';
-
-      if (settingsReservationNotifyVoicevoxDirectRef.current) {
-        try {
-          const direct = await synthesizeDirect();
-          audioData = direct.buffer;
-          contentType = direct.contentType;
-        } catch {
-          try {
-            const proxied = await synthesizeViaApi();
-            audioData = proxied.buffer;
-            contentType = proxied.contentType;
-          } catch {
-            // ignore
-          }
-        }
-      } else {
-        try {
-          const proxied = await synthesizeViaApi();
-          audioData = proxied.buffer;
-          contentType = proxied.contentType;
-        } catch {
-          try {
-            const direct = await synthesizeDirect();
-            audioData = direct.buffer;
-            contentType = direct.contentType;
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      if (!audioData || audioData.byteLength === 0) return;
-
-      try {
-        if (reservationVoicevoxAudioRef.current) {
-          reservationVoicevoxAudioRef.current.pause();
-          reservationVoicevoxAudioRef.current = null;
-        }
-        if (reservationVoicevoxUrlRef.current) {
-          URL.revokeObjectURL(reservationVoicevoxUrlRef.current);
-          reservationVoicevoxUrlRef.current = null;
-        }
-      } catch {
-        // ignore
-      }
-
-      const blob = new Blob([audioData], { type: contentType.includes('audio/') ? contentType : 'audio/wav' });
-      const objectUrl = URL.createObjectURL(blob);
-      reservationVoicevoxUrlRef.current = objectUrl;
-
-      const audio = new Audio(objectUrl);
-      audio.volume = normalizeVoiceVolumePercent(settingsReservationNotifyVoicevoxVolumeRef.current, 100) / 100;
-      audio.onended = () => {
-        try {
-          if (reservationVoicevoxUrlRef.current) {
-            URL.revokeObjectURL(reservationVoicevoxUrlRef.current);
-            reservationVoicevoxUrlRef.current = null;
-          }
-        } catch {
-          // ignore
-        }
-      };
-      reservationVoicevoxAudioRef.current = audio;
-      await audio.play();
-    } catch {
-      // ignore
-    }
-  }
-
   async function reloadTasksInternal(opts: { silent: boolean }) {
     const silent = !!opts?.silent;
     if (!silent) setError(null);
@@ -5431,7 +5237,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     });
 
     floating?.push({ text: texts.toast, tone: 'success', icon: 'notifications', ttlMs: 7000 });
-    void speakByVoicevox(texts.speech);
 
     if (typeof window === 'undefined') return;
     if (!('Notification' in window)) return;
@@ -10478,103 +10283,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     </button>
                     <div className="settings-hint" style={{ margin: 0 }}>
                       許可がなくても、アプリ内トーストは表示します。
-                    </div>
-                  </div>
-                </div>
-
-                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
-                  <label className="settings-label" htmlFor="reservation-notify-voicevox-enabled">
-                    音声読み上げ（VOICEVOX: 冥鳴ひまり）
-                  </label>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <input
-                      id="reservation-notify-voicevox-enabled"
-                      type="checkbox"
-                      checked={!!settingsReservationNotifyVoicevoxEnabled}
-                      onChange={(e) => {
-                        setSettingsReservationNotifyVoicevoxEnabled(!!e.target.checked);
-                        setSettingsDirty(true);
-                      }}
-                      disabled={!accessToken || busy}
-                    />
-                    <div className="settings-hint" style={{ margin: 0 }}>
-                      {settingsReservationNotifyVoicevoxEnabled ? 'ON' : 'OFF'}
-                    </div>
-                    <label className="settings-hint" style={{ margin: 0 }} htmlFor="reservation-notify-voicevox-direct">
-                      直接接続（Pages推奨）
-                    </label>
-                    <input
-                      id="reservation-notify-voicevox-direct"
-                      type="checkbox"
-                      checked={!!settingsReservationNotifyVoicevoxDirect}
-                      onChange={(e) => {
-                        setSettingsReservationNotifyVoicevoxDirect(!!e.target.checked);
-                        setSettingsDirty(true);
-                      }}
-                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
-                    />
-                    <input
-                      type="url"
-                      value={settingsReservationNotifyVoicevoxBaseUrl}
-                      onChange={(e) => {
-                        setSettingsReservationNotifyVoicevoxBaseUrl(e.target.value);
-                        setSettingsDirty(true);
-                      }}
-                      placeholder="VOICEVOX URL（例: http://127.0.0.1:50021）"
-                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
-                      style={{ minWidth: 260, flex: '1 1 280px' }}
-                    />
-                    <label className="settings-hint" style={{ margin: 0 }} htmlFor="reservation-notify-voicevox-volume">
-                      音量: {settingsReservationNotifyVoicevoxVolume}%
-                    </label>
-                    <input
-                      id="reservation-notify-voicevox-volume"
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={settingsReservationNotifyVoicevoxVolume}
-                      onChange={(e) => {
-                        setSettingsReservationNotifyVoicevoxVolume(normalizeVoiceVolumePercent(e.target.value, 100));
-                        setSettingsDirty(true);
-                      }}
-                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={settingsReservationNotifyVoicevoxVolume}
-                      onChange={(e) => {
-                        setSettingsReservationNotifyVoicevoxVolume(normalizeVoiceVolumePercent(e.target.value, 100));
-                        setSettingsDirty(true);
-                      }}
-                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
-                      style={{ width: 90 }}
-                    />
-                    <span className="settings-hint" style={{ margin: 0 }}>%</span>
-                    <input
-                      type="text"
-                      value={settingsReservationNotifyVoicevoxTestText}
-                      onChange={(e) => setSettingsReservationNotifyVoicevoxTestText(e.target.value)}
-                      placeholder="読み上げテスト文"
-                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
-                      style={{ minWidth: 280, flex: '1 1 320px' }}
-                    />
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => {
-                        const text = String(settingsReservationNotifyVoicevoxTestText || '').trim();
-                        void speakByVoicevox(text || '予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。');
-                      }}
-                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
-                    >
-                      <span className="material-icons">play_arrow</span>
-                      テスト再生
-                    </button>
-                    <div className="settings-hint" style={{ margin: 0 }}>
-                      Cloudflare Pages では「直接接続」をONにし、VOICEVOX URL をローカル起動先に合わせてください。
                     </div>
                   </div>
                 </div>
