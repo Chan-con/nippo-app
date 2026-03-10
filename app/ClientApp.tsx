@@ -579,6 +579,12 @@ function normalizeVoiceVolumePercent(v: unknown, fallback = 100) {
   return n;
 }
 
+function normalizeVoicevoxBaseUrl(v: unknown) {
+  const raw = String(v ?? '').trim();
+  if (!raw) return 'http://127.0.0.1:50021';
+  return raw.replace(/\/+$/, '');
+}
+
 function arrayMove<T>(arr: T[], fromIndex: number, toIndex: number) {
   const from = Math.max(0, Math.min(arr.length - 1, fromIndex));
   const to = Math.max(0, Math.min(arr.length - 1, toIndex));
@@ -721,6 +727,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsReservationNotifyMinutesBefore, setSettingsReservationNotifyMinutesBefore] = useState<number[]>([]);
   const [settingsReservationNotifyMinutesInput, setSettingsReservationNotifyMinutesInput] = useState('');
   const [settingsReservationNotifyVoicevoxEnabled, setSettingsReservationNotifyVoicevoxEnabled] = useState(true);
+  const [settingsReservationNotifyVoicevoxDirect, setSettingsReservationNotifyVoicevoxDirect] = useState(true);
+  const [settingsReservationNotifyVoicevoxBaseUrl, setSettingsReservationNotifyVoicevoxBaseUrl] = useState('http://127.0.0.1:50021');
   const [settingsReservationNotifyVoicevoxVolume, setSettingsReservationNotifyVoicevoxVolume] = useState(100);
   const [settingsReservationNotifyVoicevoxTestText, setSettingsReservationNotifyVoicevoxTestText] = useState(
     '予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。'
@@ -774,6 +782,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   useEffect(() => {
     settingsReservationNotifyVoicevoxEnabledRef.current = settingsReservationNotifyVoicevoxEnabled;
   }, [settingsReservationNotifyVoicevoxEnabled]);
+
+  const settingsReservationNotifyVoicevoxDirectRef = useRef(settingsReservationNotifyVoicevoxDirect);
+  useEffect(() => {
+    settingsReservationNotifyVoicevoxDirectRef.current = settingsReservationNotifyVoicevoxDirect;
+  }, [settingsReservationNotifyVoicevoxDirect]);
+
+  const settingsReservationNotifyVoicevoxBaseUrlRef = useRef(settingsReservationNotifyVoicevoxBaseUrl);
+  useEffect(() => {
+    settingsReservationNotifyVoicevoxBaseUrlRef.current = settingsReservationNotifyVoicevoxBaseUrl;
+  }, [settingsReservationNotifyVoicevoxBaseUrl]);
 
   const settingsReservationNotifyVoicevoxVolumeRef = useRef(settingsReservationNotifyVoicevoxVolume);
   useEffect(() => {
@@ -4454,6 +4472,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsReservationNotifyMinutesBefore([]);
       setSettingsReservationNotifyMinutesInput('');
       setSettingsReservationNotifyVoicevoxEnabled(true);
+      setSettingsReservationNotifyVoicevoxDirect(true);
+      setSettingsReservationNotifyVoicevoxBaseUrl('http://127.0.0.1:50021');
       setSettingsReservationNotifyVoicevoxVolume(100);
       setSettingsReservationNotifyVoicevoxTestText('予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。');
       setSettingsAutoShowTimelineOnIdle(false);
@@ -4731,11 +4751,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const enabled = !!n?.enabled;
       const minutesBefore = normalizeNotifyMinutesBeforeList(n?.minutesBefore);
       const voicevoxEnabled = n?.voicevox?.enabled !== false;
+      const voicevoxDirect = n?.voicevox?.direct !== false;
+      const voicevoxBaseUrl = normalizeVoicevoxBaseUrl(n?.voicevox?.baseUrl);
       const voicevoxVolume = normalizeVoiceVolumePercent(n?.voicevox?.volume, 100);
       setSettingsReservationNotifyEnabled(enabled);
       setSettingsReservationNotifyMinutesBefore(minutesBefore);
       setSettingsReservationNotifyMinutesInput('');
       setSettingsReservationNotifyVoicevoxEnabled(voicevoxEnabled);
+      setSettingsReservationNotifyVoicevoxDirect(voicevoxDirect);
+      setSettingsReservationNotifyVoicevoxBaseUrl(voicevoxBaseUrl);
       setSettingsReservationNotifyVoicevoxVolume(voicevoxVolume);
 
       const ui = s?.ui || {};
@@ -4800,6 +4824,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 minutesBefore,
                 voicevox: {
                   enabled: !!settingsReservationNotifyVoicevoxEnabled,
+                  direct: !!settingsReservationNotifyVoicevoxDirect,
+                  baseUrl: normalizeVoicevoxBaseUrl(settingsReservationNotifyVoicevoxBaseUrl),
                   speaker: 14,
                   volume: normalizeVoiceVolumePercent(settingsReservationNotifyVoicevoxVolume, 100),
                 },
@@ -5266,17 +5292,76 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!trimmed) return;
 
     try {
-      const res = await apiFetch('/api/voicevox/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: trimmed,
-          speaker: 14, // VOICEVOX: 冥鳴ひまり
-        }),
-      });
-      if (!res.ok) return;
+      const speaker = 14; // VOICEVOX: 冥鳴ひまり
 
-      const audioData = await res.arrayBuffer();
+      const synthesizeDirect = async () => {
+        const baseUrl = normalizeVoicevoxBaseUrl(settingsReservationNotifyVoicevoxBaseUrlRef.current);
+        const queryUrl = `${baseUrl}/audio_query?text=${encodeURIComponent(trimmed)}&speaker=${speaker}`;
+        const queryRes = await fetch(queryUrl, { method: 'POST' });
+        if (!queryRes.ok) throw new Error('audio_query failed');
+        const audioQuery = await queryRes.json().catch(() => null as any);
+        if (!audioQuery || typeof audioQuery !== 'object') throw new Error('audio_query invalid');
+
+        const synthUrl = `${baseUrl}/synthesis?speaker=${speaker}`;
+        const synthRes = await fetch(synthUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(audioQuery),
+        });
+        if (!synthRes.ok) throw new Error('synthesis failed');
+
+        return {
+          buffer: await synthRes.arrayBuffer(),
+          contentType: String(synthRes.headers.get('content-type') || 'audio/wav').toLowerCase(),
+        };
+      };
+
+      const synthesizeViaApi = async () => {
+        const res = await apiFetch('/api/voicevox/speak', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: trimmed, speaker }),
+        });
+        if (!res.ok) throw new Error('api proxy failed');
+        return {
+          buffer: await res.arrayBuffer(),
+          contentType: String(res.headers.get('content-type') || 'audio/wav').toLowerCase(),
+        };
+      };
+
+      let audioData: ArrayBuffer | null = null;
+      let contentType = 'audio/wav';
+
+      if (settingsReservationNotifyVoicevoxDirectRef.current) {
+        try {
+          const direct = await synthesizeDirect();
+          audioData = direct.buffer;
+          contentType = direct.contentType;
+        } catch {
+          try {
+            const proxied = await synthesizeViaApi();
+            audioData = proxied.buffer;
+            contentType = proxied.contentType;
+          } catch {
+            // ignore
+          }
+        }
+      } else {
+        try {
+          const proxied = await synthesizeViaApi();
+          audioData = proxied.buffer;
+          contentType = proxied.contentType;
+        } catch {
+          try {
+            const direct = await synthesizeDirect();
+            audioData = direct.buffer;
+            contentType = direct.contentType;
+          } catch {
+            // ignore
+          }
+        }
+      }
+
       if (!audioData || audioData.byteLength === 0) return;
 
       try {
@@ -5292,7 +5377,6 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         // ignore
       }
 
-      const contentType = String(res.headers.get('content-type') || 'audio/wav').toLowerCase();
       const blob = new Blob([audioData], { type: contentType.includes('audio/') ? contentType : 'audio/wav' });
       const objectUrl = URL.createObjectURL(blob);
       reservationVoicevoxUrlRef.current = objectUrl;
@@ -10416,6 +10500,30 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     <div className="settings-hint" style={{ margin: 0 }}>
                       {settingsReservationNotifyVoicevoxEnabled ? 'ON' : 'OFF'}
                     </div>
+                    <label className="settings-hint" style={{ margin: 0 }} htmlFor="reservation-notify-voicevox-direct">
+                      直接接続（Pages推奨）
+                    </label>
+                    <input
+                      id="reservation-notify-voicevox-direct"
+                      type="checkbox"
+                      checked={!!settingsReservationNotifyVoicevoxDirect}
+                      onChange={(e) => {
+                        setSettingsReservationNotifyVoicevoxDirect(!!e.target.checked);
+                        setSettingsDirty(true);
+                      }}
+                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
+                    />
+                    <input
+                      type="url"
+                      value={settingsReservationNotifyVoicevoxBaseUrl}
+                      onChange={(e) => {
+                        setSettingsReservationNotifyVoicevoxBaseUrl(e.target.value);
+                        setSettingsDirty(true);
+                      }}
+                      placeholder="VOICEVOX URL（例: http://127.0.0.1:50021）"
+                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
+                      style={{ minWidth: 260, flex: '1 1 280px' }}
+                    />
                     <label className="settings-hint" style={{ margin: 0 }} htmlFor="reservation-notify-voicevox-volume">
                       音量: {settingsReservationNotifyVoicevoxVolume}%
                     </label>
@@ -10466,7 +10574,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       テスト再生
                     </button>
                     <div className="settings-hint" style={{ margin: 0 }}>
-                      VOICEVOXエンジン（通常 http://127.0.0.1:50021）が起動している必要があります。
+                      Cloudflare Pages では「直接接続」をONにし、VOICEVOX URL をローカル起動先に合わせてください。
                     </div>
                   </div>
                 </div>
