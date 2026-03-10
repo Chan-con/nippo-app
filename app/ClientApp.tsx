@@ -565,6 +565,20 @@ function normalizeNotifyMinutesBeforeList(list: unknown) {
   return out;
 }
 
+function formatReservationStartOffset(minutesBefore: number) {
+  const n = Math.trunc(Number(minutesBefore));
+  if (!Number.isFinite(n) || n <= 0) return '開始時刻';
+  return `あと${n}分`;
+}
+
+function normalizeVoiceVolumePercent(v: unknown, fallback = 100) {
+  const n = Math.trunc(Number(v));
+  if (!Number.isFinite(n)) return fallback;
+  if (n < 0) return 0;
+  if (n > 100) return 100;
+  return n;
+}
+
 function arrayMove<T>(arr: T[], fromIndex: number, toIndex: number) {
   const from = Math.max(0, Math.min(arr.length - 1, fromIndex));
   const to = Math.max(0, Math.min(arr.length - 1, toIndex));
@@ -706,6 +720,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [settingsReservationNotifyEnabled, setSettingsReservationNotifyEnabled] = useState(false);
   const [settingsReservationNotifyMinutesBefore, setSettingsReservationNotifyMinutesBefore] = useState<number[]>([]);
   const [settingsReservationNotifyMinutesInput, setSettingsReservationNotifyMinutesInput] = useState('');
+  const [settingsReservationNotifyVoicevoxEnabled, setSettingsReservationNotifyVoicevoxEnabled] = useState(true);
+  const [settingsReservationNotifyVoicevoxVolume, setSettingsReservationNotifyVoicevoxVolume] = useState(100);
+  const [settingsReservationNotifyVoicevoxTestText, setSettingsReservationNotifyVoicevoxTestText] = useState(
+    '予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。'
+  );
   const [settingsAutoShowTimelineOnIdle, setSettingsAutoShowTimelineOnIdle] = useState(false);
 
   const [settingsTimeZone, setSettingsTimeZone] = useState(() => {
@@ -750,6 +769,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   useEffect(() => {
     settingsReservationNotifyMinutesBeforeRef.current = settingsReservationNotifyMinutesBefore;
   }, [settingsReservationNotifyMinutesBefore]);
+
+  const settingsReservationNotifyVoicevoxEnabledRef = useRef(settingsReservationNotifyVoicevoxEnabled);
+  useEffect(() => {
+    settingsReservationNotifyVoicevoxEnabledRef.current = settingsReservationNotifyVoicevoxEnabled;
+  }, [settingsReservationNotifyVoicevoxEnabled]);
+
+  const settingsReservationNotifyVoicevoxVolumeRef = useRef(settingsReservationNotifyVoicevoxVolume);
+  useEffect(() => {
+    settingsReservationNotifyVoicevoxVolumeRef.current = settingsReservationNotifyVoicevoxVolume;
+  }, [settingsReservationNotifyVoicevoxVolume]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -797,7 +826,26 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const reservationNotifyTimeoutsRef = useRef<Map<string, number>>(new Map());
   const reservationNotifyFiredRef = useRef<Set<string>>(new Set());
   const reservationNotifyIntervalRef = useRef<number | null>(null);
+  const reservationVoicevoxAudioRef = useRef<HTMLAudioElement | null>(null);
+  const reservationVoicevoxUrlRef = useRef<string | null>(null);
   const floating = useFloatingNotices();
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (reservationVoicevoxAudioRef.current) {
+          reservationVoicevoxAudioRef.current.pause();
+          reservationVoicevoxAudioRef.current = null;
+        }
+        if (reservationVoicevoxUrlRef.current) {
+          URL.revokeObjectURL(reservationVoicevoxUrlRef.current);
+          reservationVoicevoxUrlRef.current = null;
+        }
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
 
   const [settingsGptApiKeyInput, setSettingsGptApiKeyInput] = useState('');
   const [settingsGptApiKeySaved, setSettingsGptApiKeySaved] = useState(false);
@@ -4405,6 +4453,9 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       setSettingsReservationNotifyEnabled(false);
       setSettingsReservationNotifyMinutesBefore([]);
       setSettingsReservationNotifyMinutesInput('');
+      setSettingsReservationNotifyVoicevoxEnabled(true);
+      setSettingsReservationNotifyVoicevoxVolume(100);
+      setSettingsReservationNotifyVoicevoxTestText('予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。');
       setSettingsAutoShowTimelineOnIdle(false);
       setSettingsTimeZone(DEFAULT_TIME_ZONE);
       setSettingsDirty(false);
@@ -4679,9 +4730,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       const n = s?.notifications?.reservations || {};
       const enabled = !!n?.enabled;
       const minutesBefore = normalizeNotifyMinutesBeforeList(n?.minutesBefore);
+      const voicevoxEnabled = n?.voicevox?.enabled !== false;
+      const voicevoxVolume = normalizeVoiceVolumePercent(n?.voicevox?.volume, 100);
       setSettingsReservationNotifyEnabled(enabled);
       setSettingsReservationNotifyMinutesBefore(minutesBefore);
       setSettingsReservationNotifyMinutesInput('');
+      setSettingsReservationNotifyVoicevoxEnabled(voicevoxEnabled);
+      setSettingsReservationNotifyVoicevoxVolume(voicevoxVolume);
 
       const ui = s?.ui || {};
       setSettingsAutoShowTimelineOnIdle(!!ui?.autoShowTimelineOnIdle);
@@ -4743,6 +4798,11 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               reservations: {
                 enabled: !!settingsReservationNotifyEnabled,
                 minutesBefore,
+                voicevox: {
+                  enabled: !!settingsReservationNotifyVoicevoxEnabled,
+                  speaker: 14,
+                  volume: normalizeVoiceVolumePercent(settingsReservationNotifyVoicevoxVolume, 100),
+                },
               },
             },
             ui: {
@@ -5180,6 +5240,82 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     return fetch(path, { ...init, headers });
   }
 
+  function createReservationNotificationTexts(opts: { taskName: string; minutesBefore: number; startTimeMinutes: number }) {
+    const name = String(opts.taskName || '').trim() || '（無題）';
+    const minutesBefore = Math.max(0, Math.trunc(Number(opts.minutesBefore) || 0));
+    const startHm = formatMinutesAsHHMM(opts.startTimeMinutes) || '';
+    if (minutesBefore <= 0) {
+      return {
+        title: name,
+        body: '開始時刻です',
+        toast: `${name}：開始時刻です`,
+        speech: `予約タスク、${name}の開始時刻です。`,
+      };
+    }
+    return {
+      title: name,
+      body: `${minutesBefore}分後に開始（${startHm}）`,
+      toast: `${name}：あと${minutesBefore}分（${startHm}開始）`,
+      speech: `予約タスク、${name}は、あと${minutesBefore}分後に開始です。`,
+    };
+  }
+
+  async function speakByVoicevox(text: string) {
+    if (!settingsReservationNotifyVoicevoxEnabledRef.current) return;
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return;
+
+    try {
+      const res = await apiFetch('/api/voicevox/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: trimmed,
+          speaker: 14, // VOICEVOX: 冥鳴ひまり
+        }),
+      });
+      if (!res.ok) return;
+
+      const audioData = await res.arrayBuffer();
+      if (!audioData || audioData.byteLength === 0) return;
+
+      try {
+        if (reservationVoicevoxAudioRef.current) {
+          reservationVoicevoxAudioRef.current.pause();
+          reservationVoicevoxAudioRef.current = null;
+        }
+        if (reservationVoicevoxUrlRef.current) {
+          URL.revokeObjectURL(reservationVoicevoxUrlRef.current);
+          reservationVoicevoxUrlRef.current = null;
+        }
+      } catch {
+        // ignore
+      }
+
+      const contentType = String(res.headers.get('content-type') || 'audio/wav').toLowerCase();
+      const blob = new Blob([audioData], { type: contentType.includes('audio/') ? contentType : 'audio/wav' });
+      const objectUrl = URL.createObjectURL(blob);
+      reservationVoicevoxUrlRef.current = objectUrl;
+
+      const audio = new Audio(objectUrl);
+      audio.volume = normalizeVoiceVolumePercent(settingsReservationNotifyVoicevoxVolumeRef.current, 100) / 100;
+      audio.onended = () => {
+        try {
+          if (reservationVoicevoxUrlRef.current) {
+            URL.revokeObjectURL(reservationVoicevoxUrlRef.current);
+            reservationVoicevoxUrlRef.current = null;
+          }
+        } catch {
+          // ignore
+        }
+      };
+      reservationVoicevoxAudioRef.current = audio;
+      await audio.play();
+    } catch {
+      // ignore
+    }
+  }
+
   async function reloadTasksInternal(opts: { silent: boolean }) {
     const silent = !!opts?.silent;
     if (!silent) setError(null);
@@ -5203,13 +5339,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     await reloadTasksInternal({ silent: true });
   }
 
-  function showReservationToast(message: string) {
-    floating?.push({ text: message, tone: 'success', icon: 'notifications', ttlMs: 6000 });
-  }
-
   function notifyReservationTask(opts: { task: Task; startTimeMinutes: number; minutesBefore: number }) {
-    const name = String(opts.task?.name || '').trim() || '（無題）';
-    showReservationToast(name);
+    const texts = createReservationNotificationTexts({
+      taskName: String(opts.task?.name || ''),
+      minutesBefore: opts.minutesBefore,
+      startTimeMinutes: opts.startTimeMinutes,
+    });
+
+    floating?.push({ text: texts.toast, tone: 'success', icon: 'notifications', ttlMs: 7000 });
+    void speakByVoicevox(texts.speech);
 
     if (typeof window === 'undefined') return;
     if (!('Notification' in window)) return;
@@ -5217,7 +5355,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     try {
       // tag を付けて同一キーの多重表示を抑制
       const tag = `nippo:reserved:${opts.task.id}:${opts.task.startTime ?? ''}:${opts.minutesBefore}`;
-      const n = new Notification(name, { tag });
+      const n = new Notification(texts.title, { body: texts.body, tag });
       n.onclick = () => {
         try {
           setViewMode('today');
@@ -10261,6 +10399,79 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                 </div>
 
                 <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
+                  <label className="settings-label" htmlFor="reservation-notify-voicevox-enabled">
+                    音声読み上げ（VOICEVOX: 冥鳴ひまり）
+                  </label>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      id="reservation-notify-voicevox-enabled"
+                      type="checkbox"
+                      checked={!!settingsReservationNotifyVoicevoxEnabled}
+                      onChange={(e) => {
+                        setSettingsReservationNotifyVoicevoxEnabled(!!e.target.checked);
+                        setSettingsDirty(true);
+                      }}
+                      disabled={!accessToken || busy}
+                    />
+                    <div className="settings-hint" style={{ margin: 0 }}>
+                      {settingsReservationNotifyVoicevoxEnabled ? 'ON' : 'OFF'}
+                    </div>
+                    <label className="settings-hint" style={{ margin: 0 }} htmlFor="reservation-notify-voicevox-volume">
+                      音量: {settingsReservationNotifyVoicevoxVolume}%
+                    </label>
+                    <input
+                      id="reservation-notify-voicevox-volume"
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={settingsReservationNotifyVoicevoxVolume}
+                      onChange={(e) => {
+                        setSettingsReservationNotifyVoicevoxVolume(normalizeVoiceVolumePercent(e.target.value, 100));
+                        setSettingsDirty(true);
+                      }}
+                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={settingsReservationNotifyVoicevoxVolume}
+                      onChange={(e) => {
+                        setSettingsReservationNotifyVoicevoxVolume(normalizeVoiceVolumePercent(e.target.value, 100));
+                        setSettingsDirty(true);
+                      }}
+                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
+                      style={{ width: 90 }}
+                    />
+                    <span className="settings-hint" style={{ margin: 0 }}>%</span>
+                    <input
+                      type="text"
+                      value={settingsReservationNotifyVoicevoxTestText}
+                      onChange={(e) => setSettingsReservationNotifyVoicevoxTestText(e.target.value)}
+                      placeholder="読み上げテスト文"
+                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
+                      style={{ minWidth: 280, flex: '1 1 320px' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        const text = String(settingsReservationNotifyVoicevoxTestText || '').trim();
+                        void speakByVoicevox(text || '予約通知のテストです。VOICEVOX、冥鳴ひまりで読み上げています。');
+                      }}
+                      disabled={!accessToken || busy || !settingsReservationNotifyVoicevoxEnabled}
+                    >
+                      <span className="material-icons">play_arrow</span>
+                      テスト再生
+                    </button>
+                    <div className="settings-hint" style={{ margin: 0 }}>
+                      VOICEVOXエンジン（通常 http://127.0.0.1:50021）が起動している必要があります。
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-field" style={{ gridColumn: '1 / -1' }}>
                   <label className="settings-label">通知タイミング（分前）</label>
                   <div className="url-list">
                     {settingsReservationNotifyMinutesBefore.length === 0 ? (
@@ -10273,7 +10484,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         <div key={`reservation-notify-min-${m}`} className="url-item">
                           <div className="url-info">
                             <div className="url-name">{m}分前</div>
-                            <div className="url-address">{m === 0 ? '開始時刻' : `開始の${m}分前`}</div>
+                            <div className="url-address">{formatReservationStartOffset(m)}に通知・読み上げします</div>
                           </div>
                           <div className="url-actions">
                             <button
