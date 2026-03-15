@@ -6517,7 +6517,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const m = Number(p.month2);
     const day = Number(p.day2);
     const weekday = ['日', '月', '火', '水', '木', '金', '土'][new Date(Date.UTC(Number(p.year), m - 1, day)).getUTCDay()] || '';
-    return `${p.year}年${m}月${day}日（${weekday}）`;
+    return `${p.year}年${m}月${day}日(${weekday})`;
   }
 
   function formatTimeHHMM(d: Date) {
@@ -6651,7 +6651,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const mm = Number(m);
     const dd = Number(d);
     const weekday = ['日', '月', '火', '水', '木', '金', '土'][new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay()] || '';
-    return `${y}年${mm}月${dd}日（${weekday}）`;
+    return `${y}年${mm}月${dd}日(${weekday})`;
   }
 
   function toYmdUtcDayMs(ymd: string) {
