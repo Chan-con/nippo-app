@@ -6516,7 +6516,8 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     const p = getJstDateTimeParts(d);
     const m = Number(p.month2);
     const day = Number(p.day2);
-    return `${p.year}年${m}月${day}日`;
+    const weekday = ['日', '月', '火', '水', '木', '金', '土'][new Date(Date.UTC(Number(p.year), m - 1, day)).getUTCDay()] || '';
+    return `${p.year}年${m}月${day}日（${weekday}）`;
   }
 
   function formatTimeHHMM(d: Date) {
@@ -6641,6 +6642,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
     const [y, m, d] = date.split('-');
     return `${y}年${Number(m)}月${Number(d)}日`;
+  }
+
+  function formatDateISOToJaLongWithWeekday(date: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    const [y, m, d] = date.split('-');
+    const yy = Number(y);
+    const mm = Number(m);
+    const dd = Number(d);
+    const weekday = ['日', '月', '火', '水', '木', '金', '土'][new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay()] || '';
+    return `${y}年${mm}月${dd}日（${weekday}）`;
   }
 
   function toYmdUtcDayMs(ymd: string) {
@@ -7926,7 +7937,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             >
               <div className="date-display">
                 <h1 id="current-date">
-                  {effectiveViewMode === 'history' ? (historyDate ? formatDateISOToJaLong(historyDate) : '日付を選択') : formatDateJa(now)}
+                  {effectiveViewMode === 'history' ? (historyDate ? formatDateISOToJaLongWithWeekday(historyDate) : '日付を選択') : formatDateJa(now)}
                 </h1>
                 <p
                   id="current-time"
