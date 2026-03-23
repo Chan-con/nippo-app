@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FloatingNotices, { type FloatingNoticeItem } from './_components/FloatingNotices';
 import { useFloatingNotices } from './_components/FloatingNoticesProvider';
+import DoubleClickButton from './_components/DoubleClickButton';
 import ModalShell from './_components/ModalShell';
 import CalendarBoard from './_components/calendar/CalendarBoard';
 import GanttBoard from './_components/gantt/GanttBoard';
@@ -6124,14 +6125,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
               >
                 キャンセル
               </button>
-              <button
+              <DoubleClickButton
                 className="rounded-[var(--radius-small)] border border-[var(--error)] bg-[var(--bg-tertiary)] px-3 py-2 text-sm text-[var(--error)]"
-                onClick={() => deleteHistoryTask(historyEditing.id)}
+                onDoubleActivate={() => deleteHistoryTask(historyEditing.id)}
                 disabled={busy}
                 type="button"
               >
                 削除
-              </button>
+              </DoubleClickButton>
             </div>
           </div>
         ) : null}
@@ -6319,14 +6320,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                     <div className="truncate text-sm text-[var(--text-primary)]">{u.name}</div>
                     <div className="truncate text-xs text-[var(--text-muted)]">{u.url}</div>
                   </div>
-                  <button
+                  <DoubleClickButton
                     className="shrink-0 rounded-[var(--radius-small)] border border-[var(--error)] bg-[var(--bg-tertiary)] px-2 py-1 text-xs text-[var(--error)]"
-                    onClick={() => deleteReportUrl(u.id)}
+                    onDoubleActivate={() => deleteReportUrl(u.id)}
                     disabled={!accessToken || busy}
                     type="button"
                   >
                     削除
-                  </button>
+                  </DoubleClickButton>
                 </div>
               ))
             )}
@@ -8627,16 +8628,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                       >
                         <span className="material-icons">close</span>
                       </button>
-                      <button
+                      <DoubleClickButton
                         className="btn-danger"
                         type="button"
                         title="削除"
                         aria-label="削除"
-                        onClick={() => confirmGanttBulkDelete()}
+                        onDoubleActivate={() => confirmGanttBulkDelete()}
                         disabled={!accessToken || busy || !ganttBulkDeleteTargets.cutoff || ganttBulkDeleteTargets.count === 0}
                       >
                         <span className="material-icons">delete</span>
-                      </button>
+                      </DoubleClickButton>
                     </div>
                 </ModalShell>
               </div>
@@ -8993,12 +8994,12 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           <span className="material-icons">done</span>
                         </button>
                         {alertEditingId ? (
-                          <button
+                          <DoubleClickButton
                             className="btn-danger"
                             type="button"
                             title="削除"
                             aria-label="削除"
-                            onClick={() => {
+                            onDoubleActivate={() => {
                               if (!alertEditingId) return;
                               deleteAlertAndSync(alertEditingId);
                               closeAlertModal();
@@ -9006,7 +9007,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             disabled={busy}
                           >
                             <span className="material-icons">delete</span>
-                          </button>
+                          </DoubleClickButton>
                         ) : null}
                       </div>
                     </>
@@ -10130,16 +10131,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         <div className="url-address">{u.url}</div>
                       </div>
                       <div className="url-actions">
-                        <button
+                        <DoubleClickButton
                           className="delete"
                           type="button"
                           title="削除"
                           aria-label="削除"
-                          onClick={() => deleteReportUrl(u.id)}
+                          onDoubleActivate={() => deleteReportUrl(u.id)}
                           disabled={!accessToken || busy}
                         >
                           <span className="material-icons">delete</span>
-                        </button>
+                        </DoubleClickButton>
                       </div>
                     </div>
                   ))
@@ -10187,19 +10188,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         <div className="url-address">完全一致で除外</div>
                       </div>
                       <div className="url-actions">
-                        <button
+                        <DoubleClickButton
                           className="delete"
                           type="button"
                           title="削除"
                           aria-label="削除"
-                          onClick={() => {
+                          onDoubleActivate={() => {
                             setSettingsExcludeTaskNames((p) => p.filter((x) => x !== name));
                             setSettingsDirty(true);
                           }}
                           disabled={!accessToken || busy}
                         >
                           <span className="material-icons">delete</span>
-                        </button>
+                        </DoubleClickButton>
                       </div>
                     </div>
                   ))
@@ -10314,19 +10315,19 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                             <div className="url-address">{formatReservationStartOffset(m)}に通知・読み上げします</div>
                           </div>
                           <div className="url-actions">
-                            <button
+                            <DoubleClickButton
                               className="delete"
                               type="button"
                               title="削除"
                               aria-label="削除"
-                              onClick={() => {
+                              onDoubleActivate={() => {
                                 setSettingsReservationNotifyMinutesBefore((p) => p.filter((x) => x !== m));
                                 setSettingsDirty(true);
                               }}
                               disabled={!accessToken || busy}
                             >
                               <span className="material-icons">delete</span>
-                            </button>
+                            </DoubleClickButton>
                           </div>
                         </div>
                       ))
@@ -10510,16 +10511,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         >
                           {g.name}
                         </div>
-                        <button
+                        <DoubleClickButton
                           type="button"
                           title="削除"
-                          onClick={() => {
+                          onDoubleActivate={() => {
                             setTempGoalStock((p) => p.filter((_, i) => i !== idx));
                             setGoalDirty(true);
                           }}
                         >
                           <span className="material-icons">delete</span>
-                        </button>
+                        </DoubleClickButton>
                       </div>
                     </div>
                   ))
@@ -10658,16 +10659,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                           </span>
                           {t}
                         </div>
-                        <button
+                        <DoubleClickButton
                           type="button"
                           title="削除"
-                          onClick={() => {
+                          onDoubleActivate={() => {
                             setTempTaskStock((p) => p.filter((_, i) => i !== idx));
                             setTaskStockDirty(true);
                           }}
                         >
                           <span className="material-icons">delete</span>
-                        </button>
+                        </DoubleClickButton>
                       </div>
                     </div>
                   ))
@@ -10798,18 +10799,18 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                         >
                           {tag.name}
                         </div>
-                        <button
+                        <DoubleClickButton
                           className="stock-item-remove"
                           type="button"
                           title="削除"
-                          onClick={() => {
+                          onDoubleActivate={() => {
                             setTempTagStock((p) => p.filter((_, i) => i !== idx));
                             setTagDirty(true);
                             if (selectedTag === tag.name) setSelectedTag('');
                           }}
                         >
                           <span className="material-icons">delete</span>
-                        </button>
+                        </DoubleClickButton>
                       </div>
                     </div>
                   ))
@@ -11689,17 +11690,17 @@ function TaskEditDialog(props: {
           >
             <span className="material-icons">save</span>
           </button>
-          <button
+          <DoubleClickButton
             className="btn-danger"
             id="edit-delete"
             title="削除"
             aria-label="削除"
             type="button"
-            onClick={props.onDelete}
+            onDoubleActivate={props.onDelete}
             disabled={!props.accessToken || props.busy}
           >
             <span className="material-icons">delete</span>
-          </button>
+          </DoubleClickButton>
         </div>
     </ModalShell>
   );
@@ -11814,16 +11815,16 @@ function TaskLineEditDialog(props: {
           >
             <span className="material-icons">done</span>
           </button>
-          <button
+          <DoubleClickButton
             className="btn-danger"
             type="button"
             title="削除"
             aria-label="削除"
-            onClick={props.onDelete}
+            onDoubleActivate={props.onDelete}
             disabled={props.busy || !props.cardId}
           >
             <span className="material-icons">delete</span>
-          </button>
+          </DoubleClickButton>
         </div>
     </ModalShell>
   );
@@ -11948,16 +11949,22 @@ function NotesEditDialog(props: {
           >
             <span className="material-icons">{linkCopied ? 'done' : 'content_copy'}</span>
           </button>
-          <button
-            className={willDelete ? 'btn-danger' : 'btn-primary'}
-            type="button"
-            title={willDelete ? '削除' : '保存'}
-            aria-label={willDelete ? '削除' : '保存'}
-            onClick={() => props.onSave(body)}
-            disabled={props.busy}
-          >
-            <span className="material-icons">{willDelete ? 'close' : 'done'}</span>
-          </button>
+          {willDelete ? (
+            <DoubleClickButton
+              className="btn-danger"
+              type="button"
+              title="削除"
+              aria-label="削除"
+              onDoubleActivate={() => props.onSave(body)}
+              disabled={props.busy}
+            >
+              <span className="material-icons">close</span>
+            </DoubleClickButton>
+          ) : (
+            <button className="btn-primary" type="button" title="保存" aria-label="保存" onClick={() => props.onSave(body)} disabled={props.busy}>
+              <span className="material-icons">done</span>
+            </button>
+          )}
         </div>
     </ModalShell>
   );

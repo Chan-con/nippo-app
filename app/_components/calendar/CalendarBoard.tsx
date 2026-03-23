@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
+import DoubleClickButton from '../DoubleClickButton';
 import ModalShell from '../ModalShell';
 import { isHoliday } from '@holiday-jp/holiday_jp';
 
@@ -1498,9 +1499,9 @@ export default function CalendarBoard(props: {
             >
               <span className="material-icons">done</span>
             </button>
-            <button className="btn-danger" type="button" title="削除" aria-label="削除" onClick={() => deleteFromModal()} disabled={disabled || !modalEditingId}>
+            <DoubleClickButton className="btn-danger" type="button" title="削除" aria-label="削除" onDoubleActivate={() => deleteFromModal()} disabled={disabled || !modalEditingId}>
               <span className="material-icons">delete</span>
-            </button>
+            </DoubleClickButton>
           </div>
       </ModalShell>
     </div>

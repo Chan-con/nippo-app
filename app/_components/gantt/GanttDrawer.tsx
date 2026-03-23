@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { GanttTask } from './types';
+import DoubleClickButton from '../DoubleClickButton';
 import ModalShell from '../ModalShell';
 
 type GanttTone = 'info' | 'danger' | 'success' | 'warning' | 'default';
@@ -146,18 +147,18 @@ export default function GanttDrawer(props: {
           >
             <span className="material-icons">done</span>
           </button>
-          <button
+          <DoubleClickButton
             className="btn-danger"
             type="button"
             title="削除"
             aria-label="削除"
-            onClick={() => {
+            onDoubleActivate={() => {
               props.onDelete(task.id);
             }}
             disabled={props.disabled}
           >
             <span className="material-icons">delete</span>
-          </button>
+          </DoubleClickButton>
         </div>
     </ModalShell>
   );
