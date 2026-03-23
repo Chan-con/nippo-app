@@ -6490,7 +6490,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
         redirectTo: window.location.origin + '/',
       },
     });
-    if (error) setError(error.message);
+    if (error) setError(`Googleログインに失敗しました: ${error.message}`);
   }
 
   async function logout() {
@@ -7551,6 +7551,32 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
       </div>
 
       <div className="app-container">
+        {error ? (
+          <div className="px-3 pb-0 pt-3 sm:px-4">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="flex items-start justify-between gap-3 rounded-[var(--radius-small)] border border-[var(--error)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+            >
+              <div className="min-w-0">
+                <div className="font-medium" style={{ color: 'var(--error)' }}>
+                  エラー
+                </div>
+                <div className="mt-1 break-words">{error}</div>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-[var(--radius-small)] border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 text-xs"
+                title="エラーを閉じる"
+                aria-label="エラーを閉じる"
+                onClick={() => setError(null)}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div
           id="mobile-overlay"
           className="mobile-overlay"
