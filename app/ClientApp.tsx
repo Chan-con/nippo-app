@@ -1040,6 +1040,7 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [timelineTaskSearchEntries, setTimelineTaskSearchEntries] = useState<TimelineTaskSearchEntry[]>([]);
   const [timelineTaskSearchLoaded, setTimelineTaskSearchLoaded] = useState(false);
   const timelineTaskSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const timelineTaskSearchPrefetchStartedRef = useRef(false);
 
   // report
   const [reportUrls, setReportUrls] = useState<ReportUrl[]>([]);
@@ -6772,14 +6773,30 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
           ? bodyDates.data
           : [];
 
-      for (const date of dates) {
-        const ymd = normalizeYmd(date);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) continue;
-        const res = await apiFetch(`/api/history/${encodeURIComponent(ymd)}`, { method: 'GET' });
-        if (!res.ok) continue;
-        const body = await res.json().catch(() => null as any);
-        const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
-        for (const task of tasksInDay) addOne(ymd, task?.name ?? task?.title, task?.memo);
+      const historyDates = dates
+        .map((date) => normalizeYmd(date))
+        .filter((ymd) => /^\d{4}-\d{2}-\d{2}$/.test(ymd));
+
+      const batchSize = 6;
+      for (let index = 0; index < historyDates.length; index += batchSize) {
+        const batch = historyDates.slice(index, index + batchSize);
+        const results = await Promise.all(
+          batch.map(async (ymd) => {
+            try {
+              const res = await apiFetch(`/api/history/${encodeURIComponent(ymd)}`, { method: 'GET' });
+              if (!res.ok) return { ymd, tasksInDay: [] as any[] };
+              const body = await res.json().catch(() => null as any);
+              const tasksInDay: any[] = Array.isArray(body?.data?.tasks) ? body.data.tasks : Array.isArray(body?.tasks) ? body.tasks : [];
+              return { ymd, tasksInDay };
+            } catch {
+              return { ymd, tasksInDay: [] as any[] };
+            }
+          })
+        );
+
+        for (const { ymd, tasksInDay } of results) {
+          for (const task of tasksInDay) addOne(ymd, task?.name ?? task?.title, task?.memo);
+        }
       }
 
       const normalized = Array.from(map.values()).sort((a, b) => {
@@ -6803,6 +6820,25 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
     setTimelineTaskSearchOpen(true);
     void loadTimelineTaskSearchEntries();
   }
+
+  useEffect(() => {
+    if (!accessToken) {
+      timelineTaskSearchPrefetchStartedRef.current = false;
+      return;
+    }
+    if (timelineTaskSearchLoaded || timelineTaskSearchLoading) return;
+    if (timelineTaskSearchPrefetchStartedRef.current) return;
+
+    timelineTaskSearchPrefetchStartedRef.current = true;
+    const timeoutId = window.setTimeout(() => {
+      void loadTimelineTaskSearchEntries();
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, timelineTaskSearchLoaded, timelineTaskSearchLoading]);
 
   function closeTimelineTaskSearchModal() {
     setTimelineTaskSearchOpen(false);
@@ -8018,14 +8054,22 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
                   <button
                     type="button"
                     className="icon-btn timeline-task-search-open-btn"
-                    title="タスク名で検索"
-                    aria-label="タスク名で検索"
+                    title={timelineTaskSearchLoading && !timelineTaskSearchOpen ? '検索候補を準備中' : 'タスク名で検索'}
+                    aria-label={timelineTaskSearchLoading && !timelineTaskSearchOpen ? '検索候補を準備中' : 'タスク名で検索'}
+                    aria-busy={timelineTaskSearchLoading && !timelineTaskSearchOpen}
                     onClick={() => {
                       openTimelineTaskSearchModal();
                     }}
                     disabled={!accessToken || busy}
                   >
-                    <span className="material-icons">search</span>
+                    {timelineTaskSearchLoading && !timelineTaskSearchOpen ? (
+                      <span className="inline-flex items-center gap-1 text-[var(--text-secondary)]">
+                        <span className="ui-spinner ui-spinner-sm" aria-hidden="true" />
+                        <span className="sr-only">読み込み中</span>
+                      </span>
+                    ) : (
+                      <span className="material-icons">search</span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -9456,9 +9500,15 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
             <div className="edit-field">
               <label htmlFor="timeline-task-search-input">タスク名で検索</label>
               <div className="timeline-task-search-input-wrap">
-                <span className="material-icons" aria-hidden="true">
-                  search
-                </span>
+                {timelineTaskSearchLoading ? (
+                  <span className="timeline-task-search-leading" aria-hidden="true">
+                    <span className="ui-spinner ui-spinner-sm" />
+                  </span>
+                ) : (
+                  <span className="material-icons" aria-hidden="true">
+                    search
+                  </span>
+                )}
                 <input
                   id="timeline-task-search-input"
                   ref={timelineTaskSearchInputRef}
@@ -9481,8 +9531,16 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
             {timelineTaskSearchError ? <div className="timeline-task-search-error">{timelineTaskSearchError}</div> : null}
 
-            <div className="timeline-task-search-results" role="listbox" aria-label="検索候補">
-              {timelineTaskSearchLoading ? <div className="timeline-task-search-empty">検索候補を読み込み中...</div> : null}
+            <div className="timeline-task-search-results" role="listbox" aria-label="検索候補" aria-busy={timelineTaskSearchLoading}>
+              {timelineTaskSearchLoading ? (
+                <div className="timeline-task-search-loading-state">
+                  <span className="ui-spinner" aria-hidden="true" />
+                  <div className="timeline-task-search-loading-copy">
+                    <strong>検索候補を読み込み中...</strong>
+                    <span>最初の1回だけ履歴をまとめて準備しています</span>
+                  </div>
+                </div>
+              ) : null}
 
               {!timelineTaskSearchLoading && !timelineTaskSearchQuery.trim() ? (
                 <div className="timeline-task-search-empty">タスク名を入力すると候補が表示されます</div>
