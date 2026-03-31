@@ -1,7 +1,7 @@
 'use client';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FloatingNotices, { type FloatingNoticeItem } from './_components/FloatingNotices';
 import { useFloatingNotices } from './_components/FloatingNoticesProvider';
@@ -686,12 +686,13 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
   const [taskStockDragOverIndex, setTaskStockDragOverIndex] = useState<number | null>(null);
   const [taskStockDraggingIndex, setTaskStockDraggingIndex] = useState<number | null>(null);
 
+  const normalizedTaskStock = useMemo(() => normalizeTaskNameList(taskStock), [taskStock]);
+  const deferredNewTaskName = useDeferredValue(newTaskName);
   const taskNameSuggestions = useMemo(() => {
-    const list = normalizeTaskNameList(taskStock);
-    const q = String(newTaskName || '').trim().toLowerCase();
-    const filtered = q ? list.filter((n) => n.toLowerCase().includes(q)) : list;
-    return filtered;
-  }, [taskStock, newTaskName]);
+    const q = String(deferredNewTaskName || '').trim().toLowerCase();
+    const filtered = q ? normalizedTaskStock.filter((n) => n.toLowerCase().includes(q)) : normalizedTaskStock;
+    return filtered.slice(0, 50);
+  }, [normalizedTaskStock, deferredNewTaskName]);
 
   useEffect(() => {
     setTaskSuggestActiveIndex(-1);
