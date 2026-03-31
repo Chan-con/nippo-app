@@ -992,17 +992,14 @@ export default function ClientApp(props: { supabaseUrl?: string; supabaseAnonKey
 
   useEffect(() => {
     if (!tagWorkReportOpen) return;
-    setTagWorkReportRangeStart(todayYmd);
-    setTagWorkReportRangeEnd(todayYmd);
-  }, [tagWorkReportOpen, todayYmd]);
-
-  useEffect(() => {
-    if (!tagWorkReportOpen) return;
+    const initialRange = normalizeYmd(todayYmd);
+    setTagWorkReportRangeStart(initialRange);
+    setTagWorkReportRangeEnd(initialRange);
     tagWorkReportInitialRangeRef.current = {
-      start: normalizeYmd(tagWorkReportRangeStart),
-      end: normalizeYmd(tagWorkReportRangeEnd),
+      start: initialRange,
+      end: initialRange,
     };
-  }, [tagWorkReportOpen]);
+  }, [tagWorkReportOpen, todayYmd]);
 
   // edit dialog (timeline)
   const [editOpen, setEditOpen] = useState(false);
